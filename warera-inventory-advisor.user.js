@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         WareEra Inventory Advisor v0.4.0
+// @name         WareEra Inventory Advisor v0.4.1
 // @namespace    https://github.com/dev/warera-inventory-advisor
-// @version      0.4.0
+// @version      0.4.1
 // @description  Marks inventory equipment as KEEP / SELL / SCRAP based on stats and live market vs. scrap value.
 // @author       dev
 // @match        https://app.warera.io/*
@@ -959,7 +959,7 @@
     if (value == null) { // no market -> scrap
       if (avoidScrap) {
         reasons.push(`no market price but avoid scrap (crit check)`);
-        return decide(ACTION.SELL, reasons, value, scrapValue);
+        return decide(ACTION.KEEP, reasons, value, scrapValue);
       }
       reasons.push(`scrap ${fmt(scrapValue)} (no market price)`);
       return decide(ACTION.SCRAP, reasons, value, scrapValue);
@@ -969,7 +969,7 @@
     if (scrapValue > netMarketValue * margin) {
       if (avoidScrap) {
         reasons.push(`scrap ${fmt(scrapValue)} > market net ${fmt(netMarketValue)} (gross ${fmt(value)}) but avoid scrap (crit check)`);
-        return decide(ACTION.SELL, reasons, value, scrapValue);
+        return decide(ACTION.KEEP, reasons, value, scrapValue);
       }
       reasons.push(`scrap ${fmt(scrapValue)} > market net ${fmt(netMarketValue)} (gross ${fmt(value)})${isFallback ? ' (est.)' : ''}`);
       return decide(ACTION.SCRAP, reasons, value, scrapValue);
