@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         WareEra Inventory Advisor v0.5.4
+// @name         WareEra Inventory Advisor v0.5.5
 // @namespace    https://github.com/dev/warera-inventory-advisor
-// @version      0.5.4
+// @version      0.5.5
 // @description  Marks inventory equipment as KEEP / SELL / SCRAP based on stats and live market vs. scrap value.
 // @author       dev
 // @match        https://app.warera.io/*
@@ -1374,6 +1374,98 @@
     return false;
   }
 
+  const pendingFetches = new Set();
+
+  function hasFreshCachedData(code) {
+    const oc = GM_getValue(KEYS.offersCache, {}) || {};
+    const tc = GM_getValue(KEYS.transactionsCache, {}) || {};
+    const cachedOffer = oc[code];
+    const cachedTx = tc[code];
+    if (CONFIG.useLiveOffersApi) {
+      if (!cachedOffer || now() - cachedOffer.fetchedAt >= CONFIG.priceCacheTtlMs) return false;
+    }
+    if (!cachedTx || now() - cachedTx.fetchedAt >= CONFIG.txCacheTtlMs) return false;
+    return true;
+  }
+
+  async function fetchAndRenderItemCodeInBackground(code, force) {
+    if (pendingFetches.has(code)) return;
+    pendingFetches.add(code);
+
+    try {
+      log(`Background load started for ${code}`);
+      // fetch live equipment offers + transactions
+      const [offerData, txData] = await Promise.all([
+        fetchItemOffers(code, force),
+        fetchItemTransactions(code, force)
+      ]);
+
+      const cards = findItemCards(false);
+      if (!cards.size) return;
+
+      const allItems = [];
+      cards.forEach((img, card) => {
+        const { type, alt, code: cCode, tier } = detectType(img);
+        if (type === 'scrap' || type === 'unknown') return;
+        const stats = parseStats(card, type);
+        if (stats.durability != null && stats.durability < 100) return;
+        const resolvedTier = tier != null ? tier : detectTierByColor(card);
+        const item = { card, img, type, alt, code: cCode, tier: resolvedTier, stats };
+        item.myStat = itemStat(item);
+        if (type === 'weapon') item.weaponScore = item.myStat;
+        allItems.push(item);
+      });
+
+      if (!allItems.length) return;
+
+      calculateInventoryRankings(allItems);
+
+      const prices = await fetchPrices(false); // from cache, instant
+      const scrapPrice = prices ? prices[CONFIG.scrapItemCode] ?? null : null;
+
+      const offers = {};
+      const txs = {};
+      const uniqueCodes = [...new Set(allItems.map((i) => i.code).filter(Boolean))];
+      
+      const oc = GM_getValue(KEYS.offersCache, {}) || {};
+      const tc = GM_getValue(KEYS.transactionsCache, {}) || {};
+      const scraped = GM_getValue(KEYS.scrapedPrices, {}) || {};
+
+      uniqueCodes.forEach((c) => {
+        if (!CONFIG.useLiveOffersApi) {
+          const cached = scraped[c];
+          if (cached) offers[c] = { offers: [], floor: cached.price, fetchedAt: cached.fetchedAt };
+        } else if (oc[c]) {
+          offers[c] = oc[c].data;
+        }
+
+        if (tc[c]) {
+          txs[c] = tc[c].data;
+        }
+      });
+
+      const ctx = { prices, scrapPrice, offers, txs, stale: cacheStatus().stale };
+
+      if (observer) observer.disconnect();
+      try {
+        allItems.forEach((item) => {
+          if (item.code === code) {
+            const result = evaluate(item, ctx);
+            renderItem(item.card, item, result);
+          }
+        });
+      } finally {
+        updateObserverTarget();
+      }
+      updateStatusIndicator();
+      log(`Background update finished for ${code}`);
+    } catch (e) {
+      log(`Background load failed for ${code}:`, e);
+    } finally {
+      pendingFetches.delete(code);
+    }
+  }
+
   async function scanInventory(force) {
     if (scanning) {
       return;
@@ -1393,14 +1485,12 @@
     lastInventoryCards = cards;
 
     try {
-      // parse all first (cheap), then fetch prices once, then evaluate
       const items = [];
       cards.forEach((img, card) => {
         const { type, alt, code, tier } = detectType(img);
         if (type === 'scrap' || type === 'unknown') return;
         const stats = parseStats(card, type);
         
-        // Exclude items with durability < 100% (and clean up any existing WIA elements)
         if (stats.durability != null && stats.durability < 100) {
           const badge = card.querySelector('.wia-badge');
           if (badge) badge.remove();
@@ -1411,37 +1501,56 @@
           return;
         }
 
-        // tier from alt suffix; fall back to card color.
         const resolvedTier = tier != null ? tier : detectTierByColor(card);
         const item = { card, img, type, alt, code, tier: resolvedTier, stats };
         item.myStat = itemStat(item);
         if (type === 'weapon') item.weaponScore = item.myStat;
         items.push(item);
       });
-      if (!items.length) return;
+      if (!items.length) {
+        scanning = false;
+        return;
+      }
 
       calculateInventoryRankings(items);
 
       const prices = await fetchPrices(force);
-      // scrap unit price is the 'scraps' key in the materials map.
       const scrapPrice = prices ? prices[CONFIG.scrapItemCode] ?? null : null;
 
-      // fetch live equipment offers + transactions once per distinct itemCode (cached hard).
-      const codes = [...new Set(items.map((i) => i.code).filter(Boolean))];
-      const [offerResults, txResults] = await Promise.all([
-        Promise.all(codes.map((c) => fetchItemOffers(c, force))),
-        Promise.all(codes.map((c) => fetchItemTransactions(c, force)))
-      ]);
+      const oc = GM_getValue(KEYS.offersCache, {}) || {};
+      const tc = GM_getValue(KEYS.transactionsCache, {}) || {};
+      const scraped = GM_getValue(KEYS.scrapedPrices, {}) || {};
+
       const offers = {};
       const txs = {};
-      codes.forEach((c, i) => {
-        if (offerResults[i]) offers[c] = offerResults[i];
-        if (txResults[i]) txs[c] = txResults[i];
+      const codesToFetch = [];
+
+      items.forEach((item) => {
+        const c = item.code;
+        if (!c) return;
+
+        const hasFresh = hasFreshCachedData(c);
+
+        if (!hasFresh || force) {
+          if (!codesToFetch.includes(c) && !pendingFetches.has(c)) {
+            codesToFetch.push(c);
+          }
+        }
+
+        if (!CONFIG.useLiveOffersApi) {
+          const cached = scraped[c];
+          if (cached) offers[c] = { offers: [], floor: cached.price, fetchedAt: cached.fetchedAt };
+        } else if (oc[c]) {
+          offers[c] = oc[c].data;
+        }
+
+        if (tc[c]) {
+          txs[c] = tc[c].data;
+        }
       });
 
       const ctx = { prices, scrapPrice, offers, txs, stale: cacheStatus().stale };
-      // Pause the observer across rendering: renderItem mutates the DOM (badge +
-      // styles), which would otherwise re-trigger the observer -> endless rescan.
+
       if (observer) observer.disconnect();
       try {
         for (const item of items) {
@@ -1452,7 +1561,15 @@
         updateObserverTarget();
       }
       updateStatusIndicator();
-      log(`scanned ${items.length} items`);
+      log(`scanned ${items.length} items (immediate render done)`);
+
+      if (codesToFetch.length > 0) {
+        log(`Triggering background loads for: ${codesToFetch.join(', ')}`);
+        codesToFetch.forEach((c) => {
+          fetchAndRenderItemCodeInBackground(c, force);
+        });
+      }
+
     } catch (e) {
       log('scan error:', e);
     } finally {
