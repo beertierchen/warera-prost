@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         WareEra Inventory Advisor v0.2.7
+// @name         WareEra Inventory Advisor v0.3.0
 // @namespace    https://github.com/dev/warera-inventory-advisor
-// @version      0.2.7
+// @version      0.3.0
 // @description  Marks inventory equipment as KEEP / SELL / SCRAP based on stats and live market vs. scrap value.
 // @author       dev
 // @match        https://app.warera.io/user/*/inventory
@@ -1592,6 +1592,52 @@
     }
   }
 
+  let lastPath = location.pathname;
+  let routePollInterval = null;
+
+  function startRoutePolling() {
+    if (routePollInterval) clearInterval(routePollInterval);
+    let attempts = 0;
+    routePollInterval = setInterval(() => {
+      attempts++;
+      const cards = findItemCards();
+      if (cards.size > 0) {
+        log(`Route polling: found ${cards.size} cards after ${attempts} attempts`);
+        clearInterval(routePollInterval);
+        routePollInterval = null;
+        if (isInventoryPage()) {
+          scanInventory(false);
+        } else if (isMarketPage()) {
+          scrapeMarketPrices();
+          scanInventory(false);
+        }
+      }
+      if (attempts >= 20) { // stop polling after 5 seconds
+        clearInterval(routePollInterval);
+        routePollInterval = null;
+      }
+    }, 250);
+  }
+
+  function handleRouteChange() {
+    if (location.pathname === lastPath) return;
+    lastPath = location.pathname;
+    lastInventoryCards = null; // Reset fingerprint on route change
+    
+    if (routePollInterval) {
+      clearInterval(routePollInterval);
+      routePollInterval = null;
+    }
+    
+    if (isInventoryPage() || isMarketPage()) {
+      updateObserverTarget();
+      debouncedScan();
+      startRoutePolling();
+    } else {
+      observer.disconnect();
+    }
+  }
+
   function start() {
     CONFIG.useLiveOffersApi = GM_getValue(KEYS.useLiveOffersApi, false);
     injectStyles();
@@ -1608,22 +1654,26 @@
         scrapeMarketPrices();
         scanInventory(false);
       }
+      startRoutePolling();
     }
 
-    // SPA route changes (warera is a single-page app): connect/disconnect the
-    // observer with the route so it isn't churning over non-inventory/non-market pages.
-    let lastPath = location.pathname;
-    setInterval(() => {
-      if (location.pathname === lastPath) return;
-      lastPath = location.pathname;
-      lastInventoryCards = null; // Reset fingerprint on route change
-      if (isInventoryPage() || isMarketPage()) {
-        updateObserverTarget();
-        debouncedScan();
-      } else {
-        observer.disconnect();
-      }
-    }, 800);
+    // Intercept pushState / replaceState for instant route detection in Next.js SPA
+    const originalPushState = history.pushState;
+    history.pushState = function (...args) {
+      originalPushState.apply(this, args);
+      setTimeout(handleRouteChange, 50);
+    };
+
+    const originalReplaceState = history.replaceState;
+    history.replaceState = function (...args) {
+      originalReplaceState.apply(this, args);
+      setTimeout(handleRouteChange, 50);
+    };
+
+    window.addEventListener('popstate', handleRouteChange);
+
+    // Fallback interval check
+    setInterval(handleRouteChange, 800);
   }
 
   start();
