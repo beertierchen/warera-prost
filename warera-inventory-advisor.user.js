@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         WareEra Inventory Advisor v0.5.2
+// @name         WareEra Inventory Advisor v0.5.3
 // @namespace    https://github.com/dev/warera-inventory-advisor
-// @version      0.5.2
+// @version      0.5.3
 // @description  Marks inventory equipment as KEEP / SELL / SCRAP based on stats and live market vs. scrap value.
 // @author       dev
 // @match        https://app.warera.io/*
@@ -1510,9 +1510,20 @@
       }
       .wia-modal {
         background: #161b22; color: #c9d1d9; border: 1px solid #30363d;
-        border-radius: 10px; padding: 20px; width: 380px; max-width: 90vw;
+        border-radius: 10px; padding: 20px; width: 420px; max-width: 95vw;
         font: 13px/1.5 system-ui, sans-serif; box-shadow: 0 8px 30px rgba(0,0,0,.6);
       }
+      .wia-help-details {
+        margin-top: 15px; border-top: 1px solid #30363d; padding-top: 10px;
+      }
+      .wia-help-summary {
+        font-weight: 600; color: #58a6ff; cursor: pointer; user-select: none; margin-bottom: 8px;
+      }
+      .wia-help-content {
+        font-size: 11px; line-height: 1.45; color: #8b949e; max-height: 200px; overflow-y: auto; padding-right: 5px;
+      }
+      .wia-help-content ul { margin: 5px 0; padding-left: 15px; }
+      .wia-help-content li { margin-bottom: 4px; }
       .wia-modal h2 { margin: 0 0 12px; font-size: 16px; }
       .wia-modal label { display: block; margin: 10px 0 4px; font-weight: 600; }
       .wia-modal input {
@@ -1587,6 +1598,7 @@
     bg.innerHTML = `
       <div class="wia-modal">
         <h2>WareEra Inventory Advisor</h2>
+        <div style="font-size: 12px; color: #8b949e; margin-bottom: 12px; line-height: 1.4;">Der Inventory Advisor soll eine schnelle Übersicht geben, ob Items behalten (KEEP/HOLD), gewinnbringend verkauft (SELL) oder zerschreddert (SCRAP) werden sollten.</div>
         <div class="wia-warn" style="display:none"></div>
         <div class="wia-data"></div>
         <label>API-Token (api2.warera.io)</label>
@@ -1596,6 +1608,28 @@
           <input type="checkbox" class="wia-high-crit" style="width: auto;" ${CONFIG.useHighCritWeightForHold ? 'checked' : ''} />
           <label style="margin: 0; font-weight: normal; cursor: pointer;">Erhöhte Crit-Gewichtung für HOLD-Bewertung verwenden (6.00 statt 4.15)</label>
         </div>
+        <details class="wia-help-details">
+          <summary class="wia-help-summary">ℹ Spickzettel (Hilfe & Erklärung)</summary>
+          <div class="wia-help-content">
+            <strong>Bedeutung der Empfehlungen (Farbe + Symbol):</strong>
+            <ul>
+              <li>💎 <strong>KEEP (Blau)</strong>: Item behalten. Gilt für die Top 3 deines Bestands (pro Typ/Tier) oder falls das Item unter den besten 33% (Top-Roll) der Live-Angebote oder deines Inventars liegt.</li>
+              <li>✋ <strong>HOLD (Orange)</strong>: Behalten / Aufheben. Das Item liegt in den besten 10% des theoretisch möglichen Wertebereichs (Top-Itemscore). Wird nur vergeben, wenn es kein 💎 KEEP ist.</li>
+              <li>💰 <strong>SELL (Grün)</strong>: Im Markt verkaufen. Lohnt sich wirtschaftlich, da der Netto-Marktpreis (abzüglich 1% Steuer) den Schredder-Wert übersteigt.</li>
+              <li>🔨 <strong>SCRAP (Rot)</strong>: Zerschreddern. Lohnt sich wirtschaftlich, da der Schredder-Wert höher ist als der Netto-Verkaufspreis.</li>
+            </ul>
+            <strong>Anzeigen auf den Inventarkarten:</strong>
+            <ul>
+              <li><strong>Oben links (Stat-Wert):</strong> Der Rüstungs-Stat bzw. Waffenscore (Attack + Crit * Gewicht). <em>Blau unterlegt</em> = Top 3 in deinem Bestand (Stock Keep). <em>Grau</em> = Normal.</li>
+              <li><strong>Oben rechts (Preise):</strong> Format <code>[Schredder-Wert]/[Marktpreis]</code>. <em>Grün unterlegt</em> = Schreddern lohnt sich mehr. <em>Orange</em> = Verkaufen lohnt sich mehr.</li>
+            </ul>
+            <strong>Einstellungen:</strong>
+            <ul>
+              <li><strong>API-Token</strong>: Erforderlich für den Abruf aktueller Marktpreise (Ausrüstung und Schrott).</li>
+              <li><strong>Erhöhte Crit-Gewichtung</strong>: Erhöht den Crit-Gewichtungsfaktor bei Waffen von 4.15 auf 6.00 für die HOLD-Prüfung.</li>
+            </ul>
+          </div>
+        </details>
         <div class="wia-btns">
           <button class="wia-btn primary wia-save">Speichern</button>
           <button class="wia-btn wia-clear">Cache leeren</button>
