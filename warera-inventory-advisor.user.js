@@ -48,7 +48,7 @@
     pricesEndpoint: 'itemTrading.getPrices',
     // getPrices returns MATERIALS only; the scrap unit price is the 'scraps' key.
     scrapItemCode: 'scraps',
-    // Equipment market data (falls back to api2 instead of load-balanced api1-api6 hosts).
+    // Equipment market data (falls back to api2).
     // One request per itemCode (e.g. "gloves6") returns live sell offers w/ skills.
     offersApiBase: 'https://api2.warera.io/trpc',
     itemOffersEndpoint: 'itemOffer.getItemOffers',
