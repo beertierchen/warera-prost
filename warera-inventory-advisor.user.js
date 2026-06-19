@@ -685,6 +685,19 @@
     }
   }
 
+  // Removes grown card minHeight and restores shifted image wrapper styles
+  function cleanupCardHeader(card) {
+    card.style.minHeight = '';
+    delete card.dataset.wiaHeader;
+    const imgWrap = card.querySelector('img')?.parentElement;
+    if (imgWrap) {
+      imgWrap.style.top = '';
+      imgWrap.style.height = '';
+      imgWrap.style.bottom = '';
+      delete imgWrap.dataset.wiaShifted;
+    }
+  }
+
   // Walk up to the element that visually represents the card (has a colored
   // border/background). Falls back to a few levels up from the image.
   function climbToCard(img) {
@@ -1204,6 +1217,8 @@
     UNKNOWN: '#8b949e',// gray
   };
 
+  const WIA_HEADER_PX = 18;   // top strip height for score + bubble (tune live)
+
   function renderItem(card, item, result) {
     const cell = getItemCell(card);
     const state = getItemState(card, item.stats);
@@ -1217,6 +1232,7 @@
         const scoreSub = card.querySelector('.wia-score-sub');
         if (scoreSub) scoreSub.remove();
         cleanupPriceSub(cell);
+        cleanupCardHeader(card);
         const topBanner = card.querySelector('.wia-top-banner');
         if (topBanner) topBanner.remove();
         card.style.boxShadow = '';
@@ -1289,6 +1305,27 @@
       scoreSub.style.display = 'flex';
     } else if (scoreSub) {
       scoreSub.remove();
+    }
+
+    // 3.5. Grow card header if top overlays are active, otherwise reset it
+    const showHeader = showScore || showBadge;
+    suspendObserver();
+    try {
+      if (showHeader) {
+        card.style.minHeight = (48 + WIA_HEADER_PX) + 'px';
+        card.dataset.wiaHeader = '1';
+        const imgWrap = card.querySelector('img')?.parentElement;
+        if (imgWrap) {
+          imgWrap.style.top = WIA_HEADER_PX + 'px';
+          imgWrap.style.height = 'auto';
+          imgWrap.style.bottom = '0';
+          imgWrap.dataset.wiaShifted = '1';
+        }
+      } else {
+        cleanupCardHeader(card);
+      }
+    } finally {
+      resumeObserver();
     }
 
     // 4. Price Sub-badge (only for 100% unequipped)
@@ -1698,6 +1735,7 @@
             const scoreSub = card.querySelector('.wia-score-sub');
             if (scoreSub) scoreSub.remove();
             cleanupPriceSub(cell);
+            cleanupCardHeader(card);
             const topBanner = card.querySelector('.wia-top-banner');
             if (topBanner) topBanner.remove();
             card.style.boxShadow = '';
