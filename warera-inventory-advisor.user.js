@@ -1158,7 +1158,9 @@
 
   function renderItem(card, item, result) {
     card.dataset.wiaDone = '1';
-    card.style.position = card.style.position || 'relative';
+    if (getComputedStyle(card).position === 'static') {
+      card.style.position = 'relative';
+    }
 
     // 1. Existing Badge (action recommendation)
     let badge = card.querySelector('.wia-badge');
@@ -1209,10 +1211,29 @@
     let priceSub = card.querySelector('.wia-price-sub');
     const showPrice = result.scrapValue != null || result.market != null;
     if (showPrice) {
+      // Find the stats/durability container inside the card
+      const statsContainer = Array.from(card.children).find(c => {
+        return c.tagName === 'DIV' && 
+               !c.classList.contains('wia-badge') && 
+               !c.classList.contains('wia-score-sub') && 
+               !c.classList.contains('wia-price-sub') &&
+               c !== card.firstElementChild;
+      }) || card;
+
+      if (getComputedStyle(statsContainer).position === 'static') {
+        statsContainer.style.position = 'relative';
+      }
+
+      // Ensure priceSub is parented to statsContainer
+      if (priceSub && priceSub.parentElement !== statsContainer) {
+        priceSub.remove();
+        priceSub = null;
+      }
+
       if (!priceSub) {
         priceSub = document.createElement('div');
         priceSub.className = 'wia-price-sub';
-        card.appendChild(priceSub);
+        statsContainer.appendChild(priceSub);
       }
       const sVal = result.scrapValue;
       const mVal = result.market;
@@ -1372,6 +1393,13 @@
   let observerSuspendCount = 0;
   let scanning = false;
   let lastInventoryCards = null;
+  const lastInventoryCardTexts = new Map();
+
+  function getCardBaseText(card) {
+    const clone = card.cloneNode(true);
+    clone.querySelectorAll('.wia-badge, .wia-score-sub, .wia-price-sub, .wia-top-banner').forEach(el => el.remove());
+    return clone.textContent.replace(/\s+/g, ' ').trim();
+  }
 
   function suspendObserver() {
     observerSuspendCount++;
@@ -1409,6 +1437,10 @@
       if (itemId !== lastItemId) return true;
 
       if (!card.querySelector('.wia-badge')) return true;
+
+      const currentText = getCardBaseText(card);
+      const lastText = lastInventoryCardTexts.get(card);
+      if (currentText !== lastText) return true;
     }
     return false;
   }
@@ -1524,6 +1556,10 @@
     log(`scanInventory started (force=${force})`);
     scanning = true;
     lastInventoryCards = cards;
+    lastInventoryCardTexts.clear();
+    cards.forEach((img, card) => {
+      lastInventoryCardTexts.set(card, getCardBaseText(card));
+    });
 
     try {
       const items = [];
@@ -1532,7 +1568,8 @@
         if (type === 'scrap' || type === 'unknown') return;
         const stats = parseStats(card, type);
         
-        if (stats.durability != null && stats.durability < 100) {
+        const isEquipped = /equip/i.test(getCardBaseText(card)) || /ausger/i.test(getCardBaseText(card));
+        if (isEquipped || (stats.durability != null && stats.durability < 100)) {
           const badge = card.querySelector('.wia-badge');
           if (badge) badge.remove();
           const scoreSub = card.querySelector('.wia-score-sub');
@@ -1935,6 +1972,7 @@
     if (location.pathname === lastPath) return;
     lastPath = location.pathname;
     lastInventoryCards = null; // Reset fingerprint on route change
+    lastInventoryCardTexts.clear();
     
     if (routePollInterval) {
       clearInterval(routePollInterval);
