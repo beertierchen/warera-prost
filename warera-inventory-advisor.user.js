@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         WareEra Inventory Advisor v0.3.3
+// @name         WareEra Inventory Advisor v0.4.0
 // @namespace    https://github.com/dev/warera-inventory-advisor
-// @version      0.3.3
+// @version      0.4.0
 // @description  Marks inventory equipment as KEEP / SELL / SCRAP based on stats and live market vs. scrap value.
 // @author       dev
 // @match        https://app.warera.io/*
@@ -564,6 +564,11 @@
         return;
       }
       if (card) {
+        const width = card.offsetWidth;
+        if (width > 0 && width < 40) {
+          if (verbose) log(`    -> Skipped (card too small: ${width}px)`);
+          return;
+        }
         if (!cards.has(card)) {
           cards.set(card, img);
           if (verbose) log(`    -> Added card`);
@@ -1589,9 +1594,16 @@
 
     if (isInventoryPage()) {
       const cards = findItemCards();
-      if (cards.size > 0) {
-        const firstCard = cards.keys().next().value;
-        const gridContainer = firstCard.parentElement;
+      const validCards = Array.from(cards.keys()).filter(card => card.offsetWidth >= 40);
+      if (validCards.length > 0) {
+        const firstCard = validCards[0];
+        let gridContainer = firstCard.parentElement;
+        while (gridContainer && gridContainer.tagName !== 'BODY') {
+          if (gridContainer.offsetWidth > 150) {
+            break;
+          }
+          gridContainer = gridContainer.parentElement;
+        }
         if (gridContainer) {
           log(`Observing inventory grid container:`, gridContainer);
           observer.observe(gridContainer, { childList: true, subtree: true });
