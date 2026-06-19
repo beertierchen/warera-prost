@@ -1167,8 +1167,7 @@
     card.title = tooltipText;
 
     // Ensure the card uses column flex direction to stack the banner vertically without shifting
-    card.style.display = 'flex';
-    card.style.flexDirection = 'column';
+    card.classList.add('wia-card-override');
 
     // Clean up old classes if they exist from hot-reloads
     const oldScore = card.querySelector('.wia-score-banner');
@@ -1620,6 +1619,10 @@
   // ───────────────────────────────────────────────────────────────────────────
   function injectStyles() {
     GM_addStyle(`
+      .wia-card-override {
+        display: flex;
+        flex-direction: column;
+      }
       .wia-badge {
         position: absolute; top: 30%; transform: translateY(-50%); right: 4px; z-index: 50;
         width: 20px; height: 20px; border-radius: 50%;
@@ -1967,7 +1970,7 @@
     window.addEventListener('popstate', handleRouteChange);
 
     // Fallback interval check
-    setInterval(handleRouteChange, 800);
+    setInterval(handleRouteChange, 2000);
   }
 
   start();
