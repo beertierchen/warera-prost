@@ -1176,9 +1176,6 @@
     badge.title = tooltipText;
     card.title = tooltipText;
 
-    // Ensure the card uses column flex direction to stack the banner vertically without shifting
-    card.classList.add('wia-card-override');
-
     // Clean up old classes if they exist from hot-reloads
     const oldScore = card.querySelector('.wia-score-banner');
     if (oldScore) oldScore.remove();
@@ -1186,23 +1183,17 @@
     if (oldPrice) oldPrice.remove();
     const oldBottomRow = card.querySelector('.wia-bottom-row');
     if (oldBottomRow) oldBottomRow.remove();
-
-    // 2. Top Banner Container
-    let topBanner = card.querySelector('.wia-top-banner');
-    if (!topBanner) {
-      topBanner = document.createElement('div');
-      topBanner.className = 'wia-top-banner';
-      card.insertBefore(topBanner, card.firstChild);
-    }
+    const oldTopBanner = card.querySelector('.wia-top-banner');
+    if (oldTopBanner) oldTopBanner.remove();
 
     // Score Sub-badge
-    let scoreSub = topBanner.querySelector('.wia-score-sub');
+    let scoreSub = card.querySelector('.wia-score-sub');
     const showScore = item.myStat != null && item.type !== 'helmet';
     if (showScore) {
       if (!scoreSub) {
         scoreSub = document.createElement('div');
         scoreSub.className = 'wia-score-sub';
-        topBanner.appendChild(scoreSub);
+        card.appendChild(scoreSub);
       }
       const scoreVal = item.myStat;
       scoreSub.textContent = item.type === 'weapon' ? scoreVal.toFixed(0) : scoreVal;
@@ -1215,13 +1206,13 @@
     }
 
     // Price Sub-badge
-    let priceSub = topBanner.querySelector('.wia-price-sub');
+    let priceSub = card.querySelector('.wia-price-sub');
     const showPrice = result.scrapValue != null || result.market != null;
     if (showPrice) {
       if (!priceSub) {
         priceSub = document.createElement('div');
         priceSub.className = 'wia-price-sub';
-        topBanner.appendChild(priceSub);
+        card.appendChild(priceSub);
       }
       const sVal = result.scrapValue;
       const mVal = result.market;
@@ -1544,6 +1535,10 @@
         if (stats.durability != null && stats.durability < 100) {
           const badge = card.querySelector('.wia-badge');
           if (badge) badge.remove();
+          const scoreSub = card.querySelector('.wia-score-sub');
+          if (scoreSub) scoreSub.remove();
+          const priceSub = card.querySelector('.wia-price-sub');
+          if (priceSub) priceSub.remove();
           const topBanner = card.querySelector('.wia-top-banner');
           if (topBanner) topBanner.remove();
           card.style.boxShadow = '';
@@ -1636,12 +1631,8 @@
   // ───────────────────────────────────────────────────────────────────────────
   function injectStyles() {
     GM_addStyle(`
-      .wia-card-override {
-        display: flex;
-        flex-direction: column;
-      }
       .wia-badge {
-        position: absolute; top: 30%; transform: translateY(-50%); right: 4px; z-index: 50;
+        position: absolute; top: 35%; transform: translateY(-50%); right: 4px; z-index: 50;
         width: 20px; height: 20px; border-radius: 50%;
         font: 12px system-ui, sans-serif;
         display: flex; align-items: center; justify-content: center;
@@ -1649,18 +1640,17 @@
         user-select: none;
         text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
       }
-      .wia-top-banner {
-        position: relative; width: 100%; height: 12px; z-index: 60;
-        display: flex; justify-content: space-between; box-sizing: border-box;
-        margin-bottom: 3px;
-      }
-      .wia-score-sub, .wia-price-sub {
-        font: bold 8px system-ui, sans-serif; padding: 1px 3px; border-radius: 2px;
+      .wia-score-sub {
+        position: absolute; top: 0; left: 0; z-index: 60;
+        font: bold 8px system-ui, sans-serif; padding: 1px 3px; border-radius: 4px 0 4px 0;
         color: #fff; display: flex; align-items: center; justify-content: center;
-        text-shadow: 0 1px 1px rgba(0,0,0,.5); box-shadow: 0 1px 2px rgba(0,0,0,.3);
+        text-shadow: 0 1px 1px rgba(0,0,0,.5); box-shadow: 1px 1px 2px rgba(0,0,0,.3);
       }
       .wia-price-sub {
-        margin-left: auto;
+        position: absolute; bottom: 0; left: 0; right: 0; z-index: 60;
+        font: bold 8px system-ui, sans-serif; padding: 1px 2px; border-radius: 0 0 4px 4px;
+        color: #fff; display: flex; align-items: center; justify-content: center;
+        text-shadow: 0 1px 1px rgba(0,0,0,.5); box-shadow: 0 -1px 2px rgba(0,0,0,.3);
       }
       .wia-gear {
         position: fixed; bottom: 18px; right: 18px; z-index: 99999;
