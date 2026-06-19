@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WareEra Inventory Advisor
 // @namespace    TBD
-// @version      0.6.3
+// @version      0.6.4
 // @description  A client-side visual assistant for WareEra. Shows KEEP/SELL/SCRAP advice based on local stats and market floors. Optionally integrates the official game API via user API key. No automation.
 // @author       beertierchen
 // @match        https://app.warera.io/*
@@ -654,7 +654,6 @@
   // border/background). Falls back to a few levels up from the image.
   function climbToCard(img) {
     let el = img;
-    let best = img.parentElement || img;
     for (let i = 0; i < CONFIG.cardAncestorMaxClimb && el; i++) {
       el = el.parentElement;
       if (!el) break;
@@ -664,10 +663,10 @@
       // a card is usually a sized, bordered box of ~48px width. Limit max width
       // to 90px to avoid climbing up to the entire list/grid container on the market page.
       if (hasColor && el.offsetWidth >= 40 && el.offsetHeight >= 40 && el.offsetWidth <= 90) {
-        best = el;
+        return el;
       }
     }
-    return best;
+    return img.parentElement || img;
   }
 
   function detectType(img, card) {
@@ -1231,7 +1230,7 @@
         if (v == null) return '?';
         if (v >= 1000) return (v / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
         if (v >= 100) return v.toFixed(0);
-        return v.toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
+        return v.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
       };
 
       priceSub.textContent = `${formatVal(sVal)}/${formatVal(mVal)}`;

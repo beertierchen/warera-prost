@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 2026-06-19 22:22 | WareEra Inventory Advisor v0.6.4
+
+**Changed files:**
+- `warera-inventory-advisor.user.js`
+
+**Change:**
+- Fixed item card ancestor climbing logic in `climbToCard` to immediately return the innermost matching card element, resolving double/triple decoration issues on nested elements.
+- Reverted card top-banner sub-badge price formatting to 2 decimal places (`toFixed(2)`) for UI compactness, while keeping high-precision 4 decimal places for tooltips, logs, and calculations.
+
+**Reason:**
+- Fixes visual clutter (tripled banners) and improves UI aesthetics while maintaining precise calculations.
+
 ## 2026-06-19 22:05 | WareEra Inventory Advisor v0.6.3
 
 **Changed files:**
