@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WareEra Inventory Advisor
 // @namespace    TBD
-// @version      0.6.0
+// @version      0.6.1
 // @description  Marks inventory equipment as KEEP / SELL / SCRAP based on stats and live market vs. scrap value.
 // @author       beertierchen
 // @match        https://app.warera.io/*
