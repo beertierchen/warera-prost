@@ -1279,6 +1279,7 @@
       badge.textContent = emojiMap[result.action] || '❓';
       badge.style.background = BADGE_COLORS[result.action] || BADGE_COLORS.UNKNOWN;
       badge.style.opacity = item.stale ? '0.55' : '1'; // dim when on cached/stale prices
+      badge.style.top = Math.round(WIA_HEADER_PX / 2) + 'px';
       const tooltipText = buildTooltip(item, result);
       badge.title = tooltipText;
       card.title = tooltipText;
@@ -1302,6 +1303,7 @@
       // Blue if top 3 stock keep, otherwise gray
       const isGood = item.isStockKeep === true;
       scoreSub.style.background = isGood ? '#388bfd' : '#8b949e';
+      scoreSub.style.top = Math.round(WIA_HEADER_PX / 2) + 'px';
       scoreSub.style.display = 'flex';
     } else if (scoreSub) {
       scoreSub.remove();
@@ -1833,7 +1835,7 @@
   function injectStyles() {
     GM_addStyle(`
       .wia-badge {
-        position: absolute; top: 2px; right: 2px; z-index: 50;
+        position: absolute; right: 2px; transform: translateY(-50%); z-index: 50;
         width: 16px; height: 16px; border-radius: 50%;
         font: 10px system-ui, sans-serif;
         display: flex; align-items: center; justify-content: center;
@@ -1842,8 +1844,8 @@
         text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
       }
       .wia-score-sub {
-        position: absolute; top: 0; left: 0; z-index: 60;
-        font: bold 8px system-ui, sans-serif; padding: 1px 3px; border-radius: 4px 0 4px 0;
+        position: absolute; left: 2px; transform: translateY(-50%); z-index: 60;
+        font: bold 8px system-ui, sans-serif; padding: 1px 3px; border-radius: 4px;
         color: #fff; display: flex; align-items: center; justify-content: center;
         text-shadow: 0 1px 1px rgba(0,0,0,.5); box-shadow: 1px 1px 2px rgba(0,0,0,.3);
       }
