@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WareEra Inventory Advisor
 // @namespace    https://github.com/dev/warera-inventory-advisor
-// @version      0.1.1
+// @version      0.1.2
 // @description  Marks inventory equipment as KEEP / SELL / SCRAP based on stats and live market vs. scrap value.
 // @author       dev
 // @match        https://app.warera.io/user/*/inventory
@@ -536,9 +536,9 @@
       const cs = getComputedStyle(el);
       const hasColor =
         parseRgb(cs.borderColor) || parseRgb(cs.backgroundColor) || parseRgb(cs.outlineColor);
-      // a card is usually a sized, bordered box of ~48px. Limit max size to 90px
-      // to avoid climbing up to the entire list/grid container on the market page.
-      if (hasColor && el.offsetWidth >= 40 && el.offsetHeight >= 40 && el.offsetWidth <= 90 && el.offsetHeight <= 90) {
+      // a card is usually a sized, bordered box of ~48px width. Limit max width
+      // to 90px to avoid climbing up to the entire list/grid container on the market page.
+      if (hasColor && el.offsetWidth >= 40 && el.offsetHeight >= 40 && el.offsetWidth <= 90) {
         best = el;
       }
     }
