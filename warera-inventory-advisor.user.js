@@ -680,6 +680,8 @@
     const durBar = findDurabilityBar(cell);
     if (durBar) {
       durBar.style.position = '';
+      durBar.style.minHeight = '';
+      delete durBar.dataset.wiaGrown;
     }
   }
 
@@ -1302,6 +1304,8 @@
         if (getComputedStyle(durBar).position === 'static') {
           durBar.style.position = 'relative';
         }
+        durBar.dataset.wiaGrown = '1';
+        durBar.style.minHeight = '26px';
         // Ensure priceSub is parented to durBar
         if (priceSub && priceSub.parentElement !== durBar) {
           priceSub.remove();
@@ -1791,7 +1795,7 @@
   function injectStyles() {
     GM_addStyle(`
       .wia-badge {
-        position: absolute; top: 35%; transform: translateY(-50%); right: 4px; z-index: 50;
+        position: absolute; top: 2px; right: 2px; z-index: 50;
         width: 16px; height: 16px; border-radius: 50%;
         font: 10px system-ui, sans-serif;
         display: flex; align-items: center; justify-content: center;
@@ -1807,16 +1811,16 @@
       }
       .wia-price-sub {
         position: absolute; bottom: 0; left: 0; right: 0; z-index: 60;
-        font: bold 9px system-ui, sans-serif; padding: 0 2px; border-radius: 0 0 4px 4px;
+        font: bold 10px system-ui, sans-serif; padding: 0 2px; border-radius: 0 0 4px 4px;
         color: #fff; display: flex; flex-direction: column; align-items: stretch; gap: 0;
-        line-height: 1.0; letter-spacing: -0.3px;
-        max-height: 100%; overflow: hidden; justify-content: center;
+        line-height: 1.1; letter-spacing: -0.3px;
+        justify-content: center;
         /* 4-way black outline for contrast over any bar color (same trick as .wia-badge) */
         text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
         box-shadow: 0 -1px 2px rgba(0,0,0,.3);
       }
       .wia-price-sub .wia-price-row { display: flex; align-items: center; justify-content: space-between; gap: 2px; }
-      .wia-price-sub .wia-price-ico { font-size: 8px; opacity: .9; display: inline-flex; align-items: center; }
+      .wia-price-sub .wia-price-ico { font-size: 9px; opacity: .9; display: inline-flex; align-items: center; }
       .wia-price-sub .wia-price-ico svg { width: 1em; height: 1em; display: block; }
       .wia-price-sub .wia-price-val { font-variant-numeric: tabular-nums; }
       .wia-gear {
