@@ -657,7 +657,7 @@
     return best;
   }
 
-  function detectType(img) {
+  function detectType(img, card) {
     const alt = (img.getAttribute('alt') || '').toLowerCase().trim();
     const src = (img.getAttribute('src') || '').toLowerCase();
     // sprite basename (chest.png -> "chest") is the clean TYPE key.
@@ -666,13 +666,27 @@
     const code = alt || srcBase || null;
     // tier 1-6 from the trailing digit of the code (armor); weapons have none.
     const tm = (code || '').match(/(\d+)\s*$/);
-    const tier = tm ? parseInt(tm[1], 10) : null;
+    let tier = tm ? parseInt(tm[1], 10) : null;
 
     let type = 'unknown';
     const cleanCode = code ? code.replace(/\d+$/, '').trim() : '';
     const cleanSrcBase = srcBase ? srcBase.replace(/\d+$/, '').trim() : '';
     for (const [kw, t] of Object.entries(CONFIG.typeByAltKeyword)) {
       if (cleanCode === kw || cleanSrcBase === kw || alt === kw) { type = t; break; }
+    }
+
+    if (type === 'weapon' && tier == null && card) {
+      const stats = parseStats(card, type);
+      if (stats.attack != null && stats.crit != null) {
+        for (const [tStr, range] of Object.entries(CONFIG.weaponRanges)) {
+          const t = Number(tStr);
+          if (stats.attack >= range.dmg.min && stats.attack <= range.dmg.max &&
+              stats.crit >= range.crit.min && stats.crit <= range.crit.max) {
+            tier = t;
+            break;
+          }
+        }
+      }
     }
     return { type, alt, code, srcBase, tier };
   }
@@ -839,8 +853,8 @@
     if (!offerData) return null;
     const stats = offerData.offers.map((o) => statForType(type, o.skills)).filter((n) => n != null).sort((a, b) => a - b);
     if (stats.length < CONFIG.goodRollMinOffers) return null;
-    const idx = Math.ceil(stats.length * (1 - CONFIG.goodRollTopFraction)) - 1;
-    const cutoff = stats[Math.min(Math.max(idx, 0), stats.length - 1)];
+    const k = Math.max(1, Math.floor(stats.length * CONFIG.goodRollTopFraction));
+    const cutoff = stats[stats.length - k];
     return myStat != null && myStat >= cutoff;
   }
 
@@ -1309,7 +1323,7 @@
   }
 
   function calculateInventoryRankings(items) {
-    // 1. Stock rule: group items by category/tier and tag the top 3 best items
+    // Group items by category/tier
     const stockGroups = {}; // stockKey -> array of items
     items.forEach(item => {
       // Group both weapons and armor by their specific item code and tier (e.g. gloves3, rifle-2, gun-1)
@@ -1323,39 +1337,24 @@
       const groupItems = stockGroups[key];
       // Sort descending (highest stat/score first)
       groupItems.sort((a, b) => b.myStat - a.myStat);
+      
+      const size = groupItems.length;
       groupItems.forEach((item, index) => {
         item.isStockKeep = index < 3; // Keep the top 3 of stock
         item.stockRank = index + 1;
-        item.stockSize = groupItems.length;
+        item.stockSize = size;
+
+        // Inventory ranking fallback (if size >= 3)
+        if (size >= 3) {
+          const fraction = index / size;
+          item.isInventoryTopRoll = fraction < CONFIG.goodRollTopFraction;
+          item.inventorySampleCount = size;
+        } else {
+          item.isInventoryTopRoll = false;
+          item.inventorySampleCount = size;
+        }
       });
     }
-
-    // 2. Original inventory ranking fallback
-    const groups = {}; // groupKey -> array of stats
-    items.forEach(item => {
-      const key = item.type === 'weapon' ? `${item.code}-${item.tier}` : item.code;
-      if (!key || item.myStat == null) return;
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(item.myStat);
-    });
-
-    // Sort each group descending
-    for (const key in groups) {
-      groups[key].sort((a, b) => b - a);
-    }
-
-    // Assign inventory ranking to each item
-    items.forEach(item => {
-      const key = item.type === 'weapon' ? `${item.code}-${item.tier}` : item.code;
-      if (!key || item.myStat == null) return;
-      const stats = groups[key];
-      if (stats.length >= 3) {
-        const rank = stats.indexOf(item.myStat);
-        const fraction = rank / stats.length;
-        item.isInventoryTopRoll = fraction < CONFIG.goodRollTopFraction;
-        item.inventorySampleCount = stats.length;
-      }
-    });
   }
 
   let observer = null;
@@ -1419,7 +1418,7 @@
 
       const allItems = [];
       cards.forEach((img, card) => {
-        const { type, alt, code: cCode, tier } = detectType(img);
+        const { type, alt, code: cCode, tier } = detectType(img, card);
         if (type === 'scrap' || type === 'unknown') return;
         const stats = parseStats(card, type);
         if (stats.durability != null && stats.durability < 100) return;
@@ -1503,7 +1502,7 @@
     try {
       const items = [];
       cards.forEach((img, card) => {
-        const { type, alt, code, tier } = detectType(img);
+        const { type, alt, code, tier } = detectType(img, card);
         if (type === 'scrap' || type === 'unknown') return;
         const stats = parseStats(card, type);
         
