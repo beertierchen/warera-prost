@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         WareEra Inventory Advisor v0.2.5
+// @name         WareEra Inventory Advisor v0.2.6
 // @namespace    https://github.com/dev/warera-inventory-advisor
-// @version      0.2.5
+// @version      0.2.6
 // @description  Marks inventory equipment as KEEP / SELL / SCRAP based on stats and live market vs. scrap value.
 // @author       dev
 // @match        https://app.warera.io/user/*/inventory
@@ -1012,8 +1012,8 @@
   // Rendering
   // ───────────────────────────────────────────────────────────────────────────
   const BADGE_COLORS = {
-    KEEP: '#3fb950',   // green
-    SELL: '#388bfd',   // blue
+    KEEP: '#388bfd',   // blue
+    SELL: '#3fb950',   // green
     SCRAP: '#f85149',  // red
     UNKNOWN: '#8b949e',// gray
   };
@@ -1364,6 +1364,7 @@
         display: flex; align-items: center; justify-content: center;
         cursor: help; box-shadow: 0 0 4px rgba(0,0,0,.6);
         user-select: none;
+        text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
       }
       .wia-top-banner {
         position: relative; width: 100%; height: 12px; z-index: 60;
