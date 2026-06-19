@@ -6,7 +6,7 @@
 - `warera-inventory-advisor.user.js`
 
 **Change:**
-- Updated script metadata author to `beertierchen`, namespace to `TBD`, and stripped the version number from `@name` to allow version-agnostic URLs on Greasy Fork.
+- Updated script metadata author to `beertierchen`, namespace to `TBD`, stripped the version number from `@name` to allow version-agnostic URLs on Greasy Fork, and refined `@description` to clearly state functionality and use of the optional API.
 - Reintroduced the live data toggle (`useLiveOffersApi`) in the settings UI.
 - Integrated fallback scraps price scraping directly from the market page selector (`item-code-selector-scraps`) to allow accurate scrap value calculations even without an API key.
 - Added robust tRPC error detection and missing data handling.

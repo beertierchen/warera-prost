@@ -2,7 +2,7 @@
 // @name         WareEra Inventory Advisor
 // @namespace    TBD
 // @version      0.6.1
-// @description  Marks inventory equipment as KEEP / SELL / SCRAP based on stats and live market vs. scrap value.
+// @description  A client-side visual assistant for WareEra. Shows KEEP/SELL/SCRAP advice based on local stats and market floors. Optionally integrates the official game API via user API key. No automation.
 // @author       beertierchen
 // @match        https://app.warera.io/*
 // @run-at       document-idle
