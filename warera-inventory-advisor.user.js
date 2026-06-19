@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         WareEra Inventory Advisor v0.4.1
+// @name         WareEra Inventory Advisor v0.4.2
 // @namespace    https://github.com/dev/warera-inventory-advisor
-// @version      0.4.1
+// @version      0.4.2
 // @description  Marks inventory equipment as KEEP / SELL / SCRAP based on stats and live market vs. scrap value.
 // @author       dev
 // @match        https://app.warera.io/*
@@ -746,7 +746,7 @@
   // ───────────────────────────────────────────────────────────────────────────
   // Evaluation
   // ───────────────────────────────────────────────────────────────────────────
-  const ACTION = { KEEP: 'KEEP', SELL: 'SELL', SCRAP: 'SCRAP', UNKNOWN: 'UNKNOWN' };
+  const ACTION = { KEEP: 'KEEP', SELL: 'SELL', SCRAP: 'SCRAP', HOLD: 'HOLD', UNKNOWN: 'UNKNOWN' };
 
   // The comparable scalar for an item/offer of a given type:
   // weapon -> score (crit*weight + attack); armor -> its single skill value.
@@ -954,12 +954,16 @@
 
     if (scrapValue == null) { // no scrap basis -> sell on whatever market we have
       reasons.push(`market ${fmt(value)} (net ${fmt(netMarketValue)}, no scrap value)`);
+      if (avoidScrap) {
+        reasons.push(`crit check (avoid scrap)`);
+        return decide(ACTION.HOLD, reasons, value, scrapValue);
+      }
       return decide(ACTION.SELL, reasons, value, scrapValue);
     }
     if (value == null) { // no market -> scrap
       if (avoidScrap) {
         reasons.push(`no market price but avoid scrap (crit check)`);
-        return decide(ACTION.KEEP, reasons, value, scrapValue);
+        return decide(ACTION.HOLD, reasons, value, scrapValue);
       }
       reasons.push(`scrap ${fmt(scrapValue)} (no market price)`);
       return decide(ACTION.SCRAP, reasons, value, scrapValue);
@@ -969,10 +973,14 @@
     if (scrapValue > netMarketValue * margin) {
       if (avoidScrap) {
         reasons.push(`scrap ${fmt(scrapValue)} > market net ${fmt(netMarketValue)} (gross ${fmt(value)}) but avoid scrap (crit check)`);
-        return decide(ACTION.KEEP, reasons, value, scrapValue);
+        return decide(ACTION.HOLD, reasons, value, scrapValue);
       }
       reasons.push(`scrap ${fmt(scrapValue)} > market net ${fmt(netMarketValue)} (gross ${fmt(value)})${isFallback ? ' (est.)' : ''}`);
       return decide(ACTION.SCRAP, reasons, value, scrapValue);
+    }
+    if (avoidScrap) {
+      reasons.push(`market net ${fmt(netMarketValue)} (gross ${fmt(value)})${isFallback ? ' (est.)' : ''} >= scrap ${fmt(scrapValue)} but avoid scrap (crit check)`);
+      return decide(ACTION.HOLD, reasons, value, scrapValue);
     }
     reasons.push(`market net ${fmt(netMarketValue)} (gross ${fmt(value)})${isFallback ? ' (est.)' : ''} >= scrap ${fmt(scrapValue)}`);
     return decide(ACTION.SELL, reasons, value, scrapValue);
@@ -1023,6 +1031,7 @@
     KEEP: '#388bfd',   // blue
     SELL: '#3fb950',   // green
     SCRAP: '#f85149',  // red
+    HOLD: '#d29922',   // orange
     UNKNOWN: '#8b949e',// gray
   };
 
@@ -1037,7 +1046,7 @@
       badge.className = 'wia-badge';
       card.appendChild(badge);
     }
-    const emojiMap = { KEEP: '💎', SELL: '💰', SCRAP: '🔨', UNKNOWN: '❓' };
+    const emojiMap = { KEEP: '💎', SELL: '💰', SCRAP: '🔨', HOLD: '✋', UNKNOWN: '❓' };
     badge.textContent = emojiMap[result.action] || '❓';
     badge.style.background = BADGE_COLORS[result.action] || BADGE_COLORS.UNKNOWN;
     badge.style.opacity = item.stale ? '0.55' : '1'; // dim when on cached/stale prices
