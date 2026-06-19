@@ -57,6 +57,7 @@
 
     // --- caching / rate-limit ---
     priceCacheTtlMs: 20 * 60 * 1000,    // 20 min (spec: 15-30 min)
+    scrapedPriceTtlMs: 6 * 60 * 60 * 1000, // 6 hours for scraped market prices
     txCacheTtlMs: 60 * 60 * 1000,       // 1 hour for transaction history
     minRequestIntervalMs: 3000,         // throttle: no two network calls closer than this
     rescanDebounceMs: 150,
@@ -77,7 +78,7 @@
     },
 
     // Rarity TIERS 1-6 from the armor alt suffix (e.g. "chest3" -> tier 3).
-    // Weapons are untiered unique codes (gun/sniper/jet/tank/knife/pistol).
+    // Weapons are tiered unique codes (knife/gun/rifle/sniper/tank/jet).
     // Tier 5-6 names/colors are ASSUMED — correct them if the game differs.
     tiers: {
       1: { label: 'Common',    rgb: [136, 136, 136] }, // gray
@@ -98,8 +99,7 @@
     typeByAltKeyword: {
       // weapons (codes confirmed from live DOM: gun/rifle/sniper/knife/jet/tank)
       gun: 'weapon', rifle: 'weapon', sniper: 'weapon', knife: 'weapon',
-      jet: 'weapon', tank: 'weapon', pistol: 'weapon', smg: 'weapon',
-      shotgun: 'weapon', launcher: 'weapon',
+      jet: 'weapon', tank: 'weapon',
       // armor slots
       helmet: 'helmet', helm: 'helmet',
       gloves: 'gloves', glove: 'gloves',
@@ -228,6 +228,7 @@
     GM_setValue(KEYS.scrapCache, null);
     GM_setValue(KEYS.offersCache, {});
     GM_setValue(KEYS.transactionsCache, {});
+    GM_setValue(KEYS.scrapedPrices, {});
     GM_setValue(KEYS.apiBase, '');
     inFlightPrices = null;
     log('cache cleared');
@@ -306,8 +307,14 @@
   function unwrapTrpc(text) {
     const parsed = JSON.parse(text);
     const entry = Array.isArray(parsed) ? parsed[0] : parsed;
+    if (entry && entry.error) {
+      throw new Error('trpc: ' + (entry.error.json?.message || 'error'));
+    }
     const data = entry && entry.result && entry.result.data;
-    return data && 'json' in data ? data.json : data;
+    if (!data) {
+      throw new Error('trpc: missing result data');
+    }
+    return 'json' in data ? data.json : data;
   }
 
   // Serialize through a single chain so parallel callers (Promise.all of
@@ -387,6 +394,7 @@
     if (Array.isArray(payload)) {
       for (const it of payload) {
         const code = it.itemCode || it.code || it.item || it.id;
+        if (code === '__proto__' || code === 'constructor' || code === 'prototype') continue;
         const price = it.price ?? it.avgPrice ?? it.value ?? it.lastPrice;
         if (code != null && price != null) map[String(code)] = Number(price);
       }
@@ -414,7 +422,10 @@
     if (!CONFIG.useLiveOffersApi) {
       const store = GM_getValue(KEYS.scrapedPrices, {}) || {};
       const cached = store[code];
-      return cached ? { offers: [], floor: cached.price, fetchedAt: cached.fetchedAt } : null;
+      if (cached && now() - cached.fetchedAt < CONFIG.scrapedPriceTtlMs) {
+        return { offers: [], floor: cached.price, fetchedAt: cached.fetchedAt };
+      }
+      return null;
     }
     const store = GM_getValue(KEYS.offersCache, {});
     const cached = store[code];
@@ -839,8 +850,8 @@
     const sixDaysAgo = Date.now() - 6 * 24 * 60 * 60 * 1000;
     
     const validTxs = txs.map(tx => {
-      const txTime = tx.createdAt ? new Date(tx.createdAt).getTime() : 0;
-      if (txTime < sixDaysAgo) return null;
+      const t = tx.createdAt ? Date.parse(tx.createdAt) : NaN;
+      if (!Number.isFinite(t) || t < sixDaysAgo) return null;
       if (tx.transactionType !== 'itemMarket') return null;
       
       const score = statForType(type, tx.item?.skills);
@@ -945,7 +956,10 @@
     item.txClosestDiff = txRef ? txRef.diff : null;
     
     const sixDaysAgo = Date.now() - 6 * 24 * 60 * 60 * 1000;
-    item.txCount = txData ? txData.filter(t => t.money != null && t.transactionType === 'itemMarket' && (t.createdAt ? new Date(t.createdAt).getTime() >= sixDaysAgo : false)).length : 0;
+    item.txCount = txData ? txData.filter(t => {
+      const parsedTime = t.createdAt ? Date.parse(t.createdAt) : NaN;
+      return Number.isFinite(parsedTime) && parsedTime >= sixDaysAgo && t.money != null && t.transactionType === 'itemMarket';
+    }).length : 0;
 
     let market = item.txRefPrice;
     let marketSource = 'transactions';
@@ -1434,7 +1448,9 @@
       uniqueCodes.forEach((c) => {
         if (!CONFIG.useLiveOffersApi) {
           const cached = scraped[c];
-          if (cached) offers[c] = { offers: [], floor: cached.price, fetchedAt: cached.fetchedAt };
+          if (cached && now() - cached.fetchedAt < CONFIG.scrapedPriceTtlMs) {
+            offers[c] = { offers: [], floor: cached.price, fetchedAt: cached.fetchedAt };
+          }
         } else if (oc[c]) {
           offers[c] = oc[c].data;
         }
@@ -1539,7 +1555,9 @@
 
         if (!CONFIG.useLiveOffersApi) {
           const cached = scraped[c];
-          if (cached) offers[c] = { offers: [], floor: cached.price, fetchedAt: cached.fetchedAt };
+          if (cached && now() - cached.fetchedAt < CONFIG.scrapedPriceTtlMs) {
+            offers[c] = { offers: [], floor: cached.price, fetchedAt: cached.fetchedAt };
+          }
         } else if (oc[c]) {
           offers[c] = oc[c].data;
         }
