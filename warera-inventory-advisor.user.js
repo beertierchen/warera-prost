@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         WareEra Inventory Advisor v0.5.0
+// @name         WareEra Inventory Advisor v0.5.2
 // @namespace    https://github.com/dev/warera-inventory-advisor
-// @version      0.5.0
+// @version      0.5.2
 // @description  Marks inventory equipment as KEEP / SELL / SCRAP based on stats and live market vs. scrap value.
 // @author       dev
 // @match        https://app.warera.io/*
@@ -133,13 +133,6 @@
     goodRollMinOffers: 4,               // need >= this many offers to rank a roll
     weaponMinSampleForRanking: 3,       // inventory fallback: >=3 weapons to rank
 
-    // Fallback market estimate (BTC) per tier, used ONLY when offers can't be
-    // fetched (rate-limited / token invalid). Editable in the settings panel.
-    fallbackMarketByTier: { 1: 1, 2: 3, 3: 10, 4: 40, 5: 150, 6: 400 },
-    // when market is only a fallback guess, scrap must beat it by this factor to
-    // win — stops a coarse estimate from deciding near-ties.
-    fallbackScrapMargin: 1.25,
-
     statRangesByTier: {
       gloves: {
         1: { min: 1, max: 5 },
@@ -180,16 +173,19 @@
         4: { min: 71, max: 90 },
         5: { min: 91, max: 110 },
         6: { min: 121, max: 150 }
-      },
-      weapon: {
-        1: { min: 25.15, max: 60.75 },  // Messer: 21-40 dmg, 1-5% crit
-        2: { min: 75.9,  max: 101.5 },   // Pistole: 51-60, 6-10%
-        3: { min: 116.65, max: 152.25 }, // Gewehr: 71-90, 11-15%
-        4: { min: 167.4,  max: 213.0 },  // Sniper: 101-130, 16-20%
-        5: { min: 248.9,  max: 315.25 }, // Panzer: 141-170, 26-35%
-        6: { min: 391.15, max: 507.5 }   // Jet: 221-300, 41-50%
       }
     },
+
+    weaponRanges: {
+      1: { dmg: { min: 21, max: 40 }, crit: { min: 1, max: 5 } },
+      2: { dmg: { min: 51, max: 60 }, crit: { min: 6, max: 10 } },
+      3: { dmg: { min: 71, max: 90 }, crit: { min: 11, max: 15 } },
+      4: { dmg: { min: 101, max: 130 }, crit: { min: 16, max: 20 } },
+      5: { dmg: { min: 141, max: 170 }, crit: { min: 26, max: 35 } },
+      6: { dmg: { min: 221, max: 300 }, crit: { min: 41, max: 50 } }
+    },
+
+    useHighCritWeightForHold: false,
 
     debug: true,
   };
@@ -204,11 +200,10 @@
     scrapCache: NS + 'scrapCache',     // { price, fetchedAt } — legacy, unused
     offersCache: NS + 'offersCache',   // { [itemCode]: { data, fetchedAt } } — equipment offers
     transactionsCache: NS + 'transactionsCache', // { [itemCode]: { data, fetchedAt } } — equipment transactions
-    fallback: NS + 'fallbackPrices',
     apiBase: NS + 'apiBase',
     rateLimitedUntil: NS + 'rlUntil',
     scrapedPrices: NS + 'scrapedPrices',
-    useLiveOffersApi: NS + 'useLiveOffersApi',
+    highCritWeightForHold: NS + 'highCritHold',
   };
   const OBF_KEY = 'wareEra.advisor.v1'; // XOR pad — obfuscation only, not encryption
 
@@ -227,10 +222,7 @@
     if (!raw) return '';
     try { return xor(atob(raw), OBF_KEY); } catch (e) { return ''; }
   }
-  function getFallbackPrices() {
-    return Object.assign({}, CONFIG.fallbackMarketByTier, GM_getValue(KEYS.fallback, {}));
-  }
-  function setFallbackPrices(obj) { GM_setValue(KEYS.fallback, obj); }
+  // fallback prices helper removed
   function clearCache() {
     GM_setValue(KEYS.priceCache, null);
     GM_setValue(KEYS.scrapCache, null);
@@ -900,12 +892,39 @@
     item.myStat = myStat;
     if (type === 'weapon') item.weaponScore = myStat;
 
-    const range = CONFIG.statRangesByTier[type]?.[tier];
+    // Calculate HOLD range-based check dynamically
+    const critWeight = CONFIG.useHighCritWeightForHold ? 6.0 : CONFIG.weaponCritWeight;
     let isTopItemscore = false;
-    if (range && myStat != null) {
-      const threshold = range.min + 0.90 * (range.max - range.min);
-      if (myStat >= threshold) {
-        isTopItemscore = true;
+    let rangeLabel = '';
+    let thresholdVal = 0;
+    let rangeMin = 0;
+    let rangeMax = 0;
+
+    if (type === 'weapon') {
+      const wRange = CONFIG.weaponRanges[tier];
+      if (wRange && myStat != null) {
+        const attack = stats.attack ?? 0;
+        const crit = stats.crit ?? 0;
+        const holdScore = attack + crit * critWeight;
+        rangeMin = wRange.dmg.min + wRange.crit.min * critWeight;
+        rangeMax = wRange.dmg.max + wRange.crit.max * critWeight;
+        thresholdVal = rangeMin + 0.90 * (rangeMax - rangeMin);
+        if (holdScore >= thresholdVal) {
+          isTopItemscore = true;
+        }
+        rangeLabel = `score ${fmt(holdScore)} >= ${fmt(thresholdVal)} [90% of range ${fmt(rangeMin)} - ${fmt(rangeMax)}]`;
+      }
+    } else {
+      const range = CONFIG.statRangesByTier[type]?.[tier];
+      if (range && myStat != null) {
+        rangeMin = range.min;
+        rangeMax = range.max;
+        thresholdVal = rangeMin + 0.90 * (rangeMax - rangeMin);
+        if (myStat >= thresholdVal) {
+          isTopItemscore = true;
+        }
+        const isPercent = type === 'helmet' ? '%' : '';
+        rangeLabel = `stat ${fmt(myStat)}${isPercent} >= ${fmt(thresholdVal)}${isPercent} [90% of range ${rangeMin}${isPercent} - ${rangeMax}${isPercent}]`;
       }
     }
 
@@ -916,7 +935,7 @@
     item.scrapPriceUnit = scrapPrice;
     const scrapValue = scrapPrice != null && scrapYield != null ? scrapPrice * scrapYield : null;
 
-    // market value from live offers (roll-aware); fall back to per-tier estimate.
+    // market value from live offers (roll-aware)
     const offerData = item.code ? ctx.offers[item.code] : null;
     const txData = item.code ? ctx.txs[item.code] : null;
 
@@ -929,7 +948,6 @@
     item.txCount = txData ? txData.filter(t => t.money != null && t.transactionType === 'itemMarket' && (t.createdAt ? new Date(t.createdAt).getTime() >= sixDaysAgo : false)).length : 0;
 
     let market = item.txRefPrice;
-    let marketIsFallback = false;
     let marketSource = 'transactions';
 
     if (market == null) {
@@ -939,16 +957,11 @@
         if (offerData && offerData.floor != null) {
           market = offerData.floor;
           marketSource = 'offersFloor';
-        } else {
-          const fb = getFallbackPrices();
-          market = tier != null ? fb[tier] ?? null : null;
-          marketIsFallback = true;
-          marketSource = 'fallback';
         }
       }
     }
     item.marketSource = marketSource;
-    item.marketIsFallback = marketIsFallback;
+    item.marketIsFallback = false;
     item.marketFloor = offerData ? offerData.floor : null;
     item.offerCount = offerData ? offerData.offers.length : 0;
 
@@ -973,10 +986,10 @@
       const crit = stats.crit ?? 0;
       if (tier === 1 && crit >= 4) {
         avoidScrap = true;
-        reasons.push(`crit check: T1 weapon crit ${fmt(crit)}% >= 4% (avoid scrap)`);
+        reasons.push(`Critical Condition: T1 weapon crit ${fmt(crit)}% >= 4.00% (range 1% - 5%)`);
       } else if (tier === 2 && crit >= 8) {
         avoidScrap = true;
-        reasons.push(`crit check: T2 weapon crit ${fmt(crit)}% >= 8% (avoid scrap)`);
+        reasons.push(`Critical Condition: T2 weapon crit ${fmt(crit)}% >= 8.00% (range 6% - 10%)`);
       }
     }
 
@@ -1000,13 +1013,11 @@
     }
 
     // 5) economic decision: scrap value vs market value
-    const finalDecision = priceDecision({ value: market, isFallback: marketIsFallback }, scrapValue, reasons, avoidScrap);
+    const finalDecision = priceDecision({ value: market, isFallback: false }, scrapValue, reasons, avoidScrap);
 
-    if (finalDecision.action !== ACTION.KEEP && isTopItemscore && range) {
+    if (finalDecision.action !== ACTION.KEEP && isTopItemscore) {
       finalDecision.action = ACTION.HOLD;
-      const threshold = range.min + 0.90 * (range.max - range.min);
-      const isPercent = type === 'helmet' ? '%' : '';
-      reasons.unshift(`Top Itemscore (${fmt(myStat)}${isPercent} >= ${fmt(threshold)}${isPercent} [90% of range ${range.min}${isPercent} - ${range.max}${isPercent}])`);
+      reasons.unshift(`Top Itemscore (${rangeLabel})`);
       finalDecision.reason = reasons.join('; ');
     }
 
@@ -1014,7 +1025,7 @@
   }
 
   function priceDecision(mkt, scrapValue, reasons, avoidScrap) {
-    const { value, isFallback } = mkt;
+    const { value } = mkt;
 
     if (value == null && scrapValue == null) {
       return decide(ACTION.UNKNOWN, [...reasons, 'no price data'], value, scrapValue);
@@ -1025,34 +1036,32 @@
     if (scrapValue == null) { // no scrap basis -> sell on whatever market we have
       reasons.push(`market ${fmt(value)} (net ${fmt(netMarketValue)}, no scrap value)`);
       if (avoidScrap) {
-        reasons.push(`crit check (avoid scrap)`);
+        reasons.push(`held for Critical Condition`);
         return decide(ACTION.HOLD, reasons, value, scrapValue);
       }
       return decide(ACTION.SELL, reasons, value, scrapValue);
     }
     if (value == null) { // no market -> scrap
       if (avoidScrap) {
-        reasons.push(`no market price but avoid scrap (crit check)`);
+        reasons.push(`no market price, but held for Critical Condition`);
         return decide(ACTION.HOLD, reasons, value, scrapValue);
       }
       reasons.push(`scrap ${fmt(scrapValue)} (no market price)`);
       return decide(ACTION.SCRAP, reasons, value, scrapValue);
     }
-    // real offer price: straight compare. fallback estimate: require a margin.
-    const margin = isFallback ? CONFIG.fallbackScrapMargin : 1;
-    if (scrapValue > netMarketValue * margin) {
+    if (scrapValue > netMarketValue) {
       if (avoidScrap) {
-        reasons.push(`scrap ${fmt(scrapValue)} > market net ${fmt(netMarketValue)} (gross ${fmt(value)}) but avoid scrap (crit check)`);
+        reasons.push(`scrap ${fmt(scrapValue)} > market net ${fmt(netMarketValue)} (gross ${fmt(value)}), but held for Critical Condition`);
         return decide(ACTION.HOLD, reasons, value, scrapValue);
       }
-      reasons.push(`scrap ${fmt(scrapValue)} > market net ${fmt(netMarketValue)} (gross ${fmt(value)})${isFallback ? ' (est.)' : ''}`);
+      reasons.push(`scrap ${fmt(scrapValue)} > market net ${fmt(netMarketValue)} (gross ${fmt(value)})`);
       return decide(ACTION.SCRAP, reasons, value, scrapValue);
     }
     if (avoidScrap) {
-      reasons.push(`market net ${fmt(netMarketValue)} (gross ${fmt(value)})${isFallback ? ' (est.)' : ''} >= scrap ${fmt(scrapValue)} but avoid scrap (crit check)`);
+      reasons.push(`market net ${fmt(netMarketValue)} (gross ${fmt(value)}) >= scrap ${fmt(scrapValue)}, but held for Critical Condition`);
       return decide(ACTION.HOLD, reasons, value, scrapValue);
     }
-    reasons.push(`market net ${fmt(netMarketValue)} (gross ${fmt(value)})${isFallback ? ' (est.)' : ''} >= scrap ${fmt(scrapValue)}`);
+    reasons.push(`market net ${fmt(netMarketValue)} (gross ${fmt(value)}) >= scrap ${fmt(scrapValue)}`);
     return decide(ACTION.SELL, reasons, value, scrapValue);
   }
 
@@ -1575,7 +1584,6 @@
   function openSettings() {
     const bg = document.createElement('div');
     bg.className = 'wia-modal-bg';
-    const fb = getFallbackPrices();
     bg.innerHTML = `
       <div class="wia-modal">
         <h2>WareEra Inventory Advisor</h2>
@@ -1585,17 +1593,8 @@
         <input type="password" class="wia-token" placeholder="Bearer token" />
         <div class="wia-note">Lokal gespeichert (GM_setValue, leicht verschleiert — keine echte Verschlüsselung).</div>
         <div style="margin-top: 10px; display: flex; align-items: center; gap: 8px;">
-          <input type="checkbox" class="wia-use-live" style="width: auto;" ${CONFIG.useLiveOffersApi ? 'checked' : ''} />
-          <label style="margin: 0; font-weight: normal; cursor: pointer;">Live API für Ausrüstung abfragen (erfordert Rechte)</label>
-        </div>
-        <label>Fallback-Marktpreise (BTC)</label>
-        <div class="wia-row">
-          <div><div class="wia-note">Common</div><input type="number" step="0.1" class="wia-fb" data-r="common" value="${Number(fb.common) || 0}"></div>
-          <div><div class="wia-note">Uncommon</div><input type="number" step="0.1" class="wia-fb" data-r="uncommon" value="${Number(fb.uncommon) || 0}"></div>
-        </div>
-        <div class="wia-row">
-          <div><div class="wia-note">Rare</div><input type="number" step="0.1" class="wia-fb" data-r="rare" value="${Number(fb.rare) || 0}"></div>
-          <div><div class="wia-note">Epic</div><input type="number" step="0.1" class="wia-fb" data-r="epic" value="${Number(fb.epic) || 0}"></div>
+          <input type="checkbox" class="wia-high-crit" style="width: auto;" ${CONFIG.useHighCritWeightForHold ? 'checked' : ''} />
+          <label style="margin: 0; font-weight: normal; cursor: pointer;">Erhöhte Crit-Gewichtung für HOLD-Bewertung verwenden (6.00 statt 4.15)</label>
         </div>
         <div class="wia-btns">
           <button class="wia-btn primary wia-save">Speichern</button>
@@ -1615,13 +1614,10 @@
 
     bg.querySelector('.wia-save').onclick = () => {
       setToken(tokenInput.value.trim());
-      const next = {};
-      bg.querySelectorAll('.wia-fb').forEach((i) => { next[i.dataset.r] = parseFloat(i.value) || 0; });
-      setFallbackPrices(next);
 
-      const useLive = bg.querySelector('.wia-use-live').checked;
-      GM_setValue(KEYS.useLiveOffersApi, useLive);
-      CONFIG.useLiveOffersApi = useLive;
+      const useHighCrit = bg.querySelector('.wia-high-crit').checked;
+      GM_setValue(KEYS.highCritWeightForHold, useHighCrit);
+      CONFIG.useHighCritWeightForHold = useHighCrit;
 
       clearCache(); // force refetch with new token/prices
       bg.remove();
@@ -1743,7 +1739,7 @@
   }
 
   function start() {
-    CONFIG.useLiveOffersApi = GM_getValue(KEYS.useLiveOffersApi, false);
+    CONFIG.useHighCritWeightForHold = GM_getValue(KEYS.highCritWeightForHold, false);
     injectStyles();
     injectGear();
     GM_registerMenuCommand('Inventory Advisor — Einstellungen', openSettings);
