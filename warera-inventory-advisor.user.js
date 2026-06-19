@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WareEra Inventory Advisor
 // @namespace    TBD
-// @version      0.6.2
+// @version      0.6.3
 // @description  A client-side visual assistant for WareEra. Shows KEEP/SELL/SCRAP advice based on local stats and market floors. Optionally integrates the official game API via user API key. No automation.
 // @author       beertierchen
 // @match        https://app.warera.io/*
@@ -391,8 +391,8 @@
       baseData = await inFlightPrices;
     }
 
-    // Inject/override scraped scrap price if fresh (within scrapedPriceTtlMs)
-    if (scrapedScrap && now() - scrapedScrap.fetchedAt < CONFIG.scrapedPriceTtlMs) {
+    // Inject/override scraped scrap price ONLY as fallback (if not already present from API)
+    if (baseData[CONFIG.scrapItemCode] == null && scrapedScrap && now() - scrapedScrap.fetchedAt < CONFIG.scrapedPriceTtlMs) {
       baseData = { ...baseData, [CONFIG.scrapItemCode]: scrapedScrap.price };
     }
     return baseData;
@@ -1111,7 +1111,7 @@
   function decide(action, reasons, market, scrapValue) {
     return { action, reason: reasons.join('; '), market, scrapValue };
   }
-  function fmt(n) { return n == null ? '?' : Number(n).toFixed(2); }
+  function fmt(n) { return n == null ? '?' : Number(n).toFixed(4).replace(/0+$/, '').replace(/\.$/, ''); }
 
   // "5 min ago" / "just now" / "never" for a stored fetchedAt timestamp.
   function ageLabel(t) {
@@ -1231,7 +1231,7 @@
         if (v == null) return '?';
         if (v >= 1000) return (v / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
         if (v >= 100) return v.toFixed(0);
-        return v.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+        return v.toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
       };
 
       priceSub.textContent = `${formatVal(sVal)}/${formatVal(mVal)}`;
@@ -1315,16 +1315,23 @@
       const itemCode = el.id.replace('item-code-selector-', '').trim();
       if (!itemCode) return;
 
-      const text = el.textContent || '';
-      const match = text.match(/(\d+(?:\.\d+)?)/);
-      if (match) {
-        const price = parseFloat(match[1]);
-        if (!isNaN(price)) {
-          const old = store[itemCode];
-          if (!old || old.price !== price || now() - old.fetchedAt > 10 * 60 * 1000) {
-            store[itemCode] = { price, fetchedAt: now() };
-            updatedCount++;
-          }
+      const icon = el.querySelector('.a6izou0');
+      let price = null;
+      if (icon) {
+        price = numberNearClean(icon);
+      } else {
+        const text = el.textContent || '';
+        const match = text.match(/(\d+(?:\.\d+)?)/);
+        if (match) {
+          price = parseFloat(match[1]);
+        }
+      }
+
+      if (price != null && !isNaN(price)) {
+        const old = store[itemCode];
+        if (!old || old.price !== price || now() - old.fetchedAt > 10 * 60 * 1000) {
+          store[itemCode] = { price, fetchedAt: now() };
+          updatedCount++;
         }
       }
     });

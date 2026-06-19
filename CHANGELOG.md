@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## 2026-06-19 19:05 | WareEra Inventory Advisor Fixes v0.6.2
+## 2026-06-19 19:05 | WareEra Inventory Advisor Fixes v0.6.3
 
 **Changed files:**
 - `warera-inventory-advisor.user.js`
