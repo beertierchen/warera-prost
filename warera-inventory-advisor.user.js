@@ -121,6 +121,7 @@
 
     // weapon score = crit * critWeight + attack
     weaponCritWeight: 4.15,
+    critItemMinPercent: 0,
 
     // Market tax rate when selling items
     sellTaxRate: 0.01,
@@ -650,6 +651,11 @@
     return cards;
   }
 
+  // Returns the element that contains the image AND the stat/durability/equip siblings
+  function getItemCell(card) {
+    return card.closest('[aria-haspopup="dialog"]') || card.parentElement || card;
+  }
+
   // Walk up to the element that visually represents the card (has a colored
   // border/background). Falls back to a few levels up from the image.
   function climbToCard(img) {
@@ -742,7 +748,8 @@
   // slot icon (shield = Armor). Durability is the only % on an armor card and
   // is rendered in a separate progress bar (NOT under .a6izou0).
   function parseStats(card, type) {
-    const cleanCard = card.cloneNode(true);
+    const cell = getItemCell(card);
+    const cleanCard = cell.cloneNode(true);
     cleanCard.querySelectorAll('[class^="wia-"]').forEach((badge) => {
       badge.remove();
     });
@@ -1169,27 +1176,33 @@
   };
 
   function renderItem(card, item, result) {
-    delete card.dataset.wiaSuppressed;
+    const state = getItemState(card, item.stats);
+
+    // 1. Equipped suppression check
+    if (state.equipped) {
+      suspendObserver();
+      try {
+        const badge = card.querySelector('.wia-badge');
+        if (badge) badge.remove();
+        const scoreSub = card.querySelector('.wia-score-sub');
+        if (scoreSub) scoreSub.remove();
+        const priceSub = card.querySelector('.wia-price-sub');
+        if (priceSub) priceSub.remove();
+        const topBanner = card.querySelector('.wia-top-banner');
+        if (topBanner) topBanner.remove();
+        card.style.boxShadow = '';
+        card.dataset.wiaSuppressed = '1';
+        delete card.dataset.wiaDone;
+      } finally {
+        resumeObserver();
+      }
+      return;
+    }
+
     card.dataset.wiaDone = '1';
     if (getComputedStyle(card).position === 'static') {
       card.style.position = 'relative';
     }
-
-    // 1. Existing Badge (action recommendation)
-    let badge = card.querySelector('.wia-badge');
-    if (!badge) {
-      badge = document.createElement('div');
-      badge.className = 'wia-badge';
-      card.appendChild(badge);
-    }
-    const emojiMap = { KEEP: '💎', SELL: '💰', SCRAP: '🔨', HOLD: '✋', UNKNOWN: '❓' };
-    badge.textContent = emojiMap[result.action] || '❓';
-    badge.style.background = BADGE_COLORS[result.action] || BADGE_COLORS.UNKNOWN;
-    badge.style.opacity = item.stale ? '0.55' : '1'; // dim when on cached/stale prices
-
-    const tooltipText = buildTooltip(item, result);
-    badge.title = tooltipText;
-    card.title = tooltipText;
 
     // Clean up old classes if they exist from hot-reloads
     const oldScore = card.querySelector('.wia-score-banner');
@@ -1201,9 +1214,38 @@
     const oldTopBanner = card.querySelector('.wia-top-banner');
     if (oldTopBanner) oldTopBanner.remove();
 
-    // Score Sub-badge
+    const isTop3 = item.isStockKeep === true;
+    const isCrit = item.stats.crit != null && item.stats.crit >= CONFIG.critItemMinPercent;
+    
+    // Reco badge rules:
+    // Damaged (<100%): only if isTop3 || isCrit
+    // 100%: always shown
+    const showBadge = !state.damaged || (isTop3 || isCrit);
+
+    // 2. Existing Badge (action recommendation)
+    let badge = card.querySelector('.wia-badge');
+    if (showBadge) {
+      if (!badge) {
+        badge = document.createElement('div');
+        badge.className = 'wia-badge';
+        card.appendChild(badge);
+      }
+      const emojiMap = { KEEP: '💎', SELL: '💰', SCRAP: '🔨', HOLD: '✋', UNKNOWN: '❓' };
+      badge.textContent = emojiMap[result.action] || '❓';
+      badge.style.background = BADGE_COLORS[result.action] || BADGE_COLORS.UNKNOWN;
+      badge.style.opacity = item.stale ? '0.55' : '1'; // dim when on cached/stale prices
+      const tooltipText = buildTooltip(item, result);
+      badge.title = tooltipText;
+      card.title = tooltipText;
+    } else {
+      if (badge) badge.remove();
+      badge = null;
+      card.title = '';
+    }
+
+    // 3. Score Sub-badge
     let scoreSub = card.querySelector('.wia-score-sub');
-    const showScore = item.myStat != null && item.type !== 'helmet';
+    const showScore = item.myStat != null;
     if (showScore) {
       if (!scoreSub) {
         scoreSub = document.createElement('div');
@@ -1220,59 +1262,82 @@
       scoreSub.remove();
     }
 
-    // Price Sub-badge
+    // 4. Price Sub-badge (only for 100% unequipped)
+    const showPrice = !state.damaged && (result.scrapValue != null || result.market != null);
     let priceSub = card.querySelector('.wia-price-sub');
-    const showPrice = result.scrapValue != null || result.market != null;
-    if (showPrice) {
-      // Find the stats/durability container inside the card (contains stat icons or percent symbol)
-      const statsContainer = Array.from(card.querySelectorAll('div')).find(d => {
-        return !d.classList.contains('wia-badge') && 
-               !d.classList.contains('wia-score-sub') && 
-               !d.classList.contains('wia-price-sub') &&
-               !d.classList.contains('wia-top-banner') &&
-               (d.querySelector('.a6izou0') || /%/.test(d.textContent));
-      }) || card;
 
-      if (getComputedStyle(statsContainer).position === 'static') {
-        statsContainer.style.position = 'relative';
+    // Locate the durability progress-bar container inside the cell (contains scaleX style attribute)
+    const cell = getItemCell(card);
+    const durBar = Array.from(cell.querySelectorAll('div'))
+      .find(d => d.querySelector('[style*="scaleX"]')) || null;
+
+    if (showPrice && durBar) {
+      suspendObserver();
+      try {
+        if (getComputedStyle(durBar).position === 'static') {
+          durBar.style.position = 'relative';
+        }
+        // Ensure priceSub is parented to durBar
+        if (priceSub && priceSub.parentElement !== durBar) {
+          priceSub.remove();
+          priceSub = null;
+        }
+        if (!priceSub) {
+          priceSub = document.createElement('div');
+          priceSub.className = 'wia-price-sub';
+          durBar.appendChild(priceSub);
+        }
+        const sVal = result.scrapValue;
+        const mVal = result.market;
+
+        const formatVal = (v) => {
+          if (v == null) return '?';
+          if (v >= 1000) return (v / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+          if (v >= 100) return v.toFixed(0);
+          return v.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+        };
+
+        priceSub.textContent = `${formatVal(sVal)}/${formatVal(mVal)}`;
+
+        // Color: green if scrap > market, orange if scrap <= market, gray if either is null
+        if (sVal != null && mVal != null) {
+          priceSub.style.background = sVal > mVal ? '#3fb950' : '#d29922';
+        } else {
+          priceSub.style.background = '#8b949e';
+        }
+        priceSub.style.display = 'flex';
+      } finally {
+        resumeObserver();
       }
-
-      // Ensure priceSub is parented to statsContainer
-      if (priceSub && priceSub.parentElement !== statsContainer) {
-        priceSub.remove();
-        priceSub = null;
+    } else {
+      suspendObserver();
+      try {
+        if (priceSub) {
+          priceSub.remove();
+          priceSub = null;
+        }
+        if (durBar) {
+          durBar.style.position = '';
+        }
+      } finally {
+        resumeObserver();
       }
-
-      if (!priceSub) {
-        priceSub = document.createElement('div');
-        priceSub.className = 'wia-price-sub';
-        statsContainer.appendChild(priceSub);
-      }
-      const sVal = result.scrapValue;
-      const mVal = result.market;
-
-      const formatVal = (v) => {
-        if (v == null) return '?';
-        if (v >= 1000) return (v / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
-        if (v >= 100) return v.toFixed(0);
-        return v.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
-      };
-
-      priceSub.textContent = `${formatVal(sVal)}/${formatVal(mVal)}`;
-
-      // Color: green if scrap > market, orange if scrap <= market, gray if either is null
-      if (sVal != null && mVal != null) {
-        priceSub.style.background = sVal > mVal ? '#3fb950' : '#d29922';
-      } else {
-        priceSub.style.background = '#8b949e';
-      }
-      priceSub.style.display = 'flex';
-    } else if (priceSub) {
-      priceSub.remove();
     }
 
-    // subtle border tint
-    card.style.boxShadow = `inset 0 0 0 2px ${BADGE_COLORS[result.action] || 'transparent'}`;
+    // 5. Border tint rules
+    const showBorder = !state.damaged || showBadge;
+    if (showBorder) {
+      card.style.boxShadow = `inset 0 0 0 2px ${BADGE_COLORS[result.action] || 'transparent'}`;
+    } else {
+      card.style.boxShadow = '';
+    }
+
+    // 6. Sentinel management
+    if (showBadge) {
+      delete card.dataset.wiaSuppressed;
+    } else {
+      card.dataset.wiaSuppressed = '1';
+    }
   }
 
   function buildTooltip(item, result) {
@@ -1409,15 +1474,21 @@
   const lastInventoryCardTexts = new Map();
 
   function getCardBaseText(card) {
-    const clone = card.cloneNode(true);
+    const cell = getItemCell(card);
+    const clone = cell.cloneNode(true);
     clone.querySelectorAll('.wia-badge, .wia-score-sub, .wia-price-sub, .wia-top-banner').forEach(el => el.remove());
     return clone.textContent.replace(/\s+/g, ' ').trim();
   }
 
-  function shouldSuppressItem(card, stats) {
-    if (stats.durability != null && stats.durability < 100) return true;
+  function getItemState(card, stats) {
     const t = getCardBaseText(card);
-    return /\bEquip(\.|ped)?\b/i.test(t) || /\bausgerüstet\b/i.test(t);
+    const equipped = /\bEquip(\.|ped)?\b/i.test(t) || /\bausgerüstet\b/i.test(t);
+    const damaged  = stats.durability != null && stats.durability < 100;
+    return { equipped, damaged };
+  }
+
+  function shouldSuppressItem(card, stats) {
+    return getItemState(card, stats).equipped;
   }
 
   function suspendObserver() {
