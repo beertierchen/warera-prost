@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         WareEra Inventory Advisor v0.4.2
+// @name         WareEra Inventory Advisor v0.5.0
 // @namespace    https://github.com/dev/warera-inventory-advisor
-// @version      0.4.2
+// @version      0.5.0
 // @description  Marks inventory equipment as KEEP / SELL / SCRAP based on stats and live market vs. scrap value.
 // @author       dev
 // @match        https://app.warera.io/*
@@ -139,6 +139,57 @@
     // when market is only a fallback guess, scrap must beat it by this factor to
     // win — stops a coarse estimate from deciding near-ties.
     fallbackScrapMargin: 1.25,
+
+    statRangesByTier: {
+      gloves: {
+        1: { min: 1, max: 5 },
+        2: { min: 6, max: 10 },
+        3: { min: 11, max: 15 },
+        4: { min: 21, max: 25 },
+        5: { min: 31, max: 40 },
+        6: { min: 51, max: 60 }
+      },
+      boots: {
+        1: { min: 1, max: 5 },
+        2: { min: 6, max: 10 },
+        3: { min: 11, max: 15 },
+        4: { min: 21, max: 25 },
+        5: { min: 31, max: 40 },
+        6: { min: 51, max: 60 }
+      },
+      pants: {
+        1: { min: 1, max: 5 },
+        2: { min: 6, max: 10 },
+        3: { min: 11, max: 15 },
+        4: { min: 21, max: 30 },
+        5: { min: 36, max: 50 },
+        6: { min: 56, max: 70 }
+      },
+      chest: {
+        1: { min: 1, max: 5 },
+        2: { min: 6, max: 10 },
+        3: { min: 11, max: 15 },
+        4: { min: 21, max: 30 },
+        5: { min: 36, max: 50 },
+        6: { min: 56, max: 70 }
+      },
+      helmet: {
+        1: { min: 1, max: 15 },
+        2: { min: 16, max: 30 },
+        3: { min: 31, max: 50 },
+        4: { min: 71, max: 90 },
+        5: { min: 91, max: 110 },
+        6: { min: 121, max: 150 }
+      },
+      weapon: {
+        1: { min: 25.15, max: 60.75 },  // Messer: 21-40 dmg, 1-5% crit
+        2: { min: 75.9,  max: 101.5 },   // Pistole: 51-60, 6-10%
+        3: { min: 116.65, max: 152.25 }, // Gewehr: 71-90, 11-15%
+        4: { min: 167.4,  max: 213.0 },  // Sniper: 101-130, 16-20%
+        5: { min: 248.9,  max: 315.25 }, // Panzer: 141-170, 26-35%
+        6: { min: 391.15, max: 507.5 }   // Jet: 221-300, 41-50%
+      }
+    },
 
     debug: true,
   };
@@ -849,6 +900,15 @@
     item.myStat = myStat;
     if (type === 'weapon') item.weaponScore = myStat;
 
+    const range = CONFIG.statRangesByTier[type]?.[tier];
+    let isTopItemscore = false;
+    if (range && myStat != null) {
+      const threshold = range.min + 0.90 * (range.max - range.min);
+      if (myStat >= threshold) {
+        isTopItemscore = true;
+      }
+    }
+
     // scrap value = live scrap unit price * per-tier yield.
     const scrapPrice = ctx.scrapPrice;
     const scrapYield = tier != null ? CONFIG.scrapYieldByTier[tier] ?? null : null;
@@ -940,7 +1000,17 @@
     }
 
     // 5) economic decision: scrap value vs market value
-    return priceDecision({ value: market, isFallback: marketIsFallback }, scrapValue, reasons, avoidScrap);
+    const finalDecision = priceDecision({ value: market, isFallback: marketIsFallback }, scrapValue, reasons, avoidScrap);
+
+    if (finalDecision.action !== ACTION.KEEP && isTopItemscore && range) {
+      finalDecision.action = ACTION.HOLD;
+      const threshold = range.min + 0.90 * (range.max - range.min);
+      const isPercent = type === 'helmet' ? '%' : '';
+      reasons.unshift(`Top Itemscore (${fmt(myStat)}${isPercent} >= ${fmt(threshold)}${isPercent} [90% of range ${range.min}${isPercent} - ${range.max}${isPercent}])`);
+      finalDecision.reason = reasons.join('; ');
+    }
+
+    return finalDecision;
   }
 
   function priceDecision(mkt, scrapValue, reasons, avoidScrap) {
