@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         WareEra Inventory Advisor v0.5.5
+// @name         WareEra Inventory Advisor v0.6.0
 // @namespace    https://github.com/dev/warera-inventory-advisor
-// @version      0.5.5
+// @version      0.6.0
 // @description  Marks inventory equipment as KEEP / SELL / SCRAP based on stats and live market vs. scrap value.
 // @author       dev
 // @match        https://app.warera.io/*
