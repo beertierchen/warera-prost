@@ -2,19 +2,22 @@
 
 ## 2026-06-20 00:20 | WareEra Inventory Advisor v0.6.4
 
-**Changed files:**
+**Geänderte Dateien / Changed files:**
 - `warera-inventory-advisor.user.js`
 
-**Change:**
-- Added a clean top header strip above the item image, so score and recommendation badges no longer cover the item.
-- Redesigned price overlays into a stacked two-row layout with clear icons (🔨 for scrap value and coins for market floor).
-- Positioned the price overlay directly over the durability bar at the bottom, expanding the bar downward slightly to fit the values cleanly.
-- Hidden prices on equipped items and damaged gear to reduce visual clutter.
-- Enabled score badges on helmets and armor.
-- Fixed a bug causing double/triple badges to display on nested elements.
+**Änderungen (Deutsch):**
+- **Mehr Platz für Anzeigen:** Punkteanzeige und Status-Icon wurden in eine neue Kopfzeile über dem Item-Bild verschoben, damit sie das Bild nicht mehr verdecken.
+- **Bessere Preisanzeige:** Schrott- und Marktpreise stehen nun übersichtlich untereinander (🔨 für Schrottwert, 💰 für Marktpreis).
+- **Weniger Chaos:** Für ausgerüstete und beschädigte Gegenstände werden keine Preise mehr angezeigt.
+- **Rüstungs-Werte:** Helme und Rüstungen zeigen nun ebenfalls ihre Werte an.
+- **Fehlerbehebungen:** Doppelte oder dreifache Symbole auf Gegenständen wurden behoben.
 
-**Reason:**
-- Improves readability, cleans up visual overlap on damaged/equipped gear, and ensures all item types display relevant stats clearly.
+**Changes (English):**
+- Moved score and status icons to a new header above the item image.
+- Redesigned prices into a stacked layout (🔨 for scrap, 💰 for market).
+- Hidden prices on equipped or damaged gear to clean up the view.
+- Added score badges to helmets and armor.
+- Fixed duplicated status badges.
 
 ## 2026-06-19 22:05 | WareEra Inventory Advisor v0.6.3
 
