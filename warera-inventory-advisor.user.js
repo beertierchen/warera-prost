@@ -578,7 +578,9 @@
   }
 
   function findMarketSellContainer() {
-    const headers = document.querySelectorAll('div');
+    const main = document.querySelector('main') || document.body;
+    if (!main) return null;
+    const headers = main.querySelectorAll('div');
     for (const h of headers) {
       if (h.textContent.trim() === 'Item' && h.nextElementSibling) {
         const sib = h.nextElementSibling;
@@ -730,14 +732,23 @@
   // slot icon (shield = Armor). Durability is the only % on an armor card and
   // is rendered in a separate progress bar (NOT under .a6izou0).
   function parseStats(card, type) {
+    const cleanCard = card.cloneNode(true);
+    cleanCard.querySelectorAll('[class^="wia-"]').forEach((badge) => {
+      badge.remove();
+    });
+    cleanCard.querySelectorAll('*').forEach(child => {
+      child.insertAdjacentText('afterend', ' ');
+    });
+
     const stats = { attack: null, crit: null, primaryPercent: null, durability: null };
     const fp = CONFIG.statSvgFingerprints;
 
     let unknownStatVal = null; // value of an unrecognized stat icon (helmet/gloves/boots)
-    card.querySelectorAll('.a6izou0').forEach((icon) => {
-      const path = icon.querySelector('path');
+    const cleanIcons = cleanCard.querySelectorAll('.a6izou0');
+    cleanIcons.forEach((cleanIcon) => {
+      const path = cleanIcon.querySelector('path');
       const d = path ? (path.getAttribute('d') || '') : '';
-      const val = numberNear(icon);
+      const val = numberNearClean(cleanIcon);
       if (val == null) return;
       if (d.includes(fp.attack)) stats.attack = val;
       else if (d.includes(fp.crit)) stats.crit = val;
@@ -753,41 +764,27 @@
 
     // durability = the trailing % in the card (the progress bar). Stat icons
     // carry their own numbers above, so the last % is durability.
-    const text = getCleanTextContent(card);
+    const text = (cleanCard.textContent || '').replace(/\s+/g, ' ').trim();
     const percents = (text.match(/(\d+(?:\.\d+)?)\s*%/g) || []).map(parseFloat);
     if (percents.length) stats.durability = percents[percents.length - 1];
 
     // scrap yield is NOT shown on the inventory card in WareEra; fall back to a
     // configurable per-rarity table (set in evaluate, where rarity is known).
-    stats.scrapYield = extractScrapYield(card); // returns null on these cards
+    stats.scrapYield = extractScrapYieldClean(card, cleanCard);
     return stats;
   }
 
-  // Extracts element text excluding any helper badges we added (.wia-)
-  function getCleanTextContent(el) {
-    if (!el) return '';
-    const clone = el.cloneNode(true);
-    clone.querySelectorAll('[class^="wia-"]').forEach((badge) => {
-      badge.remove();
-    });
-    // Add spaces between elements to prevent merging adjacent text numbers (e.g. "5" and "93%" -> "5 93%")
-    clone.querySelectorAll('*').forEach(child => {
-      child.insertAdjacentText('afterend', ' ');
-    });
-    return (clone.textContent || '').replace(/\s+/g, ' ').trim();
-  }
-
-  // Find the numeric text associated with a given svg/path element. Climb until
+  // Find the numeric text associated with a clean svg/path element. Climb until
   // an ancestor's text contains exactly one number — that is the stat's own
   // value box. A multi-number ancestor means we climbed too far (it now spans
   // sibling stats), so return the last single-number result instead of grabbing
   // an unrelated figure.
-  function numberNear(node) {
-    let el = node;
+  function numberNearClean(cleanNode) {
+    let el = cleanNode;
     for (let i = 0; i < 4 && el; i++) {
       el = el.parentElement;
       if (!el) break;
-      const text = getCleanTextContent(el);
+      const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
       const nums = text.match(/\d+(?:\.\d+)?/g) || [];
       if (nums.length === 1) {
         return parseFloat(nums[0]);
@@ -798,15 +795,22 @@
     return null;
   }
 
-  function extractScrapYield(card) {
+  function extractScrapYieldClean(originalCard, cleanCard) {
     // Look for a scrap icon inside the card and read its adjacent number,
     // otherwise scan text near the word "scrap".
-    const scrapImg = card.querySelector("img[src*='scrap'], img[alt*='scrap' i]");
+    const scrapImg = originalCard.querySelector("img[src*='scrap'], img[alt*='scrap' i]");
     if (scrapImg) {
-      const n = numberNear(scrapImg);
-      if (n != null) return n;
+      const imgs = Array.from(originalCard.querySelectorAll('img'));
+      const idx = imgs.indexOf(scrapImg);
+      if (idx !== -1) {
+        const cleanImgs = cleanCard.querySelectorAll('img');
+        if (cleanImgs[idx]) {
+          const n = numberNearClean(cleanImgs[idx]);
+          if (n != null) return n;
+        }
+      }
     }
-    const text = getCleanTextContent(card);
+    const text = (cleanCard.textContent || '').replace(/\s+/g, ' ').trim();
     const m = (text || '').match(/(\d+)\s*scraps?/i);
     return m ? parseInt(m[1], 10) : null;
   }
@@ -1358,8 +1362,23 @@
   }
 
   let observer = null;
+  let observerSuspendCount = 0;
   let scanning = false;
   let lastInventoryCards = null;
+
+  function suspendObserver() {
+    observerSuspendCount++;
+    if (observerSuspendCount === 1 && observer) {
+      observer.disconnect();
+    }
+  }
+
+  function resumeObserver() {
+    observerSuspendCount = Math.max(0, observerSuspendCount - 1);
+    if (observerSuspendCount === 0 && observer) {
+      updateObserverTarget();
+    }
+  }
 
   function hasInventoryChanged(cards) {
     if (!lastInventoryCards || lastInventoryCards.size !== cards.size) return true;
@@ -1461,7 +1480,7 @@
 
       const ctx = { prices, scrapPrice, offers, txs, stale: cacheStatus().stale };
 
-      if (observer) observer.disconnect();
+      suspendObserver();
       try {
         allItems.forEach((item) => {
           if (item.code === code) {
@@ -1470,7 +1489,7 @@
           }
         });
       } finally {
-        updateObserverTarget();
+        resumeObserver();
       }
       updateStatusIndicator();
       log(`Background update finished for ${code}`);
@@ -1568,23 +1587,25 @@
 
       const ctx = { prices, scrapPrice, offers, txs, stale: cacheStatus().stale };
 
-      if (observer) observer.disconnect();
+      suspendObserver();
       try {
         for (const item of items) {
           const result = evaluate(item, ctx);
           renderItem(item.card, item, result);
         }
       } finally {
-        updateObserverTarget();
+        resumeObserver();
       }
       updateStatusIndicator();
       log(`scanned ${items.length} items (immediate render done)`);
 
       if (codesToFetch.length > 0) {
         log(`Triggering background loads for: ${codesToFetch.join(', ')}`);
-        codesToFetch.forEach((c) => {
-          fetchAndRenderItemCodeInBackground(c, force);
-        });
+        suspendObserver();
+        Promise.all(codesToFetch.map((c) => fetchAndRenderItemCodeInBackground(c, force)))
+          .finally(() => {
+            resumeObserver();
+          });
       }
 
     } catch (e) {
