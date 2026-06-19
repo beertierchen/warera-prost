@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         WareEra Inventory Advisor v0.2.4
+// @name         WareEra Inventory Advisor v0.2.5
 // @namespace    https://github.com/dev/warera-inventory-advisor
-// @version      0.2.4
+// @version      0.2.5
 // @description  Marks inventory equipment as KEEP / SELL / SCRAP based on stats and live market vs. scrap value.
 // @author       dev
 // @match        https://app.warera.io/user/*/inventory
@@ -124,6 +124,9 @@
 
     // weapon score = crit * critWeight + attack
     weaponCritWeight: 4.15,
+
+    // Market tax rate when selling items
+    sellTaxRate: 0.01,
 
     // "Good roll" = item stat in the top fraction of LIVE market offers for its
     // itemCode. Data-driven; no hardcoded stat bands. Applies to armor (single
@@ -938,8 +941,11 @@
     if (value == null && scrapValue == null) {
       return decide(ACTION.UNKNOWN, [...reasons, 'no price data'], value, scrapValue);
     }
+    const taxRate = CONFIG.sellTaxRate ?? 0.01;
+    const netMarketValue = value != null ? value * (1 - taxRate) : null;
+
     if (scrapValue == null) { // no scrap basis -> sell on whatever market we have
-      reasons.push(`market ${fmt(value)} (no scrap value)`);
+      reasons.push(`market ${fmt(value)} (net ${fmt(netMarketValue)}, no scrap value)`);
       return decide(ACTION.SELL, reasons, value, scrapValue);
     }
     if (value == null) { // no market -> scrap
@@ -952,15 +958,15 @@
     }
     // real offer price: straight compare. fallback estimate: require a margin.
     const margin = isFallback ? CONFIG.fallbackScrapMargin : 1;
-    if (scrapValue > value * margin) {
+    if (scrapValue > netMarketValue * margin) {
       if (avoidScrap) {
-        reasons.push(`scrap ${fmt(scrapValue)} > market ${fmt(value)} but avoid scrap (crit check)`);
+        reasons.push(`scrap ${fmt(scrapValue)} > market net ${fmt(netMarketValue)} (gross ${fmt(value)}) but avoid scrap (crit check)`);
         return decide(ACTION.SELL, reasons, value, scrapValue);
       }
-      reasons.push(`scrap ${fmt(scrapValue)} > market ${fmt(value)}${isFallback ? ' (est.)' : ''}`);
+      reasons.push(`scrap ${fmt(scrapValue)} > market net ${fmt(netMarketValue)} (gross ${fmt(value)})${isFallback ? ' (est.)' : ''}`);
       return decide(ACTION.SCRAP, reasons, value, scrapValue);
     }
-    reasons.push(`market ${fmt(value)}${isFallback ? ' (est.)' : ''} >= scrap ${fmt(scrapValue)}`);
+    reasons.push(`market net ${fmt(netMarketValue)} (gross ${fmt(value)})${isFallback ? ' (est.)' : ''} >= scrap ${fmt(scrapValue)}`);
     return decide(ACTION.SELL, reasons, value, scrapValue);
   }
 
