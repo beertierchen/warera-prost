@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         WareEra Inventory Advisor v0.3.2
+// @name         WareEra Inventory Advisor v0.3.3
 // @namespace    https://github.com/dev/warera-inventory-advisor
-// @version      0.3.2
+// @version      0.3.3
 // @description  Marks inventory equipment as KEEP / SELL / SCRAP based on stats and live market vs. scrap value.
 // @author       dev
 // @match        https://app.warera.io/*
@@ -697,7 +697,11 @@
     clone.querySelectorAll('[class^="wia-"]').forEach((badge) => {
       badge.remove();
     });
-    return clone.textContent || '';
+    // Add spaces between elements to prevent merging adjacent text numbers (e.g. "5" and "93%" -> "5 93%")
+    clone.querySelectorAll('*').forEach(child => {
+      child.insertAdjacentText('afterend', ' ');
+    });
+    return (clone.textContent || '').replace(/\s+/g, ' ').trim();
   }
 
   // Find the numeric text associated with a given svg/path element. Climb until
