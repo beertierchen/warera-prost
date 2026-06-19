@@ -637,17 +637,12 @@
 
   // Extracts element text excluding any helper badges we added (.wia-)
   function getCleanTextContent(el) {
-    let text = '';
-    el.childNodes.forEach((child) => {
-      if (child.nodeType === 3) { // Node.TEXT_NODE
-        text += child.textContent;
-      } else if (child.nodeType === 1) { // Node.ELEMENT_NODE
-        const className = (child.className || '').toString();
-        if (className.includes('wia-')) return;
-        text += getCleanTextContent(child);
-      }
+    if (!el) return '';
+    const clone = el.cloneNode(true);
+    clone.querySelectorAll('[class^="wia-"]').forEach((badge) => {
+      badge.remove();
     });
-    return text;
+    return clone.textContent || '';
   }
 
   // Find the numeric text associated with a given svg/path element. Climb until
