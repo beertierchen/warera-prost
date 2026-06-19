@@ -122,6 +122,8 @@
     // weapon score = crit * critWeight + attack
     weaponCritWeight: 4.15,
     critItemMinPercent: 0,
+    // market-value icon (inline SVG, coin stack). Scrap uses the 🔨 emoji.
+    marketIconSvg: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" style="filter:drop-shadow(1px 1px 0 #000)"><path d="M12 5C7.031 5 2 6.546 2 9.5S7.031 14 12 14c4.97 0 10-1.546 10-4.5S16.97 5 12 5zm-5 9.938v3c1.237.299 2.605.482 4 .541v-3a21.166 21.166 0 0 1-4-.541zm6 .54v3a20.994 20.994 0 0 0 4-.541v-3a20.994 20.994 0 0 1-4 .541zm6-1.181v3c1.801-.755 3-1.857 3-3.297v-3c0 1.44-1.199 2.542-3 3.297zm-14 3v-3C3.2 13.542 2 12.439 2 11v3c0 1.439 1.2 2.542 3 3.297z"/></svg>',
 
     // Market tax rate when selling items
     sellTaxRate: 0.01,
@@ -656,6 +658,19 @@
     return card.closest('[aria-haspopup="dialog"]') || card.parentElement || card;
   }
 
+  // Removes priceSub and resets durBar inline position styling
+  function cleanupPriceSub(cell) {
+    const priceSub = cell.querySelector('.wia-price-sub');
+    if (priceSub) {
+      priceSub.remove();
+    }
+    const durBar = Array.from(cell.querySelectorAll('div'))
+      .find(d => d.querySelector('[style*="scaleX"]'));
+    if (durBar) {
+      durBar.style.position = '';
+    }
+  }
+
   // Walk up to the element that visually represents the card (has a colored
   // border/background). Falls back to a few levels up from the image.
   function climbToCard(img) {
@@ -1176,6 +1191,7 @@
   };
 
   function renderItem(card, item, result) {
+    const cell = getItemCell(card);
     const state = getItemState(card, item.stats);
 
     // 1. Equipped suppression check
@@ -1186,8 +1202,7 @@
         if (badge) badge.remove();
         const scoreSub = card.querySelector('.wia-score-sub');
         if (scoreSub) scoreSub.remove();
-        const priceSub = card.querySelector('.wia-price-sub');
-        if (priceSub) priceSub.remove();
+        cleanupPriceSub(cell);
         const topBanner = card.querySelector('.wia-top-banner');
         if (topBanner) topBanner.remove();
         card.style.boxShadow = '';
@@ -1264,10 +1279,9 @@
 
     // 4. Price Sub-badge (only for 100% unequipped)
     const showPrice = !state.damaged && (result.scrapValue != null || result.market != null);
-    let priceSub = card.querySelector('.wia-price-sub');
+    let priceSub = cell.querySelector('.wia-price-sub');
 
     // Locate the durability progress-bar container inside the cell (contains scaleX style attribute)
-    const cell = getItemCell(card);
     const durBar = Array.from(cell.querySelectorAll('div'))
       .find(d => d.querySelector('[style*="scaleX"]')) || null;
 
@@ -1297,7 +1311,20 @@
           return v.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
         };
 
-        priceSub.textContent = `${formatVal(sVal)}/${formatVal(mVal)}`;
+        priceSub.textContent = '';            // clear previous render
+        const mkRow = (iconHtml, val) => {
+          const row = document.createElement('div'); row.className = 'wia-price-row';
+          const i = document.createElement('span'); i.className = 'wia-price-ico';
+          i.innerHTML = iconHtml;             // trusted constant only (emoji string or CONFIG.marketIconSvg)
+          const v = document.createElement('span'); v.className = 'wia-price-val';
+          v.textContent = formatVal(val);     // numeric, never innerHTML
+          row.append(i, v); return row;
+        };
+        priceSub.append(
+          mkRow('🔨', sVal),                  // top: scrap value
+          mkRow(CONFIG.marketIconSvg, mVal)   // bottom: market value (coin-stack SVG)
+        );
+        priceSub.title = 'Oben: Schrottwert · Unten: Marktwert';
 
         // Color: green if scrap > market, orange if scrap <= market, gray if either is null
         if (sVal != null && mVal != null) {
@@ -1312,25 +1339,14 @@
     } else {
       suspendObserver();
       try {
-        if (priceSub) {
-          priceSub.remove();
-          priceSub = null;
-        }
-        if (durBar) {
-          durBar.style.position = '';
-        }
+        cleanupPriceSub(cell);
       } finally {
         resumeObserver();
       }
     }
 
     // 5. Border tint rules
-    const showBorder = !state.damaged || showBadge;
-    if (showBorder) {
-      card.style.boxShadow = `inset 0 0 0 2px ${BADGE_COLORS[result.action] || 'transparent'}`;
-    } else {
-      card.style.boxShadow = '';
-    }
+    card.style.boxShadow = '';
 
     // 6. Sentinel management
     if (showBadge) {
@@ -1661,12 +1677,12 @@
         if (shouldSuppressItem(card, stats)) {
           suspendObserver();
           try {
+            const cell = getItemCell(card);
             const badge = card.querySelector('.wia-badge');
             if (badge) badge.remove();
             const scoreSub = card.querySelector('.wia-score-sub');
             if (scoreSub) scoreSub.remove();
-            const priceSub = card.querySelector('.wia-price-sub');
-            if (priceSub) priceSub.remove();
+            cleanupPriceSub(cell);
             const topBanner = card.querySelector('.wia-top-banner');
             if (topBanner) topBanner.remove();
             card.style.boxShadow = '';
@@ -1780,10 +1796,17 @@
       }
       .wia-price-sub {
         position: absolute; bottom: 0; left: 0; right: 0; z-index: 60;
-        font: bold 8px system-ui, sans-serif; padding: 1px 2px; border-radius: 0 0 4px 4px;
-        color: #fff; display: flex; align-items: center; justify-content: center;
-        text-shadow: 0 1px 1px rgba(0,0,0,.5); box-shadow: 0 -1px 2px rgba(0,0,0,.3);
+        font: bold 10px system-ui, sans-serif; padding: 1px 2px; border-radius: 0 0 4px 4px;
+        color: #fff; display: flex; flex-direction: column; align-items: stretch; gap: 0;
+        line-height: 1.15; letter-spacing: -0.3px;
+        /* 4-way black outline for contrast over any bar color (same trick as .wia-badge) */
+        text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+        box-shadow: 0 -1px 2px rgba(0,0,0,.3);
       }
+      .wia-price-sub .wia-price-row { display: flex; align-items: center; justify-content: space-between; gap: 2px; }
+      .wia-price-sub .wia-price-ico { font-size: 9px; opacity: .9; display: inline-flex; align-items: center; }
+      .wia-price-sub .wia-price-ico svg { width: 1em; height: 1em; display: block; }
+      .wia-price-sub .wia-price-val { font-variant-numeric: tabular-nums; }
       .wia-gear {
         position: fixed; bottom: 18px; right: 18px; z-index: 99999;
         width: 40px; height: 40px; border-radius: 50%;

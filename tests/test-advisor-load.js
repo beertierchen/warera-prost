@@ -74,6 +74,7 @@ try {
   // Run the script by eval'ing it
   eval(code);
   console.log('Success! The script loaded and initialized without throwing any runtime errors.');
+  process.exit(0);
 } catch (err) {
   console.error('Error during script load/execution:');
   console.error(err.stack || err);
