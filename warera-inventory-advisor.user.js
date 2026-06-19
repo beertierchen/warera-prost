@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WareEra Inventory Advisor
 // @namespace    https://github.com/dev/warera-inventory-advisor
-// @version      0.2.2
+// @version      0.2.3
 // @description  Marks inventory equipment as KEEP / SELL / SCRAP based on stats and live market vs. scrap value.
 // @author       dev
 // @match        https://app.warera.io/user/*/inventory
@@ -60,6 +60,7 @@
 
     // --- caching / rate-limit ---
     priceCacheTtlMs: 20 * 60 * 1000,    // 20 min (spec: 15-30 min)
+    txCacheTtlMs: 60 * 60 * 1000,       // 1 hour for transaction history
     minRequestIntervalMs: 3000,         // throttle: no two network calls closer than this
     rescanDebounceMs: 150,
     rateLimitBackoffMs: 60 * 1000,      // after a 429, suppress requests this long
@@ -412,7 +413,7 @@
     if (!code) return null;
     const store = GM_getValue(KEYS.transactionsCache, {}) || {};
     const cached = store[code];
-    if (!force && cached && now() - cached.fetchedAt < CONFIG.priceCacheTtlMs) return cached.data;
+    if (!force && cached && now() - cached.fetchedAt < CONFIG.txCacheTtlMs) return cached.data;
     if (isRateLimited()) return cached ? cached.data : null;
     if (transactionsInFlight[code]) return transactionsInFlight[code];
 
