@@ -204,6 +204,7 @@
     rateLimitedUntil: NS + 'rlUntil',
     scrapedPrices: NS + 'scrapedPrices',
     highCritWeightForHold: NS + 'highCritHold',
+    useLiveOffersApi: NS + 'useLiveOffers',
   };
   const OBF_KEY = 'wareEra.advisor.v1'; // XOR pad — obfuscation only, not encryption
 
@@ -360,31 +361,41 @@
   // Returns a map { itemCode -> price } (best-effort; shape depends on the API).
   async function fetchPrices(force) {
     const cache = GM_getValue(KEYS.priceCache, null);
-    if (!force && cache && now() - cache.fetchedAt < CONFIG.priceCacheTtlMs) {
-      return cache.data;
-    }
-    if (isRateLimited()) {
-      log('rate-limited, serving stale prices');
-      return cache ? cache.data : {};
-    }
-    if (inFlightPrices) return inFlightPrices; // dedup parallel callers
+    const scrapedStore = GM_getValue(KEYS.scrapedPrices, {}) || {};
+    const scrapedScrap = scrapedStore[CONFIG.scrapItemCode];
 
-    inFlightPrices = (async () => {
-      try {
-        const { payload } = await resolveApiBase(CONFIG.pricesEndpoint, undefined);
-        const map = normalizePrices(payload);
-        GM_setValue(KEYS.priceCache, { data: map, fetchedAt: now() });
-        renderRateLimitBanner();
-        return map;
-      } catch (e) {
-        log('fetchPrices failed:', e.message);
-        renderRateLimitBanner();
-        return cache ? cache.data : {}; // graceful fallback to stale/empty
-      } finally {
-        inFlightPrices = null;
-      }
-    })();
-    return inFlightPrices;
+    let baseData = {};
+    if (!force && cache && now() - cache.fetchedAt < CONFIG.priceCacheTtlMs) {
+      baseData = cache.data || {};
+    } else if (isRateLimited()) {
+      log('rate-limited, serving stale prices');
+      baseData = cache ? cache.data : {};
+    } else if (inFlightPrices) {
+      baseData = await inFlightPrices;
+    } else {
+      inFlightPrices = (async () => {
+        try {
+          const { payload } = await resolveApiBase(CONFIG.pricesEndpoint, undefined);
+          const map = normalizePrices(payload);
+          GM_setValue(KEYS.priceCache, { data: map, fetchedAt: now() });
+          renderRateLimitBanner();
+          return map;
+        } catch (e) {
+          log('fetchPrices failed, using fallback:', e.message);
+          renderRateLimitBanner();
+          return cache ? cache.data : {}; // graceful fallback to stale/empty
+        } finally {
+          inFlightPrices = null;
+        }
+      })();
+      baseData = await inFlightPrices;
+    }
+
+    // Inject/override scraped scrap price if fresh (within scrapedPriceTtlMs)
+    if (scrapedScrap && now() - scrapedScrap.fetchedAt < CONFIG.scrapedPriceTtlMs) {
+      baseData = { ...baseData, [CONFIG.scrapItemCode]: scrapedScrap.price };
+    }
+    return baseData;
   }
 
   // Accepts several plausible response shapes -> { code: price }.
@@ -1766,6 +1777,10 @@
           <input type="checkbox" class="wia-high-crit" style="width: auto;" ${CONFIG.useHighCritWeightForHold ? 'checked' : ''} />
           <label style="margin: 0; font-weight: normal; cursor: pointer;">Erhöhte Crit-Gewichtung für HOLD-Bewertung verwenden (6.00 statt 4.15)</label>
         </div>
+        <div style="margin-top: 6px; display: flex; align-items: center; gap: 8px;">
+          <input type="checkbox" class="wia-live-offers" style="width: auto;" ${CONFIG.useLiveOffersApi ? 'checked' : ''} />
+          <label style="margin: 0; font-weight: normal; cursor: pointer;">Live-Angebote über API abrufen (benötigt API-Token)</label>
+        </div>
         <details class="wia-help-details">
           <summary class="wia-help-summary">ℹ Spickzettel (Hilfe & Erklärung)</summary>
           <div class="wia-help-content">
@@ -1813,6 +1828,10 @@
       const useHighCrit = bg.querySelector('.wia-high-crit').checked;
       GM_setValue(KEYS.highCritWeightForHold, useHighCrit);
       CONFIG.useHighCritWeightForHold = useHighCrit;
+
+      const useLiveOffers = bg.querySelector('.wia-live-offers').checked;
+      GM_setValue(KEYS.useLiveOffersApi, useLiveOffers);
+      CONFIG.useLiveOffersApi = useLiveOffers;
 
       if (tokenChanged) {
         clearCache();
@@ -1937,6 +1956,7 @@
 
   function start() {
     CONFIG.useHighCritWeightForHold = GM_getValue(KEYS.highCritWeightForHold, false);
+    CONFIG.useLiveOffersApi = GM_getValue(KEYS.useLiveOffersApi, false);
     injectStyles();
     injectGear();
     GM_registerMenuCommand('Inventory Advisor — Einstellungen', openSettings);
