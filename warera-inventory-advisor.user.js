@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         WareEra Inventory Advisor v0.2.6
+// @name         WareEra Inventory Advisor v0.2.7
 // @namespace    https://github.com/dev/warera-inventory-advisor
-// @version      0.2.6
+// @version      0.2.7
 // @description  Marks inventory equipment as KEEP / SELL / SCRAP based on stats and live market vs. scrap value.
 // @author       dev
 // @match        https://app.warera.io/user/*/inventory
@@ -613,8 +613,10 @@
     const tier = tm ? parseInt(tm[1], 10) : null;
 
     let type = 'unknown';
+    const cleanCode = code ? code.replace(/\d+$/, '').trim() : '';
+    const cleanSrcBase = srcBase ? srcBase.replace(/\d+$/, '').trim() : '';
     for (const [kw, t] of Object.entries(CONFIG.typeByAltKeyword)) {
-      if (srcBase === kw || srcBase.includes(kw) || alt.startsWith(kw)) { type = t; break; }
+      if (cleanCode === kw || cleanSrcBase === kw || alt === kw) { type = t; break; }
     }
     return { type, alt, code, srcBase, tier };
   }
