@@ -658,14 +658,26 @@
     return card.closest('[aria-haspopup="dialog"]') || card.parentElement || card;
   }
 
+  // The durability bar = the SMALLEST div that contains the scaleX fill (the bar strip),
+  // not the outermost container (which spans the stat row). Fallback sorts by div depth.
+  function findDurabilityBar(cell) {
+    const matches = Array.from(cell.querySelectorAll('div')).filter(d => d.querySelector('[style*="scaleX"]'));
+    if (!matches.length) return null;
+    return matches.sort((a, b) => {
+      const ha = a.offsetHeight || 0;
+      const hb = b.offsetHeight || 0;
+      if (ha !== hb) return ha - hb;
+      return a.querySelectorAll('div').length - b.querySelectorAll('div').length;
+    })[0];
+  }
+
   // Removes priceSub and resets durBar inline position styling
   function cleanupPriceSub(cell) {
     const priceSub = cell.querySelector('.wia-price-sub');
     if (priceSub) {
       priceSub.remove();
     }
-    const durBar = Array.from(cell.querySelectorAll('div'))
-      .find(d => d.querySelector('[style*="scaleX"]'));
+    const durBar = findDurabilityBar(cell);
     if (durBar) {
       durBar.style.position = '';
     }
@@ -1282,8 +1294,7 @@
     let priceSub = cell.querySelector('.wia-price-sub');
 
     // Locate the durability progress-bar container inside the cell (contains scaleX style attribute)
-    const durBar = Array.from(cell.querySelectorAll('div'))
-      .find(d => d.querySelector('[style*="scaleX"]')) || null;
+    const durBar = findDurabilityBar(cell);
 
     if (showPrice && durBar) {
       suspendObserver();
@@ -1781,8 +1792,8 @@
     GM_addStyle(`
       .wia-badge {
         position: absolute; top: 35%; transform: translateY(-50%); right: 4px; z-index: 50;
-        width: 20px; height: 20px; border-radius: 50%;
-        font: 12px system-ui, sans-serif;
+        width: 16px; height: 16px; border-radius: 50%;
+        font: 10px system-ui, sans-serif;
         display: flex; align-items: center; justify-content: center;
         cursor: help; box-shadow: 0 0 4px rgba(0,0,0,.6);
         user-select: none;
@@ -1796,15 +1807,16 @@
       }
       .wia-price-sub {
         position: absolute; bottom: 0; left: 0; right: 0; z-index: 60;
-        font: bold 10px system-ui, sans-serif; padding: 1px 2px; border-radius: 0 0 4px 4px;
+        font: bold 9px system-ui, sans-serif; padding: 0 2px; border-radius: 0 0 4px 4px;
         color: #fff; display: flex; flex-direction: column; align-items: stretch; gap: 0;
-        line-height: 1.15; letter-spacing: -0.3px;
+        line-height: 1.0; letter-spacing: -0.3px;
+        max-height: 100%; overflow: hidden; justify-content: center;
         /* 4-way black outline for contrast over any bar color (same trick as .wia-badge) */
         text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
         box-shadow: 0 -1px 2px rgba(0,0,0,.3);
       }
       .wia-price-sub .wia-price-row { display: flex; align-items: center; justify-content: space-between; gap: 2px; }
-      .wia-price-sub .wia-price-ico { font-size: 9px; opacity: .9; display: inline-flex; align-items: center; }
+      .wia-price-sub .wia-price-ico { font-size: 8px; opacity: .9; display: inline-flex; align-items: center; }
       .wia-price-sub .wia-price-ico svg { width: 1em; height: 1em; display: block; }
       .wia-price-sub .wia-price-val { font-variant-numeric: tabular-nums; }
       .wia-gear {
