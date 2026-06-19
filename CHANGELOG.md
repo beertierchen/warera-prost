@@ -1,16 +1,20 @@
 # CHANGELOG
 
-## 2026-06-19 22:22 | WareEra Inventory Advisor v0.6.4
+## 2026-06-20 00:20 | WareEra Inventory Advisor v0.6.4
 
 **Changed files:**
 - `warera-inventory-advisor.user.js`
 
 **Change:**
-- Fixed item card ancestor climbing logic in `climbToCard` to immediately return the innermost matching card element, resolving double/triple decoration issues on nested elements.
-- Reverted card top-banner sub-badge price formatting to 2 decimal places (`toFixed(2)`) for UI compactness, while keeping high-precision 4 decimal places for tooltips, logs, and calculations.
+- Added a clean top header strip above the item image, so score and recommendation badges no longer cover the item.
+- Redesigned price overlays into a stacked two-row layout with clear icons (🔨 for scrap value and coins for market floor).
+- Positioned the price overlay directly over the durability bar at the bottom, expanding the bar downward slightly to fit the values cleanly.
+- Hidden prices on equipped items and damaged gear to reduce visual clutter.
+- Enabled score badges on helmets and armor.
+- Fixed a bug causing double/triple badges to display on nested elements.
 
 **Reason:**
-- Fixes visual clutter (tripled banners) and improves UI aesthetics while maintaining precise calculations.
+- Improves readability, cleans up visual overlap on damaged/equipped gear, and ensures all item types display relevant stats clearly.
 
 ## 2026-06-19 22:05 | WareEra Inventory Advisor v0.6.3
 
