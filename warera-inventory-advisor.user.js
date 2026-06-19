@@ -746,9 +746,6 @@
     cleanCard.querySelectorAll('[class^="wia-"]').forEach((badge) => {
       badge.remove();
     });
-    cleanCard.querySelectorAll('*').forEach(child => {
-      child.insertAdjacentText('afterend', ' ');
-    });
 
     const stats = { attack: null, crit: null, primaryPercent: null, durability: null };
     const fp = CONFIG.statSvgFingerprints;
@@ -772,10 +769,25 @@
       stats.primaryPercent = unknownStatVal;
     }
 
-    // durability = the trailing % in the card (the progress bar). Stat icons
-    // carry their own numbers above, so the last % is durability.
+    // Remove stat icon containers from cleanCard so their values (like crit %)
+    // do not leak into durability text parsing.
+    cleanIcons.forEach((cleanIcon) => {
+      const parentDiv = cleanIcon.closest('div');
+      if (parentDiv && parentDiv !== cleanCard) {
+        parentDiv.remove();
+      } else {
+        cleanIcon.remove();
+      }
+    });
+
+    cleanCard.querySelectorAll('*').forEach(child => {
+      child.insertAdjacentText('afterend', ' ');
+    });
+
+    // durability = the trailing % in the card (the progress bar).
     const text = (cleanCard.textContent || '').replace(/\s+/g, ' ').trim();
-    const percents = (text.match(/(\d+(?:\.\d+)?)\s*%/g) || []).map(parseFloat);
+    const percents = (text.match(/(\d+(?:[.,]\d+)?)\s*%/g) || [])
+      .map(p => parseFloat(p.replace(',', '.')));
     if (percents.length) stats.durability = percents[percents.length - 1];
 
     // scrap yield is NOT shown on the inventory card in WareEra; fall back to a
@@ -1157,6 +1169,7 @@
   };
 
   function renderItem(card, item, result) {
+    delete card.dataset.wiaSuppressed;
     card.dataset.wiaDone = '1';
     if (getComputedStyle(card).position === 'static') {
       card.style.position = 'relative';
@@ -1211,13 +1224,13 @@
     let priceSub = card.querySelector('.wia-price-sub');
     const showPrice = result.scrapValue != null || result.market != null;
     if (showPrice) {
-      // Find the stats/durability container inside the card
-      const statsContainer = Array.from(card.children).find(c => {
-        return c.tagName === 'DIV' && 
-               !c.classList.contains('wia-badge') && 
-               !c.classList.contains('wia-score-sub') && 
-               !c.classList.contains('wia-price-sub') &&
-               c !== card.firstElementChild;
+      // Find the stats/durability container inside the card (contains stat icons or percent symbol)
+      const statsContainer = Array.from(card.querySelectorAll('div')).find(d => {
+        return !d.classList.contains('wia-badge') && 
+               !d.classList.contains('wia-score-sub') && 
+               !d.classList.contains('wia-price-sub') &&
+               !d.classList.contains('wia-top-banner') &&
+               (d.querySelector('.a6izou0') || /%/.test(d.textContent));
       }) || card;
 
       if (getComputedStyle(statsContainer).position === 'static') {
@@ -1401,6 +1414,12 @@
     return clone.textContent.replace(/\s+/g, ' ').trim();
   }
 
+  function shouldSuppressItem(card, stats) {
+    if (stats.durability != null && stats.durability < 100) return true;
+    const t = getCardBaseText(card);
+    return /\bEquip(\.|ped)?\b/i.test(t) || /\bausgerüstet\b/i.test(t);
+  }
+
   function suspendObserver() {
     observerSuspendCount++;
     if (observerSuspendCount === 1 && observer) {
@@ -1436,7 +1455,7 @@
       const lastItemId = findItemUniqueId(lastCard);
       if (itemId !== lastItemId) return true;
 
-      if (!card.querySelector('.wia-badge')) return true;
+      if (!card.querySelector('.wia-badge') && !card.dataset.wiaSuppressed) return true;
 
       const currentText = getCardBaseText(card);
       const lastText = lastInventoryCardTexts.get(card);
@@ -1479,7 +1498,7 @@
         const { type, alt, code: cCode, tier } = detectType(img, card);
         if (type === 'scrap' || type === 'unknown') return;
         const stats = parseStats(card, type);
-        if (stats.durability != null && stats.durability < 100) return;
+        if (shouldSuppressItem(card, stats)) return;
         const resolvedTier = tier != null ? tier : detectTierByColor(card);
         const item = { card, img, type, alt, code: cCode, tier: resolvedTier, stats };
         item.myStat = itemStat(item);
@@ -1568,18 +1587,23 @@
         if (type === 'scrap' || type === 'unknown') return;
         const stats = parseStats(card, type);
         
-        const isEquipped = /equip/i.test(getCardBaseText(card)) || /ausger/i.test(getCardBaseText(card));
-        if (isEquipped || (stats.durability != null && stats.durability < 100)) {
-          const badge = card.querySelector('.wia-badge');
-          if (badge) badge.remove();
-          const scoreSub = card.querySelector('.wia-score-sub');
-          if (scoreSub) scoreSub.remove();
-          const priceSub = card.querySelector('.wia-price-sub');
-          if (priceSub) priceSub.remove();
-          const topBanner = card.querySelector('.wia-top-banner');
-          if (topBanner) topBanner.remove();
-          card.style.boxShadow = '';
-          delete card.dataset.wiaDone;
+        if (shouldSuppressItem(card, stats)) {
+          suspendObserver();
+          try {
+            const badge = card.querySelector('.wia-badge');
+            if (badge) badge.remove();
+            const scoreSub = card.querySelector('.wia-score-sub');
+            if (scoreSub) scoreSub.remove();
+            const priceSub = card.querySelector('.wia-price-sub');
+            if (priceSub) priceSub.remove();
+            const topBanner = card.querySelector('.wia-top-banner');
+            if (topBanner) topBanner.remove();
+            card.style.boxShadow = '';
+            card.dataset.wiaSuppressed = '1';
+            delete card.dataset.wiaDone;
+          } finally {
+            resumeObserver();
+          }
           return;
         }
 
