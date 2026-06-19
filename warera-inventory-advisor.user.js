@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WareEra Inventory Advisor
 // @namespace    https://github.com/dev/warera-inventory-advisor
-// @version      0.1.2
+// @version      0.2.0
 // @description  Marks inventory equipment as KEEP / SELL / SCRAP based on stats and live market vs. scrap value.
 // @author       dev
 // @match        https://app.warera.io/user/*/inventory
@@ -150,6 +150,7 @@
     priceCache: NS + 'priceCache',     // { data, fetchedAt } — materials map
     scrapCache: NS + 'scrapCache',     // { price, fetchedAt } — legacy, unused
     offersCache: NS + 'offersCache',   // { [itemCode]: { data, fetchedAt } } — equipment offers
+    transactionsCache: NS + 'transactionsCache', // { [itemCode]: { data, fetchedAt } } — equipment transactions
     fallback: NS + 'fallbackPrices',
     apiBase: NS + 'apiBase',
     rateLimitedUntil: NS + 'rlUntil',
@@ -181,6 +182,7 @@
     GM_setValue(KEYS.priceCache, null);
     GM_setValue(KEYS.scrapCache, null);
     GM_setValue(KEYS.offersCache, {});
+    GM_setValue(KEYS.transactionsCache, {});
     GM_setValue(KEYS.apiBase, '');
     inFlightPrices = null;
     log('cache cleared');
@@ -212,12 +214,13 @@
   // ───────────────────────────────────────────────────────────────────────────
   let inFlightPrices = null; // promise dedup
 
-  function gmRequest({ method, url, headers }) {
+  function gmRequest({ method, url, headers, data }) {
     return new Promise((resolve, reject) => {
       GM_xmlhttpRequest({
         method: method || 'GET',
         url,
         headers: headers || {},
+        data,
         timeout: 15000,
         onload: (res) => resolve({ status: res.status, text: res.responseText }),
         onerror: () => reject(new Error('network error: ' + url)),
@@ -399,6 +402,55 @@
       }
     })();
     return offersInFlight[code];
+  }
+
+  // ── Equipment transactions (gateway/historical) ──────────────────────────
+  const transactionsInFlight = {}; // code -> promise (dedup)
+
+  async function fetchItemTransactions(code, force) {
+    if (!code) return null;
+    const store = GM_getValue(KEYS.transactionsCache, {}) || {};
+    const cached = store[code];
+    if (!force && cached && now() - cached.fetchedAt < CONFIG.priceCacheTtlMs) return cached.data;
+    if (isRateLimited()) return cached ? cached.data : null;
+    if (transactionsInFlight[code]) return transactionsInFlight[code];
+
+    transactionsInFlight[code] = (async () => {
+      try {
+        await throttle();
+        const url = 'https://gateway.warerastats.io/trpc/transaction.getPaginatedTransactions';
+        const body = JSON.stringify({
+          limit: 100,
+          itemCode: code
+        });
+        const res = await gmRequest({
+          method: 'POST',
+          url,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-API-Key': 'wia-userscript'
+          },
+          data: body
+        });
+        if (res.status === 429) { tripRateLimit(); return cached ? cached.data : null; }
+        if (res.status < 200 || res.status >= 300) return cached ? cached.data : null;
+        
+        const data = JSON.parse(res.text);
+        const items = data?.result?.data?.items || [];
+        
+        const next = GM_getValue(KEYS.transactionsCache, {}) || {};
+        next[code] = { data: items, fetchedAt: now() };
+        GM_setValue(KEYS.transactionsCache, next);
+        return items;
+      } catch (e) {
+        log('fetchItemTransactions failed:', code, e.message);
+        return cached ? cached.data : null;
+      } finally {
+        renderRateLimitBanner();
+        delete transactionsInFlight[code];
+      }
+    })();
+    return transactionsInFlight[code];
   }
 
   // payload: { items: [{ price, item: { skills: {...} } }], nextCursor }
@@ -689,7 +741,7 @@
   function statForType(type, skills) {
     if (!skills) return null;
     if (type === 'weapon') {
-      const crit = Number(skills.critChance ?? skills.crit ?? 0);
+      const crit = Number(skills.criticalChance ?? skills.critChance ?? skills.crit ?? 0);
       const attack = Number(skills.attack ?? 0);
       if (!attack && !crit) return null;
       return crit * CONFIG.weaponCritWeight + attack;
@@ -726,6 +778,48 @@
     return myStat != null && myStat >= cutoff;
   }
 
+  function getTransactionReferencePrice(txs, type, myStat) {
+    if (!txs || !txs.length || myStat == null) return null;
+    
+    const sixDaysAgo = Date.now() - 6 * 24 * 60 * 60 * 1000;
+    
+    const validTxs = txs.map(tx => {
+      const txTime = tx.createdAt ? new Date(tx.createdAt).getTime() : 0;
+      if (txTime < sixDaysAgo) return null;
+      if (tx.transactionType !== 'itemMarket') return null;
+      
+      const score = statForType(type, tx.item?.skills);
+      return {
+        price: tx.money,
+        score,
+        diff: score != null ? Math.abs(score - myStat) : Infinity
+      };
+    }).filter(t => t != null && t.price != null && t.score != null && t.diff !== Infinity);
+
+    if (!validTxs.length) return null;
+
+    // Sort by diff ascending
+    validTxs.sort((a, b) => a.diff - b.diff);
+
+    const closest = [];
+    let i = 0;
+    while (i < validTxs.length) {
+      const currentDiff = validTxs[i].diff;
+      const group = [];
+      while (i < validTxs.length && validTxs[i].diff === currentDiff) {
+        group.push(validTxs[i]);
+        i++;
+      }
+      closest.push(...group);
+      if (closest.length >= 3) {
+        break;
+      }
+    }
+
+    const sum = closest.reduce((acc, t) => acc + t.price, 0);
+    return sum / closest.length;
+  }
+
   function evaluate(item, ctx) {
     const { type, tier, stats } = item;
     const reasons = [];
@@ -748,17 +842,34 @@
 
     // market value from live offers (roll-aware); fall back to per-tier estimate.
     const offerData = item.code ? ctx.offers[item.code] : null;
-    let market = marketForRoll(offerData, type, myStat);
+    const txData = item.code ? ctx.txs[item.code] : null;
+
+    const txRefPrice = getTransactionReferencePrice(txData, type, myStat);
+    item.txRefPrice = txRefPrice;
+    
+    const sixDaysAgo = Date.now() - 6 * 24 * 60 * 60 * 1000;
+    item.txCount = txData ? txData.filter(t => t.money != null && t.transactionType === 'itemMarket' && (t.createdAt ? new Date(t.createdAt).getTime() >= sixDaysAgo : false)).length : 0;
+
+    let market = txRefPrice;
     let marketIsFallback = false;
+    let marketSource = 'transactions';
+
     if (market == null) {
-      if (offerData && offerData.floor != null) {
-        market = offerData.floor;
-      } else {
-        const fb = getFallbackPrices();
-        market = tier != null ? fb[tier] ?? null : null;
-        marketIsFallback = true;
+      market = marketForRoll(offerData, type, myStat);
+      marketSource = 'offers';
+      if (market == null) {
+        if (offerData && offerData.floor != null) {
+          market = offerData.floor;
+          marketSource = 'offersFloor';
+        } else {
+          const fb = getFallbackPrices();
+          market = tier != null ? fb[tier] ?? null : null;
+          marketIsFallback = true;
+          marketSource = 'fallback';
+        }
       }
     }
+    item.marketSource = marketSource;
     item.marketIsFallback = marketIsFallback;
     item.marketFloor = offerData ? offerData.floor : null;
     item.offerCount = offerData ? offerData.offers.length : 0;
@@ -864,16 +975,21 @@
   function cacheStatus() {
     const pc = GM_getValue(KEYS.priceCache, null);
     const oc = GM_getValue(KEYS.offersCache, {}) || {};
+    const tc = GM_getValue(KEYS.transactionsCache, {}) || {};
     const priceStale = pc ? now() - pc.fetchedAt > CONFIG.priceCacheTtlMs : true;
     const offerTimes = Object.values(oc).map((o) => o.fetchedAt).filter(Boolean);
+    const txTimes = Object.values(tc).map((t) => t.fetchedAt).filter(Boolean);
     const newestOffer = offerTimes.length ? Math.max(...offerTimes) : null;
+    const newestTx = txTimes.length ? Math.max(...txTimes) : null;
+    const newestMkt = newestOffer && newestTx ? Math.max(newestOffer, newestTx) : (newestOffer || newestTx);
     return {
       scrapPrice: pc && pc.data ? pc.data[CONFIG.scrapItemCode] ?? null : null,
       scrapFetchedAt: pc ? pc.fetchedAt : null,
       priceFetchedAt: pc ? pc.fetchedAt : null,
       priceCount: pc && pc.data ? Object.keys(pc.data).length : 0,
       offerCodes: Object.keys(oc).length,
-      offerFetchedAt: newestOffer,
+      txCodes: Object.keys(tc).length,
+      offerFetchedAt: newestMkt,
       // "stale" = materials cache past TTL / missing, or actively rate-limited
       stale: isRateLimited() || priceStale,
     };
@@ -998,8 +1114,10 @@
     if (item.stats.durability != null) lines.push(`Durability: ${item.stats.durability}%`);
     // scrap side: yield × unit-price = total (yield is a per-tier estimate)
     lines.push(`Scrap: ${item.scrapYield ?? '?'} (est.) × ${fmt(item.scrapPriceUnit)}/u = ${fmt(result.scrapValue)}`);
-    // market side: live offers (floor + count) or per-tier estimate
-    if (item.marketIsFallback) {
+    // market side: transactions reference, live offers (floor + count) or per-tier estimate
+    if (item.marketSource === 'transactions') {
+      lines.push(`Market value (6d tx ref): ${fmt(result.market)} (from ${item.txCount} txs)`);
+    } else if (item.marketIsFallback) {
       lines.push(`Market value (est., no offers): ${fmt(result.market)}`);
     } else if (item.offerCount === 0 && item.marketFloor != null) {
       lines.push(`Market value (scraped floor): ${fmt(item.marketFloor)}`);
@@ -1186,13 +1304,20 @@
       // scrap unit price is the 'scraps' key in the materials map.
       const scrapPrice = prices ? prices[CONFIG.scrapItemCode] ?? null : null;
 
-      // fetch live equipment offers once per distinct itemCode (cached hard).
+      // fetch live equipment offers + transactions once per distinct itemCode (cached hard).
       const codes = [...new Set(items.map((i) => i.code).filter(Boolean))];
-      const offerResults = await Promise.all(codes.map((c) => fetchItemOffers(c, force)));
+      const [offerResults, txResults] = await Promise.all([
+        Promise.all(codes.map((c) => fetchItemOffers(c, force))),
+        Promise.all(codes.map((c) => fetchItemTransactions(c, force)))
+      ]);
       const offers = {};
-      codes.forEach((c, i) => { if (offerResults[i]) offers[c] = offerResults[i]; });
+      const txs = {};
+      codes.forEach((c, i) => {
+        if (offerResults[i]) offers[c] = offerResults[i];
+        if (txResults[i]) txs[c] = txResults[i];
+      });
 
-      const ctx = { prices, scrapPrice, offers, stale: cacheStatus().stale };
+      const ctx = { prices, scrapPrice, offers, txs, stale: cacheStatus().stale };
       // Pause the observer across rendering: renderItem mutates the DOM (badge +
       // styles), which would otherwise re-trigger the observer -> endless rescan.
       if (observer) observer.disconnect();
@@ -1300,7 +1425,8 @@
     gear.title =
       `Inventory Advisor\n` +
       `Scrap price: ${fmt(s.scrapPrice)}/u (${ageLabel(s.scrapFetchedAt)})\n` +
-      `Item prices: ${s.priceCount} cached (${ageLabel(s.priceFetchedAt)})` +
+      `Item prices: ${s.priceCount} cached (${ageLabel(s.priceFetchedAt)})\n` +
+      `Tx history: ${s.txCodes || 0} items cached` +
       (isRateLimited() ? `\n⚠ API limit — waiting ${Math.ceil(rateLimitRemainingMs() / 1000)}s` : '');
   }
 
@@ -1315,6 +1441,7 @@
       `Scrap price:  ${fmt(s.scrapPrice)} / unit   (fetched ${ageLabel(s.scrapFetchedAt)})\n` +
       `Item prices:  ${s.priceCount} cached         (fetched ${ageLabel(s.priceFetchedAt)})\n` +
       `Scraped mkt:  ${scrapedCount} items stored    (visit Market -> Equipments to update)\n` +
+      `Tx history:   ${s.txCodes || 0} items cached\n` +
       `Status:       ${isRateLimited() ? 'RATE-LIMITED' : s.stale ? 'stale (past cache TTL)' : 'fresh'}`;
   }
 
