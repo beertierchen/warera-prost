@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         WareEra Inventory Advisor v0.2.3
+// @name         WareEra Inventory Advisor v0.2.4
 // @namespace    https://github.com/dev/warera-inventory-advisor
-// @version      0.2.3
+// @version      0.2.4
 // @description  Marks inventory equipment as KEEP / SELL / SCRAP based on stats and live market vs. scrap value.
 // @author       dev
 // @match        https://app.warera.io/user/*/inventory
@@ -818,7 +818,11 @@
     }
 
     const sum = closest.reduce((acc, t) => acc + t.price, 0);
-    return sum / closest.length;
+    return {
+      price: sum / closest.length,
+      count: closest.length,
+      diff: closest[0]?.diff ?? 0
+    };
   }
 
   function evaluate(item, ctx) {
@@ -845,13 +849,15 @@
     const offerData = item.code ? ctx.offers[item.code] : null;
     const txData = item.code ? ctx.txs[item.code] : null;
 
-    const txRefPrice = getTransactionReferencePrice(txData, type, myStat);
-    item.txRefPrice = txRefPrice;
+    const txRef = getTransactionReferencePrice(txData, type, myStat);
+    item.txRefPrice = txRef ? txRef.price : null;
+    item.txClosestCount = txRef ? txRef.count : 0;
+    item.txClosestDiff = txRef ? txRef.diff : null;
     
     const sixDaysAgo = Date.now() - 6 * 24 * 60 * 60 * 1000;
     item.txCount = txData ? txData.filter(t => t.money != null && t.transactionType === 'itemMarket' && (t.createdAt ? new Date(t.createdAt).getTime() >= sixDaysAgo : false)).length : 0;
 
-    let market = txRefPrice;
+    let market = item.txRefPrice;
     let marketIsFallback = false;
     let marketSource = 'transactions';
 
@@ -1117,7 +1123,8 @@
     lines.push(`Scrap: ${item.scrapYield ?? '?'} (est.) × ${fmt(item.scrapPriceUnit)}/u = ${fmt(result.scrapValue)}`);
     // market side: transactions reference, live offers (floor + count) or per-tier estimate
     if (item.marketSource === 'transactions') {
-      lines.push(`Market value (6d tx ref): ${fmt(result.market)} (from ${item.txCount} txs)`);
+      const diffStr = item.txClosestDiff === 0 ? 'exact match' : `diff ±${fmt(item.txClosestDiff)}`;
+      lines.push(`Market value (6d tx ref): ${fmt(result.market)} (avg of ${item.txClosestCount} txs with ${diffStr}, total ${item.txCount} txs)`);
     } else if (item.marketIsFallback) {
       lines.push(`Market value (est., no offers): ${fmt(result.market)}`);
     } else if (item.offerCount === 0 && item.marketFloor != null) {
