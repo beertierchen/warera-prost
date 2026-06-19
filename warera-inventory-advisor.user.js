@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         WareEra Inventory Advisor v0.3.1
+// @name         WareEra Inventory Advisor v0.3.2
 // @namespace    https://github.com/dev/warera-inventory-advisor
-// @version      0.3.1
+// @version      0.3.2
 // @description  Marks inventory equipment as KEEP / SELL / SCRAP based on stats and live market vs. scrap value.
 // @author       dev
 // @match        https://app.warera.io/*
@@ -1302,6 +1302,18 @@
         const { type, alt, code, tier } = detectType(img);
         if (type === 'scrap' || type === 'unknown') return;
         const stats = parseStats(card, type);
+        
+        // Exclude items with durability < 100% (and clean up any existing WIA elements)
+        if (stats.durability != null && stats.durability < 100) {
+          const badge = card.querySelector('.wia-badge');
+          if (badge) badge.remove();
+          const topBanner = card.querySelector('.wia-top-banner');
+          if (topBanner) topBanner.remove();
+          card.style.boxShadow = '';
+          delete card.dataset.wiaDone;
+          return;
+        }
+
         // tier from alt suffix; fall back to card color.
         const resolvedTier = tier != null ? tier : detectTierByColor(card);
         const item = { card, img, type, alt, code, tier: resolvedTier, stats };
