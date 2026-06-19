@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         WareEra Inventory Advisor v0.5.3
+// @name         WareEra Inventory Advisor v0.5.4
 // @namespace    https://github.com/dev/warera-inventory-advisor
-// @version      0.5.3
+// @version      0.5.4
 // @description  Marks inventory equipment as KEEP / SELL / SCRAP based on stats and live market vs. scrap value.
 // @author       dev
 // @match        https://app.warera.io/*
@@ -1644,19 +1644,24 @@
     renderRateLimitBanner();
 
     const tokenInput = bg.querySelector('.wia-token');
-    tokenInput.value = getToken();
+    const oldToken = getToken();
+    tokenInput.value = oldToken;
 
     bg.querySelector('.wia-save').onclick = () => {
-      setToken(tokenInput.value.trim());
+      const newToken = tokenInput.value.trim();
+      const tokenChanged = oldToken !== newToken;
+      setToken(newToken);
 
       const useHighCrit = bg.querySelector('.wia-high-crit').checked;
       GM_setValue(KEYS.highCritWeightForHold, useHighCrit);
       CONFIG.useHighCritWeightForHold = useHighCrit;
 
-      clearCache(); // force refetch with new token/prices
+      if (tokenChanged) {
+        clearCache();
+      }
       bg.remove();
       warnBanner = null;
-      scanInventory(true);
+      scanInventory(tokenChanged);
     };
     bg.querySelector('.wia-clear').onclick = () => { clearCache(); renderDataStrip(dataStrip); updateStatusIndicator(); };
     bg.querySelector('.wia-close').onclick = () => { bg.remove(); warnBanner = null; };
