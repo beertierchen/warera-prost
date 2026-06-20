@@ -18,6 +18,33 @@
   const NOTE_KEY_PREFIX = "warera-note:";
   const SCAN_DEBOUNCE_MS = 150;
 
+  const I18N = {
+    en: {
+      editNote: "Edit note",
+      editNoteAria: "Edit note for {user}",
+      close: "Close",
+      closeEditorAria: "Close note editor",
+      notePlaceholder: "Note for this player...",
+      deleteNote: "Delete",
+      cancel: "Cancel",
+      save: "Save",
+      noteTitle: "Note: {user}",
+      userLabel: "User",
+    },
+    de: {
+      editNote: "Notiz bearbeiten",
+      editNoteAria: "Notiz für {user} bearbeiten",
+      close: "Schließen",
+      closeEditorAria: "Notizeditor schließen",
+      notePlaceholder: "Notiz zu diesem Spieler...",
+      deleteNote: "Löschen",
+      cancel: "Abbrechen",
+      save: "Speichern",
+      noteTitle: "Notiz: {user}",
+      userLabel: "Benutzer",
+    },
+  };
+
   let activeUserId = null;
   let activeUserName = "";
   let scanTimer = null;
@@ -196,6 +223,29 @@
     scanTimer = window.setTimeout(scanUserLinks, SCAN_DEBOUNCE_MS);
   }
 
+  function getLocale() {
+    if (typeof window !== "undefined" && (window.__WIA_LOCALE__ === "de" || window.__WIA_LOCALE__ === "en")) {
+      return window.__WIA_LOCALE__;
+    }
+
+    const stored = GM_getValue("wia.locale", "de");
+    return stored === "en" ? "en" : "de";
+  }
+
+  function t(key, params) {
+    const locale = getLocale();
+    const dict = I18N[locale] || I18N.en;
+    let template = dict[key] || I18N.en[key] || key;
+
+    if (params) {
+      Object.keys(params).forEach((param) => {
+        template = template.replace(new RegExp(`\\{${param}\\}`, "g"), params[param]);
+      });
+    }
+
+    return template;
+  }
+
   function scanUserLinks() {
     document.querySelectorAll(LINK_SELECTOR).forEach((link) => {
       if (!(link instanceof HTMLAnchorElement)) {
@@ -220,8 +270,8 @@
     icon.type = "button";
     icon.className = "warera-note-icon";
     icon.textContent = hasNote(userId) ? "📝" : "✎";
-    icon.title = "Notiz bearbeiten";
-    icon.setAttribute("aria-label", `Notiz zu ${link.textContent.trim() || "Benutzer"} bearbeiten`);
+    icon.title = t("editNote");
+    icon.setAttribute("aria-label", t("editNoteAria", { user: link.textContent.trim() || t("userLabel") }));
 
     if (hasNote(userId)) {
       icon.classList.add("has-note");
@@ -273,8 +323,8 @@
     closeButton.type = "button";
     closeButton.className = "warera-note-close";
     closeButton.textContent = "×";
-    closeButton.title = "Schließen";
-    closeButton.setAttribute("aria-label", "Notizeditor schließen");
+    closeButton.title = t("close");
+    closeButton.setAttribute("aria-label", t("closeEditorAria"));
     closeButton.addEventListener("click", closeEditor);
 
     const body = document.createElement("div");
@@ -282,7 +332,7 @@
 
     const textarea = document.createElement("textarea");
     textarea.className = "warera-note-textarea";
-    textarea.placeholder = "Notiz zu diesem Spieler...";
+    textarea.placeholder = t("notePlaceholder");
 
     const actions = document.createElement("div");
     actions.className = "warera-note-actions";
@@ -290,7 +340,7 @@
     const deleteButton = document.createElement("button");
     deleteButton.type = "button";
     deleteButton.className = "warera-note-button";
-    deleteButton.textContent = "Löschen";
+    deleteButton.textContent = t("deleteNote");
     deleteButton.addEventListener("click", () => {
       saveNote("");
       closeEditor();
@@ -299,13 +349,13 @@
     const cancelButton = document.createElement("button");
     cancelButton.type = "button";
     cancelButton.className = "warera-note-button";
-    cancelButton.textContent = "Abbrechen";
+    cancelButton.textContent = t("cancel");
     cancelButton.addEventListener("click", closeEditor);
 
     const saveButton = document.createElement("button");
     saveButton.type = "button";
     saveButton.className = "warera-note-button primary";
-    saveButton.textContent = "Speichern";
+    saveButton.textContent = t("save");
     saveButton.addEventListener("click", () => {
       saveNote(textarea.value);
       closeEditor();
@@ -333,7 +383,7 @@
   function openEditor(userId, userName) {
     activeUserId = userId;
     activeUserName = userName;
-    modal.title.textContent = `Notiz: ${userName}`;
+    modal.title.textContent = t("noteTitle", { user: userName });
     modal.textarea.value = getNote(userId);
     modal.backdrop.classList.add("is-open");
     modal.textarea.focus();
@@ -378,7 +428,7 @@
       icon.textContent = hasSavedNote ? "📝" : "✎";
       icon.setAttribute(
         "aria-label",
-        `Notiz zu ${activeUserName || link.textContent.trim() || "Benutzer"} bearbeiten`,
+        t("editNoteAria", { user: activeUserName || link.textContent.trim() || t("userLabel") }),
       );
     });
   }

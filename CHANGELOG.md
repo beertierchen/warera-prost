@@ -1,5 +1,23 @@
 # CHANGELOG
 
+## 2026-06-20 01:05 | WareEra Inventory Advisor v0.6.5
+
+**Geänderte Dateien / Changed files:**
+- `warera-inventory-advisor.user.js`
+- `warera-notes.user.js`
+
+**Änderungen (Deutsch):**
+- **Sprachauswahl per Flagge:** Die Sprache wird jetzt bewusst über eine Flaggen-Auswahl im Einstellungsfenster gewählt. Standard ist Deutsch, Englisch kann per Dropdown umgeschaltet werden.
+- **Keine automatische Spracherkennung mehr:** Die Umschaltung folgt nur noch der gespeicherten Auswahl und bleibt stabil, auch wenn die Spieloberfläche ihre Sprache wechselt.
+- **Hinweise synchronisiert:** Das Notiz-Script übernimmt die gemeinsame Sprache des Advisors, falls beide zusammen laufen.
+- **Technische Aufräumarbeiten:** Preisformatierung und Zahlenparser wurden robuster gemacht, und die temporären `TEST`-Namen wurden wieder entfernt.
+
+**Changes (English):**
+- Added an explicit flag-based language selector in settings, with German as the default and English available from the dropdown.
+- Removed automatic language detection so the chosen locale stays stable even when the game UI changes language.
+- Notes now follow the advisor’s shared locale when both scripts are present.
+- Hardened price formatting and number parsing, and removed the temporary `TEST` labels.
+
 ## 2026-06-20 00:20 | WareEra Inventory Advisor v0.6.4
 
 **Geänderte Dateien / Changed files:**

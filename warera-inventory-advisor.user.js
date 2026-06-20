@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WareEra Inventory Advisor
 // @namespace    TBD
-// @version      0.6.4
+// @version      0.6.5
 // @description  A client-side visual assistant for WareEra. Shows KEEP/SELL/SCRAP advice based on local stats and market floors. Optionally integrates the official game API via user API key. No automation.
 // @author       beertierchen
 // @match        https://app.warera.io/*
@@ -190,7 +190,223 @@
 
     useHighCritWeightForHold: false,
 
-    debug: true,
+    debug: false,
+
+    locale: 'de', // default locale; can be changed in settings
+
+    i18n: {
+      en: {
+        never: 'never',
+        justNow: 'just now',
+        minAgo: '{min} min ago',
+        hMAgo: '{h}h {m}m ago',
+        priceTooltip: 'Top: Scrap Value · Bottom: Market Value',
+        weaponStats: 'Attack: {attack}  Crit: {crit}%',
+        weaponScore: 'Weapon score: {score}',
+        durability: 'Durability: {durability}%',
+        scrapTooltip: 'Scrap: {yield} (est.) × {price}/u = {val}',
+        txRef: 'Market value (6d tx ref): {val} (avg of {count} txs with {diff}, total {total} txs)',
+        exactMatch: 'exact match',
+        diffMatch: 'diff ±{diff}',
+        estNoOffers: 'Market value (est., no offers): {val}',
+        scrapedFloor: 'Market value (scraped floor): {val}',
+        marketRoll: 'Market value @ roll: {val} (floor {floor}, {offers} offers)',
+        stalePrices: '⚠ cached/stale prices — refresh in settings',
+        scrapeSuccess: '✓ {count} equipment prices scraped successfully!',
+        notEquipment: 'not equipment',
+        rangeLabelWeapon: 'score {score} >= {threshold} [90% of range {min} - {max}]',
+        rangeLabelArmor: 'stat {stat}{pct} >= {threshold}{pct} [90% of range {min}{pct} - {max}{pct}]',
+        topItemscore: 'Top Itemscore',
+        settingsGearTitle: 'Inventory Advisor Settings',
+        stockKeepReason: 'Stock: top 3 roll (#{rank} of {size} {label})',
+        highRollT3: 'high roll basestat {stat} >= 11 (T3 blue)',
+        critCondition: 'Critical Condition: {tierLabel} weapon crit {crit}% >= {min}% (range {range})',
+        topRollOffers: 'stat {stat} in top {pct}% of {offers} live offers',
+        notTopRollOffers: 'stat {stat} not top-roll ({offers} offers)',
+        topRollInv: 'stat {stat} in top {pct}% of {items} inventory items',
+        notTopRollInv: 'stat {stat} not top-roll in inventory ({items} items)',
+        unknownRollRank: 'roll rank unknown (no offers/inventory comparison)',
+        noPriceData: 'no price data',
+        mktNoScrap: 'market {val} (net {net}, no scrap value)',
+        heldCrit: 'held for Critical Condition',
+        noMktHeldCrit: 'no market price, but held for Critical Condition',
+        scrapNoMkt: 'scrap {val} (no market price)',
+        scrapOverMkt: 'scrap {scrap} > market net {net} (gross {val})',
+        scrapOverMktHeld: 'scrap {scrap} > market net {net} (gross {val}), but held for Critical Condition',
+        mktOverScrapHeld: 'market net {net} (gross {val}) >= scrap {scrap}, but held for Critical Condition',
+        mktOverScrap: 'market net {net} (gross {val}) >= scrap {scrap}',
+        statLabel_helmet: 'Crit Damage',
+        statLabel_gloves: 'Precision',
+        statLabel_chest: 'Armor',
+        statLabel_pants: 'Armor',
+        statLabel_boots: 'Dodge',
+        statLabel_stat: 'Stat',
+        defend: 'Defend',
+        resist: 'Resist',
+        allies: 'Allies',
+        enemies: 'Enemies',
+        yourCountry: 'Your country',
+        editNote: 'Edit Note',
+        deleteNote: 'Delete Note',
+        saveNote: 'Save',
+        notePlaceholder: 'Enter note...',
+        settingsTitle: 'WareEra Inventory Advisor',
+        gearTitle: 'WareEra Inventory Advisor — Settings',
+        settingsDesc: 'The Inventory Advisor gives a quick overview of whether items should be kept (KEEP/HOLD), sold (SELL), or salvaged (SCRAP).',
+        settingsApiToken: 'API Token (api2.warera.io)',
+        settingsTokenPlaceholder: 'Bearer token',
+        settingsTokenNote: 'Saved locally (GM_setValue, lightly obfuscated — not real encryption).',
+        settingsHighCritCheckbox: 'Use high crit weight for HOLD evaluation (6.00 instead of 4.15)',
+        settingsLiveOffersCheckbox: 'Fetch live offers via API (requires API Token)',
+        settingsSave: 'Save',
+        settingsClear: 'Clear Cache',
+        settingsClose: 'Close',
+        settingsHelpSummary: 'ℹ Cheat Sheet (Help & Explanation)',
+        settingsHelpTitle: 'ℹ Cheat Sheet (Help & Explanation)',
+        localeOption_de: 'German',
+        localeOption_en: 'English',
+        settingsHelpContent: `<strong>Meaning of recommendations (Color + Symbol):</strong>
+            <ul>
+              <li>💎 <strong>KEEP (Blue)</strong>: Keep the item. Applies to your top 3 stock (by type/tier) or if the item is in the top 33% (Top Roll) of live offers or inventory.</li>
+              <li>✋ <strong>HOLD (Orange)</strong>: Keep/reserve. The item lies in the best 10% of the theoretically possible stat range (Top Itemscore). Only assigned if it is not 💎 KEEP.</li>
+              <li>💰 <strong>SELL (Green)</strong>: Sell on the market. Economically sound as the net market price (minus 1% tax) exceeds salvage value.</li>
+              <li>🔨 <strong>SCRAP (Red)</strong>: Scrap/salvage. Economically sound as salvage value exceeds net market price.</li>
+            </ul>
+            <strong>Overlays on inventory cards:</strong>
+            <ul>
+              <li><strong>Top left (Stat value):</strong> The armor stat or weapon score. <em>Blue background</em> = Top 3 in stock (Stock Keep). <em>Gray</em> = Normal.</li>
+              <li><strong>Bottom (Prices):</strong> Stacked 🔨 [Scrap value] and 💰 [Market price]. <em>Green background</em> = Scrapping is better. <em>Orange</em> = Selling is better.</li>
+            </ul>
+            <strong>Settings:</strong>
+            <ul>
+              <li><strong>API Token</strong>: Required to fetch fresh market values (equipment and scrap).</li>
+              <li><strong>High Crit Weight</strong>: Increases crit weight from 4.15 to 6.00 for the HOLD evaluation.</li>
+            </ul>`,
+        settingsPriceFormat: 'Price format: [Scrap Value]/[Market Price]',
+        menuSettings: 'Inventory Advisor — Settings',
+        menuClearRescan: 'Clear Cache + Rescan',
+        gearTooltipTitle: 'Inventory Advisor — Settings',
+        gearTooltipScrapPrice: 'Scrap price: {price}/u ({age})',
+        gearTooltipItemPrices: 'Item prices: {count} cached ({age})',
+        gearTooltipTxHistory: 'Tx history: {count} items cached',
+        gearTooltipRateLimited: 'API limit — waiting {sec}s',
+        dataStrip_scrapPrice: 'Scrap price:  {price} / unit   (fetched {age})\n',
+        dataStrip_itemPrices: 'Item prices:  {count} cached         (fetched {age})\n',
+        dataStrip_scrapedMkt: 'Scraped mkt:  {count} items stored    (visit Market -> Equipments to update)\n',
+        dataStrip_txHistory: 'Tx history:   {count} items cached\n',
+        dataStrip_status: 'Status:       {status}',
+        status_rateLimited: 'RATE-LIMITED',
+        status_stale: 'stale (past cache TTL)',
+        status_fresh: 'fresh',
+        rateLimitBanner: '⚠ API limit reached! Backoff active ({sec}s) — displaying cached prices.'
+      },
+      de: {
+        never: 'nie',
+        justNow: 'gerade eben',
+        minAgo: 'vor {min} Min.',
+        hMAgo: 'vor {h}h {m}m',
+        priceTooltip: 'Oben: Schrottwert · Unten: Marktwert',
+        weaponStats: 'Angriff: {attack}  Krit: {crit}%',
+        weaponScore: 'Waffen-Score: {score}',
+        durability: 'Haltbarkeit: {durability}%',
+        scrapTooltip: 'Schrott: {yield} (ca.) × {price}/Einh. = {val}',
+        txRef: 'Marktwert (6t Transaktions-Ref): {val} (Schnitt aus {count} Transaktionen mit {diff}, insg. {total} Transaktionen)',
+        exactMatch: 'genaue Übereinstimmung',
+        diffMatch: 'Diff. ±{diff}',
+        estNoOffers: 'Marktwert (geschätzt, keine Angebote): {val}',
+        scrapedFloor: 'Marktwert (gescraptes Minimum): {val}',
+        marketRoll: 'Marktwert für Roll: {val} (Minimum {floor}, {offers} Angebote)',
+        stalePrices: '⚠ Veraltete Preise — in den Einstellungen aktualisieren',
+        scrapeSuccess: '✓ {count} Equipment-Preise erfolgreich gescannt!',
+        notEquipment: 'keine Ausrüstung',
+        rangeLabelWeapon: 'Score {score} >= {threshold} [90% des Bereichs {min} - {max}]',
+        rangeLabelArmor: 'Stat {stat}{pct} >= {threshold}{pct} [90% des Bereichs {min}{pct} - {max}{pct}]',
+        topItemscore: 'Top-Itemscore',
+        settingsGearTitle: 'Inventory Advisor Einstellungen',
+        stockKeepReason: 'Lagerbestand: Top 3 Roll (#{rank} von {size} {label})',
+        highRollT3: 'Hoher Roll: Basiswert {stat} >= 11 (T3 Blau)',
+        critCondition: 'Kritischer Zustand: {tierLabel} Waffenkrit {crit}% >= {min}% (Bereich {range})',
+        topRollOffers: 'Wert {stat} in den Top {pct}% von {offers} Live-Angeboten',
+        notTopRollOffers: 'Wert {stat} nicht im Top-Roll ({offers} Angebote)',
+        topRollInv: 'Wert {stat} in den Top {pct}% von {items} Inventar-Gegenständen',
+        notTopRollInv: 'Wert {stat} nicht im Top-Roll im Inventar ({items} Gegenstände)',
+        unknownRollRank: 'Roll-Rang unbekannt (keine Angebote/Inventarvergleich)',
+        noPriceData: 'keine Preisdaten',
+        mktNoScrap: 'Markt {val} (Netto {net}, kein Schrottwert)',
+        heldCrit: 'behalten wegen kritischem Zustand',
+        noMktHeldCrit: 'kein Marktpreis, aber behalten wegen kritischem Zustand',
+        scrapNoMkt: 'Schrott {val} (kein Marktpreis)',
+        scrapOverMkt: 'Schrott {scrap} > Markt Netto {net} (Brutto {val})',
+        scrapOverMktHeld: 'Schrott {scrap} > Markt Netto {net} (Brutto {val}), aber behalten wegen kritischem Zustand',
+        mktOverScrapHeld: 'Markt Netto {net} (Brutto {val}) >= Schrott {scrap}, aber behalten wegen kritischem Zustand',
+        mktOverScrap: 'Markt Netto {net} (Brutto {val}) >= Schrott {scrap}',
+        statLabel_helmet: 'Kritischer Schaden',
+        statLabel_gloves: 'Präzision',
+        statLabel_chest: 'Rüstung',
+        statLabel_pants: 'Rüstung',
+        statLabel_boots: 'Ausweichen',
+        statLabel_stat: 'Wert',
+        defend: 'Verteidigen',
+        resist: 'Widerstehen',
+        allies: 'Verbündete',
+        enemies: 'Gegner',
+        yourCountry: 'Dein Land',
+        editNote: 'Notiz bearbeiten',
+        deleteNote: 'Notiz löschen',
+        saveNote: 'Speichern',
+        notePlaceholder: 'Notiz eingeben...',
+        settingsTitle: 'WareEra Inventory Advisor',
+        gearTitle: 'WareEra Inventory Advisor — Einstellungen',
+        settingsDesc: 'Der Inventory Advisor soll eine schnelle Übersicht geben, ob Items behalten (KEEP/HOLD), gewinnbringend verkauft (SELL) oder zerschreddert (SCRAP) werden sollten.',
+        settingsApiToken: 'API-Token (api2.warera.io)',
+        settingsTokenPlaceholder: 'Bearer-Token',
+        settingsTokenNote: 'Lokal gespeichert (GM_setValue, leicht verschleiert — keine echte Verschlüsselung).',
+        settingsHighCritCheckbox: 'Erhöhte Crit-Gewichtung für HOLD-Bewertung verwenden (6.00 statt 4.15)',
+        settingsLiveOffersCheckbox: 'Live-Angebote über API abrufen (benötigt API-Token)',
+        settingsSave: 'Speichern',
+        settingsClear: 'Cache leeren',
+        settingsClose: 'Schließen',
+        settingsHelpSummary: 'ℹ Spickzettel (Hilfe & Erklärung)',
+        settingsHelpTitle: 'ℹ Spickzettel (Hilfe & Erklärung)',
+        localeOption_de: 'Deutsch',
+        localeOption_en: 'Englisch',
+        settingsHelpContent: `<strong>Bedeutung der Empfehlungen (Farbe + Symbol):</strong>
+            <ul>
+              <li>💎 <strong>KEEP (Blau)</strong>: Item behalten. Gilt für die Top 3 deines Bestands (pro Typ/Tier) oder falls das Item unter den besten 33% (Top-Roll) der Live-Angebote oder deines Inventars liegt.</li>
+              <li>✋ <strong>HOLD (Orange)</strong>: Behalten / Aufheben. Das Item liegt in den besten 10% des theoretisch möglichen Wertebereichs (Top-Itemscore). Wird nur vergeben, wenn es kein 💎 KEEP ist.</li>
+              <li>💰 <strong>SELL (Grün)</strong>: Im Markt verkaufen. Lohnt sich wirtschaftlich, da der Netto-Marktpreis (abzüglich 1% Steuer) den Schredder-Wert übersteigt.</li>
+              <li>🔨 <strong>SCRAP (Rot)</strong>: Zerschreddern. Lohnt sich wirtschaftlich, da der Schredder-Wert höher ist als der Netto-Verkaufspreis.</li>
+            </ul>
+            <strong>Anzeigen auf den Inventarkarten:</strong>
+            <ul>
+              <li><strong>Oben links (Stat-Wert):</strong> Der Rüstungs-Stat bzw. Waffenscore (Attack + Crit * Gewicht). <em>Blau unterlegt</em> = Top 3 in deinem Bestand (Stock Keep). <em>Grau</em> = Normal.</li>
+              <li><strong>Unten (Preise):</strong> Untereinander 🔨 [Schrottwert] und 💰 [Marktpreis]. <em>Grün unterlegt</em> = Schreddern lohnt sich mehr. <em>Orange</em> = Verkaufen lohnt sich mehr.</li>
+            </ul>
+            <strong>Einstellungen:</strong>
+            <ul>
+              <li><strong>API-Token</strong>: Erforderlich für den Abruf aktueller Marktpreise (Ausrüstung und Schrott).</li>
+              <li><strong>Erhöhte Crit-Gewichtung</strong>: Erhöht den Crit-Gewichtungsfaktor bei Waffen von 4.15 auf 6.00 für die HOLD-Prüfung.</li>
+            </ul>`,
+        settingsPriceFormat: 'Preisformat: [Schrottwert]/[Marktpreis]',
+        menuSettings: 'Inventory Advisor — Einstellungen',
+        menuClearRescan: 'Cache leeren + neu scannen',
+        gearTooltipTitle: 'Inventory Advisor — Einstellungen',
+        gearTooltipScrapPrice: 'Schrottpreis: {price}/Einh. ({age})',
+        gearTooltipItemPrices: 'Item-Preise: {count} im Cache ({age})',
+        gearTooltipTxHistory: 'Transaktions-Verlauf: {count} Items im Cache',
+        gearTooltipRateLimited: 'API-Limit — Wartezeit {sec}s',
+        dataStrip_scrapPrice: 'Schrottpreis:  {price} / Einh.   (geladen {age})\n',
+        dataStrip_itemPrices: 'Item-Preise:  {count} im Cache   (geladen {age})\n',
+        dataStrip_scrapedMkt: 'Gescrapter Markt: {count} Items   (besuche Markt -> Ausrüstung zum Updaten)\n',
+        dataStrip_txHistory: 'Transaktions-Verlauf: {count} Items im Cache\n',
+        dataStrip_status: 'Status:       {status}',
+        status_rateLimited: 'API-LIMITERREICHT',
+        status_stale: 'veraltet (Cache TTL abgelaufen)',
+        status_fresh: 'aktuell',
+        rateLimitBanner: '⚠ API-Limit erreicht! Wartezeit aktiv ({sec}s) — zeige zwischengespeicherte Preise.'
+      }
+    },
+
   };
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -199,6 +415,7 @@
   const NS = 'wia.';
   const KEYS = {
     token: NS + 'token',
+    locale: NS + 'locale',
     priceCache: NS + 'priceCache',     // { data, fetchedAt } — materials map
     scrapCache: NS + 'scrapCache',     // { price, fetchedAt } — legacy, unused
     offersCache: NS + 'offersCache',   // { [itemCode]: { data, fetchedAt } } — equipment offers
@@ -209,6 +426,8 @@
     highCritWeightForHold: NS + 'highCritHold',
     useLiveOffersApi: NS + 'useLiveOffers',
   };
+  let menuSettingsId = null;
+  let menuClearId = null;
   const OBF_KEY = 'wareEra.advisor.v1'; // XOR pad — obfuscation only, not encryption
 
   function xor(str, pad) {
@@ -236,6 +455,42 @@
     GM_setValue(KEYS.apiBase, '');
     inFlightPrices = null;
     log('cache cleared');
+  }
+
+  let settingsModalBg = null;
+
+  function localeFlag(locale) {
+    return locale === 'en' ? '🇬🇧' : '🇩🇪';
+  }
+
+  function localeMenuLabel(locale) {
+    return locale === 'en' ? t('localeOption_en') : t('localeOption_de');
+  }
+
+  function setLocale(locale) {
+    if (locale !== 'de' && locale !== 'en') return;
+    CONFIG.locale = locale;
+    if (typeof window !== 'undefined') {
+      window.__WIA_LOCALE__ = locale;
+    }
+    GM_setValue(KEYS.locale, locale);
+    refreshMenuCommands();
+    updateStatusIndicator();
+    if (settingsModalBg && document.body.contains(settingsModalBg)) {
+      renderSettingsModal(settingsModalBg);
+    }
+  }
+
+  function refreshMenuCommands() {
+    if (typeof GM_unregisterMenuCommand === 'function') {
+      if (menuSettingsId != null) GM_unregisterMenuCommand(menuSettingsId);
+      if (menuClearId != null) GM_unregisterMenuCommand(menuClearId);
+    }
+    menuSettingsId = GM_registerMenuCommand(t('menuSettings'), openSettings);
+    menuClearId = GM_registerMenuCommand(t('menuClearRescan'), () => {
+      clearCache();
+      if (isInventoryPage()) scanInventory(true);
+    });
   }
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -698,6 +953,83 @@
     }
   }
 
+  // Locale-safe number parser supporting commas, dots, and k/m/tsd/mio suffixes
+  function parseNum(str) {
+    if (str == null) return null;
+    if (typeof str === 'number') return str;
+    let s = str.toString().replace(/\s+/g, ' ').trim();
+    if (!s) return null;
+
+    let multiplier = 1;
+    let hasSuffix = false;
+    const suffixMatch = s.match(/([0-9][0-9.,\s]*)\s*(k|tsd\.?|mio\.?|m)\s*$/i);
+    if (suffixMatch) {
+      hasSuffix = true;
+      const suffix = suffixMatch[2].toLowerCase();
+      if (suffix === 'k' || suffix.startsWith('tsd')) {
+        multiplier = 1000;
+      } else if (suffix === 'm' || suffix.startsWith('mio')) {
+        multiplier = 1000000;
+      }
+      s = suffixMatch[1].trim();
+    }
+
+    // Extract the main numeric block (digits, signs, dots, commas)
+    const numMatch = s.match(/-?\d+(?:[.,\s]\d+)*/);
+    if (!numMatch) return null;
+    let numStr = numMatch[0].replace(/\s+/g, '');
+
+    // Resolve decimal separator vs thousand grouping separator
+    const separators = numStr.match(/[.,]/g);
+    if (separators) {
+      if (separators.length > 1) {
+        // Multiple separators: last one is decimal, others are grouping
+        const lastSep = separators[separators.length - 1];
+        const parts = numStr.split(lastSep);
+        const integerPart = parts[0].replace(/[.,]/g, '');
+        const decimalPart = parts[1];
+        numStr = integerPart + '.' + decimalPart;
+      } else {
+        // Single separator
+        const sep = separators[0];
+        const parts = numStr.split(sep);
+        const decimalPart = parts[1];
+        if (!hasSuffix && decimalPart.length === 3) {
+          // Exactly 3 digits -> grouping separator
+          numStr = parts[0] + decimalPart;
+        } else {
+          // Decimal separator
+          numStr = parts[0] + '.' + decimalPart;
+        }
+      }
+    }
+
+    const parsed = parseFloat(numStr);
+    return isNaN(parsed) ? null : parsed * multiplier;
+  }
+
+  function getLocale() {
+    if (CONFIG.locale === 'de' || CONFIG.locale === 'en') return CONFIG.locale;
+    if (typeof window !== 'undefined' && (window.__WIA_LOCALE__ === 'de' || window.__WIA_LOCALE__ === 'en')) {
+      return window.__WIA_LOCALE__;
+    }
+    return 'de';
+  }
+
+  // Translation helper function
+  function t(key, params) {
+    const locale = getLocale();
+    const dict = CONFIG.i18n[locale] || CONFIG.i18n.en;
+    let template = dict[key] || CONFIG.i18n.en[key] || key;
+
+    if (params) {
+      Object.keys(params).forEach(k => {
+        template = template.replace(new RegExp(`\\{${k}\\}`, 'g'), params[k]);
+      });
+    }
+    return template;
+  }
+
   // Walk up to the element that visually represents the card (has a colored
   // border/background). Falls back to a few levels up from the image.
   function climbToCard(img) {
@@ -835,8 +1167,8 @@
 
     // durability = the trailing % in the card (the progress bar).
     const text = (cleanCard.textContent || '').replace(/\s+/g, ' ').trim();
-    const percents = (text.match(/(\d+(?:[.,]\d+)?)\s*%/g) || [])
-      .map(p => parseFloat(p.replace(',', '.')));
+    const percents = (text.match(/(\d+(?:[.,\s]\d+)?)\s*%/g) || [])
+      .map(p => parseNum(p));
     if (percents.length) stats.durability = percents[percents.length - 1];
 
     // scrap yield is NOT shown on the inventory card in WareEra; fall back to a
@@ -856,9 +1188,9 @@
       el = el.parentElement;
       if (!el) break;
       const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
-      const nums = text.match(/\d+(?:\.\d+)?/g) || [];
+      const nums = text.match(/\d+(?:[.,\s]\d+)*/g) || [];
       if (nums.length === 1) {
-        return parseFloat(nums[0]);
+        return parseNum(nums[0]);
       } else if (nums.length > 1) {
         break; // spans more than this stat — stop
       }
@@ -882,8 +1214,8 @@
       }
     }
     const text = (cleanCard.textContent || '').replace(/\s+/g, ' ').trim();
-    const m = (text || '').match(/(\d+)\s*scraps?/i);
-    return m ? parseInt(m[1], 10) : null;
+    const m = (text || '').match(/(\d+(?:[.,\s]\d+)*)\s*(?:scraps?|schrott)/i);
+    return m ? parseNum(m[1]) : null;
   }
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -984,7 +1316,7 @@
     const reasons = [];
 
     if (type === 'scrap' || type === 'unknown') {
-      return { action: ACTION.UNKNOWN, reason: 'not equipment', market: null, scrapValue: null };
+      return { action: ACTION.UNKNOWN, reason: t('notEquipment'), market: null, scrapValue: null };
     }
 
     item.stale = ctx.stale;
@@ -1012,7 +1344,7 @@
         if (holdScore >= thresholdVal) {
           isTopItemscore = true;
         }
-        rangeLabel = `score ${fmt(holdScore)} >= ${fmt(thresholdVal)} [90% of range ${fmt(rangeMin)} - ${fmt(rangeMax)}]`;
+        rangeLabel = t('rangeLabelWeapon', { score: fmt(holdScore), threshold: fmt(thresholdVal), min: fmt(rangeMin), max: fmt(rangeMax) });
       }
     } else {
       const range = CONFIG.statRangesByTier[type]?.[tier];
@@ -1024,7 +1356,7 @@
           isTopItemscore = true;
         }
         const isPercent = type === 'helmet' ? '%' : '';
-        rangeLabel = `stat ${fmt(myStat)}${isPercent} >= ${fmt(thresholdVal)}${isPercent} [90% of range ${rangeMin}${isPercent} - ${rangeMax}${isPercent}]`;
+        rangeLabel = t('rangeLabelArmor', { stat: fmt(myStat), threshold: fmt(thresholdVal), min: rangeMin, max: rangeMax, pct: isPercent });
       }
     }
 
@@ -1070,15 +1402,15 @@
 
     // 1) Rule: Keep top 3 of stock per color/tier
     if (item.isStockKeep === true) {
-      const label = type === 'weapon' ? `weapon (T${tier})` : item.code;
-      reasons.push(`Stock: top 3 roll (#${item.stockRank} of ${item.stockSize} ${label})`);
+      const label = type === 'weapon' ? (getLocale() === 'de' ? `Waffe (T${tier})` : `weapon (T${tier})`) : item.code;
+      reasons.push(t('stockKeepReason', { rank: item.stockRank, size: item.stockSize, label: label }));
       return decide(ACTION.KEEP, reasons, market, scrapValue);
     }
 
     // 2) Rule: Blue (T3) shoes/gloves/vest/pants basestat >= 11
     if (tier === 3 && type !== 'weapon' && (type === 'boots' || type === 'gloves' || type === 'chest' || type === 'pants')) {
       if (myStat >= 11) {
-        reasons.push(`high roll basestat ${fmt(myStat)} >= 11 (T3 blue)`);
+        reasons.push(t('highRollT3', { stat: fmt(myStat) }));
         return decide(ACTION.KEEP, reasons, market, scrapValue);
       }
     }
@@ -1089,29 +1421,29 @@
       const crit = stats.crit ?? 0;
       if (tier === 1 && crit >= 4) {
         avoidScrap = true;
-        reasons.push(`Critical Condition: T1 weapon crit ${fmt(crit)}% >= 4.00% (range 1% - 5%)`);
+        reasons.push(t('critCondition', { tierLabel: 'T1', crit: fmt(crit), min: '4.00', range: '1% - 5%' }));
       } else if (tier === 2 && crit >= 8) {
         avoidScrap = true;
-        reasons.push(`Critical Condition: T2 weapon crit ${fmt(crit)}% >= 8.00% (range 6% - 10%)`);
+        reasons.push(t('critCondition', { tierLabel: 'T2', crit: fmt(crit), min: '8.00', range: '6% - 10%' }));
       }
     }
 
     // 4) top roll -> KEEP (data-driven against live offers)
     const top = isTopRoll(offerData, type, myStat);
     if (top === true) {
-      reasons.push(`stat ${fmt(myStat)} in top ${Math.round(CONFIG.goodRollTopFraction * 100)}% of ${item.offerCount} live offers`);
+      reasons.push(t('topRollOffers', { stat: fmt(myStat), pct: Math.round(CONFIG.goodRollTopFraction * 100), offers: item.offerCount }));
       return decide(ACTION.KEEP, reasons, market, scrapValue);
     }
     if (top === false) {
-      reasons.push(`stat ${fmt(myStat)} not top-roll (${item.offerCount} offers)`);
+      reasons.push(t('notTopRollOffers', { stat: fmt(myStat), offers: item.offerCount }));
     } else {
       if (item.isInventoryTopRoll === true) {
-        reasons.push(`stat ${fmt(myStat)} in top ${Math.round(CONFIG.goodRollTopFraction * 100)}% of ${item.inventorySampleCount} inventory items`);
+        reasons.push(t('topRollInv', { stat: fmt(myStat), pct: Math.round(CONFIG.goodRollTopFraction * 100), items: item.inventorySampleCount }));
         return decide(ACTION.KEEP, reasons, market, scrapValue);
       } else if (item.isInventoryTopRoll === false) {
-        reasons.push(`stat ${fmt(myStat)} not top-roll in inventory (${item.inventorySampleCount} items)`);
+        reasons.push(t('notTopRollInv', { stat: fmt(myStat), items: item.inventorySampleCount }));
       } else {
-        reasons.push(`roll rank unknown (no offers/inventory comparison)`);
+        reasons.push(t('unknownRollRank'));
       }
     }
 
@@ -1120,7 +1452,7 @@
 
     if (finalDecision.action !== ACTION.KEEP && isTopItemscore) {
       finalDecision.action = ACTION.HOLD;
-      reasons.unshift(`Top Itemscore (${rangeLabel})`);
+      reasons.unshift(t('topItemscore') + ` (${rangeLabel})`);
       finalDecision.reason = reasons.join('; ');
     }
 
@@ -1131,55 +1463,59 @@
     const { value } = mkt;
 
     if (value == null && scrapValue == null) {
-      return decide(ACTION.UNKNOWN, [...reasons, 'no price data'], value, scrapValue);
+      return decide(ACTION.UNKNOWN, [...reasons, t('noPriceData')], value, scrapValue);
     }
     const taxRate = CONFIG.sellTaxRate ?? 0.01;
     const netMarketValue = value != null ? value * (1 - taxRate) : null;
 
     if (scrapValue == null) { // no scrap basis -> sell on whatever market we have
-      reasons.push(`market ${fmt(value)} (net ${fmt(netMarketValue)}, no scrap value)`);
+      reasons.push(t('mktNoScrap', { val: fmt(value), net: fmt(netMarketValue) }));
       if (avoidScrap) {
-        reasons.push(`held for Critical Condition`);
+        reasons.push(t('heldCrit'));
         return decide(ACTION.HOLD, reasons, value, scrapValue);
       }
       return decide(ACTION.SELL, reasons, value, scrapValue);
     }
     if (value == null) { // no market -> scrap
       if (avoidScrap) {
-        reasons.push(`no market price, but held for Critical Condition`);
+        reasons.push(t('noMktHeldCrit'));
         return decide(ACTION.HOLD, reasons, value, scrapValue);
       }
-      reasons.push(`scrap ${fmt(scrapValue)} (no market price)`);
+      reasons.push(t('scrapNoMkt', { val: fmt(scrapValue) }));
       return decide(ACTION.SCRAP, reasons, value, scrapValue);
     }
     if (scrapValue > netMarketValue) {
       if (avoidScrap) {
-        reasons.push(`scrap ${fmt(scrapValue)} > market net ${fmt(netMarketValue)} (gross ${fmt(value)}), but held for Critical Condition`);
+        reasons.push(t('scrapOverMktHeld', { scrap: fmt(scrapValue), net: fmt(netMarketValue), val: fmt(value) }));
         return decide(ACTION.HOLD, reasons, value, scrapValue);
       }
-      reasons.push(`scrap ${fmt(scrapValue)} > market net ${fmt(netMarketValue)} (gross ${fmt(value)})`);
+      reasons.push(t('scrapOverMkt', { scrap: fmt(scrapValue), net: fmt(netMarketValue), val: fmt(value) }));
       return decide(ACTION.SCRAP, reasons, value, scrapValue);
     }
     if (avoidScrap) {
-      reasons.push(`market net ${fmt(netMarketValue)} (gross ${fmt(value)}) >= scrap ${fmt(scrapValue)}, but held for Critical Condition`);
+      reasons.push(t('mktOverScrapHeld', { net: fmt(netMarketValue), val: fmt(value), scrap: fmt(scrapValue) }));
       return decide(ACTION.HOLD, reasons, value, scrapValue);
     }
-    reasons.push(`market net ${fmt(netMarketValue)} (gross ${fmt(value)}) >= scrap ${fmt(scrapValue)}`);
+    reasons.push(t('mktOverScrap', { net: fmt(netMarketValue), val: fmt(value), scrap: fmt(scrapValue) }));
     return decide(ACTION.SELL, reasons, value, scrapValue);
   }
 
   function decide(action, reasons, market, scrapValue) {
     return { action, reason: reasons.join('; '), market, scrapValue };
   }
-  function fmt(n) { return n == null ? '?' : Number(n).toFixed(4).replace(/0+$/, '').replace(/\.$/, ''); }
+  function fmt(n) {
+    if (n == null) return '?';
+    const raw = Number(n).toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
+    return getLocale() === 'de' ? raw.replace('.', ',') : raw;
+  }
 
   // "5 min ago" / "just now" / "never" for a stored fetchedAt timestamp.
-  function ageLabel(t) {
-    if (!t) return 'never';
-    const min = Math.floor((now() - t) / 60000);
-    if (min <= 0) return 'just now';
-    if (min < 60) return `${min} min ago`;
-    return `${Math.floor(min / 60)}h ${min % 60}m ago`;
+  function ageLabel(timestamp) {
+    if (!timestamp) return t('never');
+    const min = Math.floor((now() - timestamp) / 60000);
+    if (min <= 0) return t('justNow');
+    if (min < 60) return t('minAgo', { min: min });
+    return t('hMAgo', { h: Math.floor(min / 60), m: min % 60 });
   }
 
   // Snapshot of cache freshness for the UI indicators.
@@ -1378,7 +1714,7 @@
           mkRow('🔨', sVal),                  // top: scrap value
           mkRow(CONFIG.marketIconSvg, mVal)   // bottom: market value (coin-stack SVG)
         );
-        priceSub.title = 'Oben: Schrottwert · Unten: Marktwert';
+        priceSub.title = t('priceTooltip');
 
         // Color: green if scrap > market, orange if scrap <= market, gray if either is null
         if (sVal != null && mVal != null) {
@@ -1415,28 +1751,29 @@
     const tierLabel = item.tier != null ? (CONFIG.tiers[item.tier] || {}).label || `T${item.tier}` : '—';
     lines.push(`${item.code || item.type} · ${tierLabel}${item.tier != null ? ` (T${item.tier})` : ''}`);
     if (item.type === 'weapon') {
-      lines.push(`Attack: ${item.stats.attack ?? '?'}  Crit: ${item.stats.crit ?? '?'}%`);
-      if (item.weaponScore != null) lines.push(`Weapon score: ${item.weaponScore.toFixed(1)}`);
+      lines.push(t('weaponStats', { attack: item.stats.attack ?? '?', crit: item.stats.crit ?? '?' }));
+      if (item.weaponScore != null) lines.push(t('weaponScore', { score: item.weaponScore.toFixed(1) }));
     } else {
-      const label = CONFIG.statBySlot[item.type] || 'Stat';
+      const labelKey = 'statLabel_' + item.type;
+      const label = (CONFIG.i18n.en[labelKey]) ? t(labelKey) : t('statLabel_stat');
       lines.push(`${label}: ${item.stats.primaryPercent ?? '?'}`);
     }
-    if (item.stats.durability != null) lines.push(`Durability: ${item.stats.durability}%`);
+    if (item.stats.durability != null) lines.push(t('durability', { durability: item.stats.durability }));
     // scrap side: yield × unit-price = total (yield is a per-tier estimate)
-    lines.push(`Scrap: ${item.scrapYield ?? '?'} (est.) × ${fmt(item.scrapPriceUnit)}/u = ${fmt(result.scrapValue)}`);
+    lines.push(t('scrapTooltip', { yield: item.scrapYield ?? '?', price: fmt(item.scrapPriceUnit), val: fmt(result.scrapValue) }));
     // market side: transactions reference, live offers (floor + count) or per-tier estimate
     if (item.marketSource === 'transactions') {
-      const diffStr = item.txClosestDiff === 0 ? 'exact match' : `diff ±${fmt(item.txClosestDiff)}`;
-      lines.push(`Market value (6d tx ref): ${fmt(result.market)} (avg of ${item.txClosestCount} txs with ${diffStr}, total ${item.txCount} txs)`);
+      const diffStr = item.txClosestDiff === 0 ? t('exactMatch') : t('diffMatch', { diff: fmt(item.txClosestDiff) });
+      lines.push(t('txRef', { val: fmt(result.market), count: item.txClosestCount, diff: diffStr, total: item.txCount }));
     } else if (item.marketIsFallback) {
-      lines.push(`Market value (est., no offers): ${fmt(result.market)}`);
+      lines.push(t('estNoOffers', { val: fmt(result.market) }));
     } else if (item.offerCount === 0 && item.marketFloor != null) {
-      lines.push(`Market value (scraped floor): ${fmt(item.marketFloor)}`);
+      lines.push(t('scrapedFloor', { val: fmt(item.marketFloor) }));
     } else {
-      lines.push(`Market value @ roll: ${fmt(result.market)} (floor ${fmt(item.marketFloor)}, ${item.offerCount} offers)`);
+      lines.push(t('marketRoll', { val: fmt(result.market), floor: fmt(item.marketFloor), offers: item.offerCount }));
     }
     lines.push(`→ ${result.action}: ${result.reason}`);
-    if (item.stale) lines.push('⚠ cached/stale prices — refresh in settings');
+    if (item.stale) lines.push(t('stalePrices'));
     return lines.join('\n');
   }
 
@@ -1455,7 +1792,7 @@
       font: 600 13px system-ui, sans-serif; box-shadow: 0 4px 12px rgba(0,0,0,.5);
       border: 1px solid #2ea043; transition: opacity 0.5s ease;
     `;
-    toast.textContent = `✓ ${count} Equipment-Preise erfolgreich gescannt!`;
+    toast.textContent = t('scrapeSuccess', { count: count });
     document.body.appendChild(toast);
     setTimeout(() => {
       toast.style.opacity = '0';
@@ -1480,9 +1817,9 @@
         price = numberNearClean(icon);
       } else {
         const text = el.textContent || '';
-        const match = text.match(/(\d+(?:\.\d+)?)/);
+        const match = text.match(/(\d+(?:[.,\s]\d+)*)/);
         if (match) {
-          price = parseFloat(match[1]);
+          price = parseNum(match[1]);
         }
       }
 
@@ -1920,11 +2257,33 @@
         background: #5a1e02; border: 1px solid #bd561d; color: #ffce91; font-weight: 600;
       }
       .wia-note { color: #8b949e; font-size: 11px; margin-top: 6px; }
+      .wia-modal-topbar {
+        display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+        margin-bottom: 12px;
+      }
+      .wia-modal-titlewrap { min-width: 0; flex: 1 1 auto; }
+      .wia-modal-topbar h2 { margin: 0; font-size: 16px; }
+      .wia-locale-wrap { position: relative; flex: 0 0 auto; }
+      .wia-locale-btn {
+        min-width: 40px; height: 32px; border-radius: 8px; border: 1px solid #30363d;
+        background: #21262d; color: #fff; cursor: pointer; font-size: 18px; line-height: 1;
+      }
+      .wia-locale-btn:hover { border-color: #58a6ff; }
+      .wia-locale-menu {
+        position: absolute; top: 38px; right: 0; z-index: 30; min-width: 140px;
+        border: 1px solid #30363d; border-radius: 8px; background: #161b22;
+        box-shadow: 0 12px 30px rgba(0, 0, 0, .42); padding: 6px; display: none;
+      }
+      .wia-locale-menu.is-open { display: block; }
+      .wia-locale-item {
+        width: 100%; display: flex; align-items: center; gap: 8px; padding: 7px 8px;
+        border: 0; border-radius: 6px; background: transparent; color: #c9d1d9;
+        cursor: pointer; text-align: left; font: 600 13px/1.2 system-ui, sans-serif;
+      }
+      .wia-locale-item:hover { background: #21262d; }
     `);
   }
 
-  // Color the dot on the gear button: red = rate-limited, amber = stale/missing
-  // data, green = fresh. title carries the live numbers on hover.
   function updateStatusIndicator() {
     const dot = document.querySelector('.wia-gear-dot');
     const gear = document.querySelector('.wia-gear');
@@ -1932,12 +2291,17 @@
     const s = cacheStatus();
     const color = isRateLimited() ? '#f85149' : s.stale ? '#d29922' : '#3fb950';
     dot.style.background = color;
-    gear.title =
-      `Inventory Advisor\n` +
-      `Scrap price: ${fmt(s.scrapPrice)}/u (${ageLabel(s.scrapFetchedAt)})\n` +
-      `Item prices: ${s.priceCount} cached (${ageLabel(s.priceFetchedAt)})\n` +
-      `Tx history: ${s.txCodes || 0} items cached` +
-      (isRateLimited() ? `\n⚠ API limit — waiting ${Math.ceil(rateLimitRemainingMs() / 1000)}s` : '');
+    const titleLines = [
+      t('gearTooltipTitle'),
+      t('gearTooltipScrapPrice', { price: fmt(s.scrapPrice), age: ageLabel(s.scrapFetchedAt) }),
+      t('gearTooltipItemPrices', { count: s.priceCount, age: ageLabel(s.priceFetchedAt) }),
+      t('gearTooltipTxHistory', { count: s.txCodes || 0 })
+    ];
+    if (isRateLimited()) {
+      const waitSec = Math.ceil(rateLimitRemainingMs() / 1000);
+      titleLines.push(`⚠ ${t('gearTooltipRateLimited', { sec: waitSec })}`);
+    }
+    gear.title = titleLines.join('\n');
   }
 
   // Live data strip inside the settings modal. Built with textContent (never
@@ -1947,12 +2311,18 @@
     const s = cacheStatus();
     const scraped = GM_getValue(KEYS.scrapedPrices, {});
     const scrapedCount = Object.keys(scraped).length;
+    const statusText = isRateLimited()
+      ? t('status_rateLimited')
+      : s.stale
+        ? t('status_stale')
+        : t('status_fresh');
+
     el.textContent =
-      `Scrap price:  ${fmt(s.scrapPrice)} / unit   (fetched ${ageLabel(s.scrapFetchedAt)})\n` +
-      `Item prices:  ${s.priceCount} cached         (fetched ${ageLabel(s.priceFetchedAt)})\n` +
-      `Scraped mkt:  ${scrapedCount} items stored    (visit Market -> Equipments to update)\n` +
-      `Tx history:   ${s.txCodes || 0} items cached\n` +
-      `Status:       ${isRateLimited() ? 'RATE-LIMITED' : s.stale ? 'stale (past cache TTL)' : 'fresh'}`;
+      t('dataStrip_scrapPrice', { price: fmt(s.scrapPrice), age: ageLabel(s.scrapFetchedAt) }) +
+      t('dataStrip_itemPrices', { count: s.priceCount, age: ageLabel(s.priceFetchedAt) }) +
+      t('dataStrip_scrapedMkt', { count: scrapedCount }) +
+      t('dataStrip_txHistory', { count: s.txCodes || 0 }) +
+      t('dataStrip_status', { status: statusText });
   }
 
   let warnBanner = null;
@@ -1962,74 +2332,99 @@
     if (isRateLimited()) {
       const sec = Math.ceil(rateLimitRemainingMs() / 1000);
       warnBanner.style.display = 'block';
-      warnBanner.textContent = `⚠ API-Limit erreicht! Wartezeit aktiv (${sec}s) — zeige zwischengespeicherte Preise.`;
+      warnBanner.textContent = t('rateLimitBanner', { sec: sec });
     } else {
       warnBanner.style.display = 'none';
     }
   }
 
-  function openSettings() {
-    const bg = document.createElement('div');
-    bg.className = 'wia-modal-bg';
+  function renderSettingsModal(bg) {
+    if (!bg) return;
+    const currentLocale = getLocale();
+    const nextLocale = currentLocale === 'de' ? 'en' : 'de';
+    const prevToken = bg.querySelector('.wia-token')?.value ?? getToken();
+    const prevHighCrit = bg.querySelector('.wia-high-crit')?.checked ?? CONFIG.useHighCritWeightForHold;
+    const prevLiveOffers = bg.querySelector('.wia-live-offers')?.checked ?? CONFIG.useLiveOffersApi;
+
     bg.innerHTML = `
       <div class="wia-modal">
-        <h2>WareEra Inventory Advisor</h2>
-        <div style="font-size: 12px; color: #8b949e; margin-bottom: 12px; line-height: 1.4;">Der Inventory Advisor soll eine schnelle Übersicht geben, ob Items behalten (KEEP/HOLD), gewinnbringend verkauft (SELL) oder zerschreddert (SCRAP) werden sollten.</div>
+        <div class="wia-modal-topbar">
+          <div class="wia-modal-titlewrap">
+            <h2>${t('settingsTitle')}</h2>
+            <div style="font-size: 12px; color: #8b949e; margin-top: 4px; line-height: 1.4;">${t('settingsDesc')}</div>
+          </div>
+          <div class="wia-locale-wrap">
+            <button type="button" class="wia-locale-btn" title="${localeMenuLabel(currentLocale)}" aria-label="${localeMenuLabel(currentLocale)}">${localeFlag(currentLocale)}</button>
+            <div class="wia-locale-menu">
+              <button type="button" class="wia-locale-item" data-locale="${nextLocale}" aria-label="${localeMenuLabel(nextLocale)}">${localeFlag(nextLocale)} <span>${localeMenuLabel(nextLocale)}</span></button>
+            </div>
+          </div>
+        </div>
         <div class="wia-warn" style="display:none"></div>
         <div class="wia-data"></div>
-        <label>API-Token (api2.warera.io)</label>
-        <input type="password" class="wia-token" placeholder="Bearer token" />
-        <div class="wia-note">Lokal gespeichert (GM_setValue, leicht verschleiert — keine echte Verschlüsselung).</div>
+        <label>${t('settingsApiToken')}</label>
+        <input type="password" class="wia-token" placeholder="${t('settingsTokenPlaceholder')}" />
+        <div class="wia-note">${t('settingsTokenNote')}</div>
         <div style="margin-top: 10px; display: flex; align-items: center; gap: 8px;">
-          <input type="checkbox" class="wia-high-crit" style="width: auto;" ${CONFIG.useHighCritWeightForHold ? 'checked' : ''} />
-          <label style="margin: 0; font-weight: normal; cursor: pointer;">Erhöhte Crit-Gewichtung für HOLD-Bewertung verwenden (6.00 statt 4.15)</label>
+          <input type="checkbox" class="wia-high-crit" style="width: auto;" ${prevHighCrit ? 'checked' : ''} />
+          <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsHighCritCheckbox')}</label>
         </div>
         <div style="margin-top: 6px; display: flex; align-items: center; gap: 8px;">
-          <input type="checkbox" class="wia-live-offers" style="width: auto;" ${CONFIG.useLiveOffersApi ? 'checked' : ''} />
-          <label style="margin: 0; font-weight: normal; cursor: pointer;">Live-Angebote über API abrufen (benötigt API-Token)</label>
+          <input type="checkbox" class="wia-live-offers" style="width: auto;" ${prevLiveOffers ? 'checked' : ''} />
+          <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsLiveOffersCheckbox')}</label>
         </div>
         <details class="wia-help-details">
-          <summary class="wia-help-summary">ℹ Spickzettel (Hilfe & Erklärung)</summary>
-          <div class="wia-help-content">
-            <strong>Bedeutung der Empfehlungen (Farbe + Symbol):</strong>
-            <ul>
-              <li>💎 <strong>KEEP (Blau)</strong>: Item behalten. Gilt für die Top 3 deines Bestands (pro Typ/Tier) oder falls das Item unter den besten 33% (Top-Roll) der Live-Angebote oder deines Inventars liegt.</li>
-              <li>✋ <strong>HOLD (Orange)</strong>: Behalten / Aufheben. Das Item liegt in den besten 10% des theoretisch möglichen Wertebereichs (Top-Itemscore). Wird nur vergeben, wenn es kein 💎 KEEP ist.</li>
-              <li>💰 <strong>SELL (Grün)</strong>: Im Markt verkaufen. Lohnt sich wirtschaftlich, da der Netto-Marktpreis (abzüglich 1% Steuer) den Schredder-Wert übersteigt.</li>
-              <li>🔨 <strong>SCRAP (Rot)</strong>: Zerschreddern. Lohnt sich wirtschaftlich, da der Schredder-Wert höher ist als der Netto-Verkaufspreis.</li>
-            </ul>
-            <strong>Anzeigen auf den Inventarkarten:</strong>
-            <ul>
-              <li><strong>Oben links (Stat-Wert):</strong> Der Rüstungs-Stat bzw. Waffenscore (Attack + Crit * Gewicht). <em>Blau unterlegt</em> = Top 3 in deinem Bestand (Stock Keep). <em>Grau</em> = Normal.</li>
-              <li><strong>Oben rechts (Preise):</strong> Format <code>[Schredder-Wert]/[Marktpreis]</code>. <em>Grün unterlegt</em> = Schreddern lohnt sich mehr. <em>Orange</em> = Verkaufen lohnt sich mehr.</li>
-            </ul>
-            <strong>Einstellungen:</strong>
-            <ul>
-              <li><strong>API-Token</strong>: Erforderlich für den Abruf aktueller Marktpreise (Ausrüstung und Schrott).</li>
-              <li><strong>Erhöhte Crit-Gewichtung</strong>: Erhöht den Crit-Gewichtungsfaktor bei Waffen von 4.15 auf 6.00 für die HOLD-Prüfung.</li>
-            </ul>
-          </div>
+          <summary class="wia-help-summary">${t('settingsHelpSummary')}</summary>
+          <div class="wia-help-content">${t('settingsHelpContent')}</div>
         </details>
         <div class="wia-btns">
-          <button class="wia-btn primary wia-save">Speichern</button>
-          <button class="wia-btn wia-clear">Cache leeren</button>
-          <button class="wia-btn wia-close">Schließen</button>
+          <button class="wia-btn primary wia-save">${t('settingsSave')}</button>
+          <button class="wia-btn wia-clear">${t('settingsClear')}</button>
+          <button class="wia-btn wia-close">${t('settingsClose')}</button>
         </div>
       </div>`;
-    document.body.appendChild(bg);
 
-    warnBanner = bg.querySelector('.wia-warn');
+    const modal = bg.querySelector('.wia-modal');
     const dataStrip = bg.querySelector('.wia-data');
+    const tokenInput = bg.querySelector('.wia-token');
+    const localeBtn = bg.querySelector('.wia-locale-btn');
+    const localeMenu = bg.querySelector('.wia-locale-menu');
+    const localeItem = bg.querySelector('.wia-locale-item');
+
+    tokenInput.value = prevToken;
+    warnBanner = bg.querySelector('.wia-warn');
     renderDataStrip(dataStrip);
     renderRateLimitBanner();
 
-    const tokenInput = bg.querySelector('.wia-token');
-    const oldToken = getToken();
-    tokenInput.value = oldToken;
+    localeBtn.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      localeMenu.classList.toggle('is-open');
+    };
+
+    localeItem.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      localeMenu.classList.remove('is-open');
+      setLocale(localeItem.dataset.locale);
+    };
+
+    bg.onclick = (e) => {
+      if (e.target === bg) {
+        bg.remove();
+        warnBanner = null;
+        settingsModalBg = null;
+      } else if (!localeMenu.contains(e.target) && e.target !== localeBtn) {
+        localeMenu.classList.remove('is-open');
+      }
+    };
+
+    modal.addEventListener('click', (e) => e.stopPropagation());
+    window.setTimeout(() => tokenInput.focus(), 0);
 
     bg.querySelector('.wia-save').onclick = () => {
       const newToken = tokenInput.value.trim();
-      const tokenChanged = oldToken !== newToken;
+      const tokenChanged = prevToken !== newToken;
       setToken(newToken);
 
       const useHighCrit = bg.querySelector('.wia-high-crit').checked;
@@ -2045,11 +2440,19 @@
       }
       bg.remove();
       warnBanner = null;
+      settingsModalBg = null;
       scanInventory(tokenChanged);
     };
     bg.querySelector('.wia-clear').onclick = () => { clearCache(); renderDataStrip(dataStrip); updateStatusIndicator(); };
-    bg.querySelector('.wia-close').onclick = () => { bg.remove(); warnBanner = null; };
-    bg.onclick = (e) => { if (e.target === bg) { bg.remove(); warnBanner = null; } };
+    bg.querySelector('.wia-close').onclick = () => { bg.remove(); warnBanner = null; settingsModalBg = null; };
+  }
+
+  function openSettings() {
+    const bg = document.createElement('div');
+    bg.className = 'wia-modal-bg';
+    document.body.appendChild(bg);
+    settingsModalBg = bg;
+    renderSettingsModal(bg);
   }
 
   function injectGear() {
@@ -2057,7 +2460,7 @@
     const gear = document.createElement('button');
     gear.className = 'wia-gear';
     gear.textContent = '⚙';
-    gear.title = 'Inventory Advisor — Einstellungen';
+    gear.title = t('gearTooltipTitle');
     gear.onclick = openSettings;
     const dot = document.createElement('span'); // live freshness indicator
     dot.className = 'wia-gear-dot';
@@ -2163,12 +2566,15 @@
   }
 
   function start() {
+    CONFIG.locale = GM_getValue(KEYS.locale, CONFIG.locale || 'de') || 'de';
+    if (typeof window !== 'undefined') {
+      window.__WIA_LOCALE__ = CONFIG.locale;
+    }
     CONFIG.useHighCritWeightForHold = GM_getValue(KEYS.highCritWeightForHold, false);
     CONFIG.useLiveOffersApi = GM_getValue(KEYS.useLiveOffersApi, false);
     injectStyles();
     injectGear();
-    GM_registerMenuCommand('Inventory Advisor — Einstellungen', openSettings);
-    GM_registerMenuCommand('Cache leeren + neu scannen', () => { clearCache(); if (isInventoryPage()) scanInventory(true); });
+    refreshMenuCommands();
 
     observer = new MutationObserver(debouncedScan);
     if (isInventoryPage() || isMarketPage()) {
