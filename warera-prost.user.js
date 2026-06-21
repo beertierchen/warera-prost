@@ -3354,7 +3354,7 @@
     CONFIG.showScrapFlip = GM_getValue(KEYS.showScrapFlip, false);
     CONFIG.featNotes = GM_getValue(KEYS.featNotes, false);
     CONFIG.featBattleAdvisor = GM_getValue(KEYS.featBattleAdvisor, false);
-    CONFIG.alliedCountryCodes = GM_getValue(KEYS.alliedCountryCodes, []);
+    CONFIG.alliedCountryCodes = GM_getValue(KEYS.alliedCountryCodes, CONFIG.alliedCountryCodes);
     injectStyles();
     if (CONFIG.featNotes) initNotes();
     if (CONFIG.featBattleAdvisor && isBattlePage()) applyBattleAdvisory();
