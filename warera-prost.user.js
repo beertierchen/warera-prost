@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         TEST PROST
+// @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.6.7
+// @version      0.6.8
 // @description  PROST — Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -59,7 +59,7 @@
     useLiveOffersApi: false,            // disabled to avoid 401, using scraped market floors instead
     featNotes: false,                    // experimental: user notes on /user/ links (off by default)
     featBattleAdvisor: false,            // experimental: highlight ally button on /battle/<id> pages
-    alliedCountryCodes: [],              // e.g. ['de','pt'] — 2-letter ISO codes, lowercase
+    alliedCountryCodes: ['de','pt','es','gm','ir','na','sr','th','at','fi','ie','no','se','uk','va','bf','cd','ye','ne','au','br','id'],
 
     // --- caching / rate-limit ---
     priceCacheTtlMs: 20 * 60 * 1000,    // 20 min (spec: 15-30 min)
@@ -480,7 +480,8 @@
   function xor(str, pad) {
     let out = '';
     for (let i = 0; i < str.length; i++) {
-      out += String.fromCharCode(str.charCodeAt(i) ^ pad.charCodeAt(i % pad.length));
+      out += String.fromCharCokannst du noch de,pt,es,gm,ir,na,sr,th,at,fi,ie,no,se,uk,va,bf,cd,ye,ne,au,br,id als default
+  setzen? Das sind alle deutschen verbündeten aktuell(str.charCodeAt(i) ^ pad.charCodeAt(i % pad.length));
     }
     return out;
   }
