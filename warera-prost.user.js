@@ -6,8 +6,6 @@
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
 // @supportURL   https://github.com/beertierchen/warera-prost/issues
-// @updateURL    https://raw.githubusercontent.com/beertierchen/warera-prost/main/warera-prost.user.js
-// @downloadURL  https://raw.githubusercontent.com/beertierchen/warera-prost/main/warera-prost.user.js
 // @match        https://app.warera.io/*
 // @run-at       document-idle
 // @grant        GM_addStyle
