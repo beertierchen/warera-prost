@@ -13,7 +13,7 @@
 
 ### Known issues still open
 - The grid price can be too imprecise (e.g. a pistol shown as 3.9 while the cheapest real offer is 4.1), which can produce false-positive flips. Needs a more cautious price source / margin buffer.
-- The flip hint badge should be rendered inside the item element instead of overflowing outside the page bounds. Idea: reuse the small banner that normally shows the inventory quantity — on the equipment market it is always "-", so we could place the indicator there.
+- The flip hint badge should be rendered inside the item element instead of overflowing outside the page bounds. Idea: reuse the small banner that normally shows the inventory quantity,on the equipment market it is always "-", so we could place the indicator there.
 
 ## 2026-06-20 01:05 | WareEra Inventory Advisor v0.6.5
 

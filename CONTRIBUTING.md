@@ -4,7 +4,7 @@ Thanks for helping out! PROST is a suite of WareEra userscripts. Contributions o
 
 ## Ground rules
 
-- **No automation.** PROST never plays the game for the user. PRs that click, trade, or automate gameplay will be rejected — it must stay a passive visual/advice overlay.
+- **No automation.** PROST never plays the game for the user. PRs that click, trade, or automate gameplay will be rejected. It must stay a passive visual/advice overlay.
 - **Client-side only.** No external servers beyond the official WareEra API (with the user's own key) and the price gateway already declared in `@connect`.
 - **Respect privacy.** Never log, transmit, or store a user's API token anywhere but local `GM_setValue`.
 
@@ -36,7 +36,7 @@ CHANGELOG.md
 npm test   # runs tests/test-advisor-load.js (mocks GM_* APIs)
 ```
 
-Manual check: install your branch's `.user.js` in Tampermonkey and verify on [app.warera.io](https://app.warera.io). WareEra ships dynamically-generated CSS class names — prefer resilient DOM selectors (text/structure) over brittle class names.
+Manual check: install your branch's `.user.js` in Tampermonkey and verify on [app.warera.io](https://app.warera.io). WareEra ships dynamically-generated CSS class names,prefer resilient DOM selectors (text/structure) over brittle class names.
 
 ## Releases
 

@@ -4,9 +4,9 @@
 
 **P**ersonal **R**ecommendation **O**verlay & **S**upport **T**ool
 
-A suite of client-side [userscripts](https://en.wikipedia.org/wiki/Userscript) for the browser game [**WareEra**](https://app.warera.io). Visual overlays and decision helpers — item advice, market scrap-flip indicators, notes, and more.
+A suite of client-side [userscripts](https://en.wikipedia.org/wiki/Userscript) for the browser game [**WareEra**](https://app.warera.io). Visual overlays and decision helpers, item advice, market scrap-flip indicators, notes, and more.
 
-**Prost! 🍺 — it just helps you play, it doesn't play for you.**
+**Prost! 🍺 It just helps you play, it doesn't play for you.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![No automation](https://img.shields.io/badge/automation-none-green.svg)
@@ -32,13 +32,13 @@ PROST is a **client-side visual assistant only**. It reads the page (and, option
 2. Click a script to install it directly from GitHub:
    - **PROST** (main) → [`warera-prost.user.js`](https://raw.githubusercontent.com/beertierchen/warera-prost/main/warera-prost.user.js)
    - **User Notes** → [`warera-notes.user.js`](https://raw.githubusercontent.com/beertierchen/warera-prost/main/warera-notes.user.js)
-3. Open [app.warera.io](https://app.warera.io) — the overlay loads automatically. Configure via the Tampermonkey menu (⚙️ *Register Menu Command*).
+3. Open [app.warera.io](https://app.warera.io), the overlay loads automatically. Configure via the Tampermonkey menu (⚙️ *Register Menu Command*).
 
 Updates are delivered automatically through your userscript manager (`@updateURL`).
 
 ## Privacy & API key
 
-The optional WareEra API token is **your personal credential**, stored locally via `GM_setValue`. A userscript sandbox has no real keystore — the light XOR obfuscation only deters casual shoulder-surfing, it is **not encryption**. Treat your machine as trusted; rotate the token in WareEra if you suspect exposure.
+The optional WareEra API token is **your personal credential**, stored locally via `GM_setValue`. A userscript sandbox has no real keystore. The light XOR obfuscation only deters casual shoulder-surfing, it is **not encryption**. Treat your machine as trusted; rotate the token in WareEra if you suspect exposure.
 
 ## Roadmap
 
@@ -46,7 +46,7 @@ PROST is built as an overlay *suite*. Planned non-inventory helpers: battle advi
 
 ## Contributing
 
-PRs welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). Run tests with `npm test`.
+PRs welcome, see [CONTRIBUTING.md](CONTRIBUTING.md). Run tests with `npm test`.
 
 ## License
 
