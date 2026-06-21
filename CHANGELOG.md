@@ -1,5 +1,20 @@
 # CHANGELOG
 
+## 2026-06-20 | Scrap-Flip Indicator
+
+- unstable
+- Started the experimental scrap-flip indicator for the market page in `warera-inventory-advisor.user.js`.
+- Added the core profit calculation helper `computeScrapFlip(...)` and exposed it for smoke-test use.
+- Added the first settings plumbing for a `showScrapFlip` toggle, plus the new i18n string for the checkbox.
+- Added the market-side helper scaffolding for grid/detail rendering and the green flip badge styles.
+- Fixed the test harness to use float-safe assertions (no more IEEE-754 rounding failures) and added no-flip / unknown-tier / missing-input cases.
+- Fixed a bug where the detail-page offer reader grabbed the attack stat instead of the price; it now targets the coin-stack price icon.
+- Fixed a serious leak where the flip badge was stamped across the whole page (chat, HUD, map, nav). The detail fallback now only scopes to offer cards holding the matching item image, never the generic icon class.
+
+### Known issues still open
+- The grid price can be too imprecise (e.g. a pistol shown as 3.9 while the cheapest real offer is 4.1), which can produce false-positive flips. Needs a more cautious price source / margin buffer.
+- The flip hint badge should be rendered inside the item element instead of overflowing outside the page bounds. Idea: reuse the small banner that normally shows the inventory quantity — on the equipment market it is always "-", so we could place the indicator there.
+
 ## 2026-06-20 01:05 | WareEra Inventory Advisor v0.6.5
 
 **Geänderte Dateien / Changed files:**

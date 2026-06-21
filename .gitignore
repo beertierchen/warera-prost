@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Build output (uncomment if a build step is added later)
+# dist/
+
+# Editor / OS
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Local agent / tooling scratch (not part of the project)
+.agents/
+.claude-octopus/
+.claude/
+.serena/

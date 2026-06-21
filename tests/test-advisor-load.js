@@ -1,9 +1,10 @@
 const fs = require('fs');
 const path = require('path');
+const assert = require('assert');
 
-console.log('--- Testing WareEra Inventory Advisor script load ---');
+console.log('--- Testing PROST script load ---');
 
-const scriptPath = path.join(__dirname, '../warera-inventory-advisor.user.js');
+const scriptPath = path.join(__dirname, '../warera-prost.user.js');
 let code = fs.readFileSync(scriptPath, 'utf8');
 
 // Mock Tampermonkey / Browser environment
@@ -73,6 +74,32 @@ global.MutationObserver = class {
 try {
   // Run the script by eval'ing it
   eval(code);
+  assert.strictEqual(typeof globalThis.computeScrapFlip, 'function', 'computeScrapFlip should be defined');
+
+  // Float-safe comparison (avoids IEEE-754 rounding noise like 1.7819999999999998)
+  const EPS = 1e-9;
+  const approx = (actual, expected, label) =>
+    assert.ok(Math.abs(actual - expected) < EPS, `${label}: expected ~${expected}, got ${actual}`);
+
+  // Profitable flip: buy 1.4, tier 1 (yield 6), scrap unit 0.3, tax 1%
+  const win = globalThis.computeScrapFlip(1.4, 1, 0.3, 0.01, { 1: 6 });
+  approx(win.scrapValue, 1.8, 'win.scrapValue');
+  approx(win.net, 1.782, 'win.net');
+  approx(win.profit, 0.382, 'win.profit');
+  assert.strictEqual(win.yield, 6, 'win.yield');
+  assert.strictEqual(win.flip, true, 'win.flip');
+
+  // Non-profitable: buy price above net scrap value -> no flip
+  const loss = globalThis.computeScrapFlip(2, 1, 0.3, 0.01, { 1: 6 });
+  assert.strictEqual(loss.flip, false, 'loss.flip');
+  assert.ok(loss.profit < 0, 'loss.profit should be negative');
+
+  // Unknown tier (no yield) -> null, never a false signal
+  assert.strictEqual(globalThis.computeScrapFlip(1.4, 99, 0.3, 0.01, { 1: 6 }), null, 'unknown tier -> null');
+
+  // Missing inputs -> null
+  assert.strictEqual(globalThis.computeScrapFlip(null, 1, 0.3, 0.01, { 1: 6 }), null, 'null buyPrice -> null');
+  assert.strictEqual(globalThis.computeScrapFlip(1.4, 1, null, 0.01, { 1: 6 }), null, 'null scrap price -> null');
   console.log('Success! The script loaded and initialized without throwing any runtime errors.');
   process.exit(0);
 } catch (err) {
