@@ -480,8 +480,7 @@
   function xor(str, pad) {
     let out = '';
     for (let i = 0; i < str.length; i++) {
-      out += String.fromCharCokannst du noch de,pt,es,gm,ir,na,sr,th,at,fi,ie,no,se,uk,va,bf,cd,ye,ne,au,br,id als default
-  setzen? Das sind alle deutschen verbündeten aktuell(str.charCodeAt(i) ^ pad.charCodeAt(i % pad.length));
+      out += String.fromCharCode(str.charCodeAt(i) ^ pad.charCodeAt(i % pad.length));
     }
     return out;
   }
