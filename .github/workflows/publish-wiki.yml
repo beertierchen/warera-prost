@@ -1,0 +1,38 @@
+name: Publish Wiki
+
+# Mirror docs/wiki/ (source of truth, versioned in this repo) to the GitHub Wiki
+# whenever it changes on main. Edit the wiki by editing docs/wiki/ — never the
+# wiki directly, or changes get overwritten on the next sync.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/wiki/**'
+      - 'scripts/publish-wiki.sh'
+      - '.github/workflows/publish-wiki.yml'
+  workflow_dispatch: {}
+
+# Least privilege: only repo write, which covers the wiki.
+permissions:
+  contents: write
+
+# Never let two syncs race the wiki repo.
+concurrency:
+  group: publish-wiki
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Publish docs/wiki to GitHub Wiki
+        env:
+          GIT_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SRC_SHA: ${{ github.sha }}
+          COMMIT_MSG: "docs: sync wiki from ${{ github.sha }}"
+        run: bash scripts/publish-wiki.sh
