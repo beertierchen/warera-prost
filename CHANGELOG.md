@@ -1,19 +1,30 @@
 # CHANGELOG
 
-## 2026-06-20 | Scrap-Flip Indicator
+## 2026-06-21 | Scrap-Flip-Indikator stabilisiert (v0.6.6)
 
-- unstable
-- Started the experimental scrap-flip indicator for the market page in `warera-inventory-advisor.user.js`.
+**Geänderte Dateien:** `warera-prost.user.js`, `tests/test-advisor-load.js`
+
+**Änderungen (Deutsch):**
+- Scrap-Flip-Indikator von „experimentell/unstable" auf **stabil** gehoben — die beiden offenen Bekannten Probleme sind behoben.
+- **Falsch-Positive im Übersichts-Grid behoben:** Der Grid-Kaufpreis ist nur ein gescrapter Floor, der unter dem günstigsten echten Angebot liegen kann (z. B. 3,9 statt real 4,1). Neu: `CONFIG.scrapFlipGridMargin` (5 %) bläht den Grid-Preis vorsichtig auf, sodass nur klar profitable Tiles markiert werden. Detailseiten nutzen den echten Offer-Preis und bleiben unverändert.
+- **Badge-Overflow behoben:** Der Flip-Hinweis lief aus der Item-Kachel heraus. Neu sitzt er als kompaktes Ribbon **innerhalb** der Kachel (an der Stelle des Mengen-Banners, das auf dem Equipment-Markt immer „-" zeigt) und überläuft die Kachelgrenzen nicht mehr.
+- Tests erweitert: Marge-Verhalten von `computeScrapFlip` abgesichert (marginaler Floor flippt roh, nach 5 % Marge nicht mehr).
+
+**Changes (English):**
+- Promoted the scrap-flip indicator from experimental/unstable to **stable**; both open known issues are resolved.
+- Fixed grid false-positives via a 5 % `scrapFlipGridMargin` safety buffer on the scraped floor price (detail-page offers use the real price, untouched).
+- Fixed the badge overflow: the hint now renders as a compact ribbon inside the tile (reusing the quantity-banner slot) instead of overflowing the tile bounds.
+- Extended tests to cover the grid margin behavior.
+
+## 2026-06-20 | Scrap-Flip Indicator (experimentell)
+
+- Started the experimental scrap-flip indicator for the market page.
 - Added the core profit calculation helper `computeScrapFlip(...)` and exposed it for smoke-test use.
 - Added the first settings plumbing for a `showScrapFlip` toggle, plus the new i18n string for the checkbox.
 - Added the market-side helper scaffolding for grid/detail rendering and the green flip badge styles.
 - Fixed the test harness to use float-safe assertions (no more IEEE-754 rounding failures) and added no-flip / unknown-tier / missing-input cases.
 - Fixed a bug where the detail-page offer reader grabbed the attack stat instead of the price; it now targets the coin-stack price icon.
 - Fixed a serious leak where the flip badge was stamped across the whole page (chat, HUD, map, nav). The detail fallback now only scopes to offer cards holding the matching item image, never the generic icon class.
-
-### Known issues still open
-- The grid price can be too imprecise (e.g. a pistol shown as 3.9 while the cheapest real offer is 4.1), which can produce false-positive flips. Needs a more cautious price source / margin buffer.
-- The flip hint badge should be rendered inside the item element instead of overflowing outside the page bounds. Idea: reuse the small banner that normally shows the inventory quantity,on the equipment market it is always "-", so we could place the indicator there.
 
 ## 2026-06-20 01:05 | WareEra Inventory Advisor v0.6.5
 

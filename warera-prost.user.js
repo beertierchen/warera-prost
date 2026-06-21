@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.6.5
+// @version      0.6.6
 // @description  PROST — Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -15,6 +15,7 @@
 // @grant        GM_registerMenuCommand
 // @connect      api2.warera.io
 // @connect      gateway.warerastats.io
+// @license MIT
 // ==/UserScript==
 
 /*
@@ -130,6 +131,13 @@
 
     // Market tax rate when selling items
     sellTaxRate: 0.01,
+
+    // Scrap-flip safety margin for the OVERVIEW GRID only. The grid shows a
+    // scraped FLOOR price, which can sit below the cheapest *real* offer (e.g.
+    // floor 3.9 vs. real cheapest 4.1) and produce false-positive flips. We
+    // inflate the grid buy price by this fraction so only clearly profitable
+    // tiles flip. Detail-page offers use the real offer price and skip this.
+    scrapFlipGridMargin: 0.05,
 
     // "Good roll" = item stat in the top fraction of LIVE market offers for its
     // itemCode. Data-driven; no hardcoded stat bands. Applies to armor (single
@@ -1910,7 +1918,12 @@
           return;
         }
         const tier = tierForCode(code);
-        const buyPrice = scrapedStore[code]?.price ?? getMarketBuyPriceFromTile(tile);
+        const rawBuyPrice = scrapedStore[code]?.price ?? getMarketBuyPriceFromTile(tile);
+        // Grid floor can undercut the real cheapest offer -> inflate by a safety
+        // margin so only clearly profitable tiles flip (avoids false positives).
+        const buyPrice = rawBuyPrice != null
+          ? rawBuyPrice * (1 + (CONFIG.scrapFlipGridMargin || 0))
+          : null;
         const result = computeScrapFlip(buyPrice, tier, scrapUnitPrice, CONFIG.sellTaxRate, CONFIG.scrapYieldByTier);
         if (!result || !result.flip) {
           cleanupFlipBadge(tile);
@@ -1921,7 +1934,7 @@
         renderFlipBadge(
           tile,
           `🔨↑ +${fmt(result.profit)}`,
-          getFlipTitle(buyPrice, result, tier),
+          getFlipTitle(rawBuyPrice, result, tier),
           true
         );
         tile.dataset.wiaFlip = nextKey;
@@ -2527,13 +2540,18 @@
       }
       .wia-locale-item:hover { background: #21262d; }
       .wia-flip-badge {
-        position: absolute; top: 4px; right: 4px; z-index: 70;
-        display: inline-flex; align-items: center; gap: 3px;
-        padding: 2px 5px; border-radius: 999px;
-        font: 700 11px/1 system-ui, sans-serif;
+        /* Bottom ribbon pinned INSIDE the tile (where the inventory-quantity
+           banner — always "-" on the equipment market — normally sits), so the
+           indicator never overflows the tile bounds. left+right constrain the
+           width to the tile; overflow clips gracefully on tiny tiles. */
+        position: absolute; left: 2px; right: 2px; bottom: 2px; z-index: 70;
+        display: flex; align-items: center; justify-content: center; gap: 2px;
+        padding: 1px 3px; border-radius: 4px;
+        font: 700 9px/1.1 system-ui, sans-serif;
         color: #06210f; background: #3fb950;
-        box-shadow: 0 2px 8px rgba(0,0,0,.35), 0 0 0 1px rgba(0,0,0,.25);
+        box-shadow: 0 1px 4px rgba(0,0,0,.35), 0 0 0 1px rgba(0,0,0,.25);
         pointer-events: none; white-space: nowrap;
+        overflow: hidden; text-overflow: ellipsis;
       }
       .wia-flip-badge.is-negative {
         color: #fff; background: #8b949e;

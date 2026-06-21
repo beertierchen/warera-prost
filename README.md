@@ -28,13 +28,34 @@ PROST is a **client-side visual assistant only**. It reads the page (and, option
 
 ## Install
 
-1. Install a userscript manager: [Tampermonkey](https://www.tampermonkey.net/) (recommended) or [Violentmonkey](https://violentmonkey.github.io/).
-2. Click a script to install it directly from GitHub:
-   - **PROST** (main) → [`warera-prost.user.js`](https://raw.githubusercontent.com/beertierchen/warera-prost/main/warera-prost.user.js)
-   - **User Notes** → [`warera-notes.user.js`](https://raw.githubusercontent.com/beertierchen/warera-prost/main/warera-notes.user.js)
-3. Open [app.warera.io](https://app.warera.io), the overlay loads automatically. Configure via the Tampermonkey menu (⚙️ *Register Menu Command*).
+### Schritt 1 – Userscript-Manager installieren
 
-Updates are delivered automatically through your userscript manager (`@updateURL`).
+[Tampermonkey](https://www.tampermonkey.net/) (empfohlen) oder [Violentmonkey](https://violentmonkey.github.io/) im Browser installieren.
+
+### Schritt 2 – Script installieren
+
+**Einfachste Methode – Greasy Fork (ein Klick):**
+
+| Script | Greasy Fork |
+|--------|-------------|
+| **PROST** (Hauptscript) | [![Install from Greasy Fork](https://img.shields.io/badge/Greasy%20Fork-Install-red?logo=tampermonkey)](https://greasyfork.org/de/scripts/583766-prost) |
+| **User Notes** | *(demnächst auf Greasy Fork)* |
+
+→ Greasy Fork-Seite öffnen → **„Dieses Script installieren"** klicken → im Tampermonkey-Dialog bestätigen.
+
+<details>
+<summary>Alternativ: direkt von GitHub installieren</summary>
+
+- **PROST** → [`warera-prost.user.js`](https://raw.githubusercontent.com/beertierchen/warera-prost/main/warera-prost.user.js)
+- **User Notes** → [`warera-notes.user.js`](https://raw.githubusercontent.com/beertierchen/warera-prost/main/warera-notes.user.js)
+
+</details>
+
+### Schritt 3 – Fertig
+
+[app.warera.io](https://app.warera.io) öffnen – das Overlay lädt automatisch. Einstellungen über das Tampermonkey-Menü (⚙️ *Menübefehle*).
+
+Updates werden automatisch über deinen Userscript-Manager eingespielt (`@updateURL`).
 
 ## Privacy & API key
 

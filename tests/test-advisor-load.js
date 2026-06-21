@@ -100,6 +100,17 @@ try {
   // Missing inputs -> null
   assert.strictEqual(globalThis.computeScrapFlip(null, 1, 0.3, 0.01, { 1: 6 }), null, 'null buyPrice -> null');
   assert.strictEqual(globalThis.computeScrapFlip(1.4, 1, null, 0.01, { 1: 6 }), null, 'null scrap price -> null');
+
+  // Grid safety-margin behavior: a marginally-profitable floor must STOP being a
+  // flip once the 5% grid margin is applied (guards against false positives from
+  // a scraped floor sitting below the real cheapest offer).
+  const GRID_MARGIN = 0.05;
+  const realFloor = 1.75; // net scrap value = 6 * 0.3 * 0.99 = 1.782
+  const onRawFloor = globalThis.computeScrapFlip(realFloor, 1, 0.3, 0.01, { 1: 6 });
+  assert.strictEqual(onRawFloor.flip, true, 'marginal floor flips on raw price');
+  const onBufferedFloor = globalThis.computeScrapFlip(realFloor * (1 + GRID_MARGIN), 1, 0.3, 0.01, { 1: 6 });
+  assert.strictEqual(onBufferedFloor.flip, false, 'marginal floor no longer flips after grid margin');
+  assert.ok(onBufferedFloor.profit < 0, 'buffered marginal profit goes negative');
   console.log('Success! The script loaded and initialized without throwing any runtime errors.');
   process.exit(0);
 } catch (err) {
