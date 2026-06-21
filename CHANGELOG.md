@@ -1,5 +1,23 @@
 # CHANGELOG
 
+## 2026-06-21 | Battle-Advisor (v0.6.8)
+
+**Geänderte Dateien:** `warera-prost.user.js`
+
+**Änderungen (Deutsch):**
+- Neu: **Battle-Advisor** — auf Kampfseiten (`/battle/<id>`) wird der richtige Button automatisch hervorgehoben und der gegnerische Button verkleinert und ausgegraut (bleibt klickbar).
+- Der verbündete Button erhält einen grünen Rahmen und ist leicht vergrößert. Die eigenen Länder- und MU-Orders werden kompakt direkt im Button angezeigt.
+- Ally-Erkennung: primär über eine konfigurierbare Länderliste (⚙️ Einstellungen → „Verbündete Ländercodes"), Fallback strukturell über den Orders-Block.
+- Voreingestellt sind alle aktuellen deutschen Verbündeten (`de,pt,es,gm,ir,na,sr,th,at,fi,ie,no,se,uk,va,bf,cd,ye,ne,au,br,id`).
+- Feature ist **experimentell** und muss in den Einstellungen aktiviert werden.
+
+**Changes (English):**
+- New: **Battle Advisor** — on battle pages (`/battle/<id>`) the correct button is highlighted and the enemy button is shrunk and greyed out (still clickable).
+- The ally button gets a green outline and is slightly scaled up. Country and MU orders are shown compactly inside the button.
+- Ally detection: primary via a configurable country code list (⚙️ settings → "Allied country codes"), structural fallback via the orders block.
+- Pre-configured with all current German allies (`de,pt,es,gm,ir,na,sr,th,at,fi,ie,no,se,uk,va,bf,cd,ye,ne,au,br,id`).
+- Feature is **experimental** and must be enabled in settings.
+
 ## 2026-06-21 | Spieler-Notizen integriert (v0.6.7)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `README.md`

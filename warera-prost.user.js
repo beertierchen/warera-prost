@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.6.7
+// @version      0.6.8
 // @description  PROST — Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -58,6 +58,8 @@
     offersLimit: 20,                    // how many offers to pull per itemCode
     useLiveOffersApi: false,            // disabled to avoid 401, using scraped market floors instead
     featNotes: false,                    // experimental: user notes on /user/ links (off by default)
+    featBattleAdvisor: false,            // experimental: highlight ally button on /battle/<id> pages
+    alliedCountryCodes: ['de','pt','es','gm','ir','na','sr','th','at','fi','ie','no','se','uk','va','bf','cd','ye','ne','au','br','id'],
 
     // --- caching / rate-limit ---
     priceCacheTtlMs: 20 * 60 * 1000,    // 20 min (spec: 15-30 min)
@@ -271,6 +273,10 @@
         noteUserLabel: 'User',
         settingsFeatNotesCheckbox: 'User notes on player links 📒 (experimental)',
         settingsFeatNotesHint: 'Adds a note icon next to player links. Disable if the standalone Warera User Notes script is also active.',
+        settingsFeatBattleCheckbox: 'Battle advisor ⚔️ (experimental)',
+        settingsFeatBattleHint: 'Highlights the button for your side on battle pages. Enter your allied country codes below.',
+        settingsAlliedCodesLabel: 'Allied country codes (comma-separated, e.g. de,pt)',
+        settingsAlliedCodesPlaceholder: 'de,pt,...',
         settingsTitle: 'WareEra Inventory Advisor',
         gearTitle: 'WareEra Inventory Advisor — Settings',
         settingsDesc: 'The Inventory Advisor gives a quick overview of whether items should be kept (KEEP/HOLD), sold (SELL), or salvaged (SCRAP).',
@@ -386,6 +392,10 @@
         noteUserLabel: 'Benutzer',
         settingsFeatNotesCheckbox: 'Spieler-Notizen bei Spieler-Links 📒 (experimentell)',
         settingsFeatNotesHint: 'Fügt ein Notiz-Icon neben Spieler-Links hinzu. Deaktivieren, wenn das separate Warera User Notes-Script ebenfalls aktiv ist.',
+        settingsFeatBattleCheckbox: 'Battle-Advisor ⚔️ (experimentell)',
+        settingsFeatBattleHint: 'Hebt den richtigen Angriffs-/Verteidigungsbutton auf Kampfseiten hervor. Verbündete Ländercodes unten eingeben.',
+        settingsAlliedCodesLabel: 'Verbündete Ländercodes (Komma-getrennt, z.B. de,pt)',
+        settingsAlliedCodesPlaceholder: 'de,pt,...',
         settingsTitle: 'WareEra Inventory Advisor',
         gearTitle: 'WareEra Inventory Advisor — Einstellungen',
         settingsDesc: 'Der Inventory Advisor soll eine schnelle Übersicht geben, ob Items behalten (KEEP/HOLD), gewinnbringend verkauft (SELL) oder zerschreddert (SCRAP) werden sollten.',
@@ -460,6 +470,8 @@
     useLiveOffersApi: NS + 'useLiveOffers',
     showScrapFlip: NS + 'scrapFlip',
     featNotes: NS + 'featNotes',
+    featBattleAdvisor: NS + 'featBattle',
+    alliedCountryCodes: NS + 'alliedCodes',
   };
   let menuSettingsId = null;
   let menuClearId = null;
@@ -468,7 +480,8 @@
   function xor(str, pad) {
     let out = '';
     for (let i = 0; i < str.length; i++) {
-      out += String.fromCharCode(str.charCodeAt(i) ^ pad.charCodeAt(i % pad.length));
+      out += String.fromCharCokannst du noch de,pt,es,gm,ir,na,sr,th,at,fi,ie,no,se,uk,va,bf,cd,ye,ne,au,br,id als default
+  setzen? Das sind alle deutschen verbündeten aktuell(str.charCodeAt(i) ^ pad.charCodeAt(i % pad.length));
     }
     return out;
   }
@@ -2646,6 +2659,52 @@
       .warera-note-button.primary {
         border-color: #facc15; background: #facc15; color: #111827;
       }
+
+      /* ── Battle Advisory module styles ── */
+      .wia-battle-primary {
+        outline: 2px solid #3fb950 !important;
+        outline-offset: 2px;
+        transform: scale(1.04);
+        transition: transform 0.2s, outline 0.2s;
+        z-index: 1;
+        position: relative;
+      }
+      .wia-battle-muted {
+        opacity: .50;
+        filter: grayscale(.75);
+        transform: scale(.94);
+        transition: transform 0.2s, opacity 0.2s, filter 0.2s;
+      }
+      .wia-battle-orders {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        margin-top: 6px;
+        padding: 4px 6px;
+        border-radius: 4px;
+        background: rgba(0,0,0,.35);
+        pointer-events: none;
+      }
+      .wia-battle-order-row {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .wia-battle-order-thumb {
+        width: 1.1em;
+        height: 1.1em;
+        object-fit: cover;
+        border-radius: 2px;
+        flex-shrink: 0;
+      }
+      .wia-battle-order-text {
+        font: 600 10px/1.2 system-ui, sans-serif;
+        color: #f9fafb;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 140px;
+      }
     `);
   }
 
@@ -2712,6 +2771,8 @@
     const prevLiveOffers = bg.querySelector('.wia-live-offers')?.checked ?? CONFIG.useLiveOffersApi;
     const prevScrapFlip = bg.querySelector('.wia-scrap-flip')?.checked ?? CONFIG.showScrapFlip;
     const prevFeatNotes = bg.querySelector('.wia-feat-notes')?.checked ?? CONFIG.featNotes;
+    const prevFeatBattle = bg.querySelector('.wia-feat-battle')?.checked ?? CONFIG.featBattleAdvisor;
+    const prevAlliedCodes = bg.querySelector('.wia-allied-codes')?.value ?? CONFIG.alliedCountryCodes.join(',');
 
     bg.innerHTML = `
       <div class="wia-modal">
@@ -2749,6 +2810,15 @@
           <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatNotesCheckbox')}</label>
         </div>
         <div style="margin-top: 2px; margin-left: 24px; font-size: 11px; color: #8b949e;">${t('settingsFeatNotesHint')}</div>
+        <div style="margin-top: 6px; display: flex; align-items: center; gap: 8px;">
+          <input type="checkbox" class="wia-feat-battle" style="width: auto;" ${prevFeatBattle ? 'checked' : ''} />
+          <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatBattleCheckbox')}</label>
+        </div>
+        <div style="margin-top: 2px; margin-left: 24px; font-size: 11px; color: #8b949e;">${t('settingsFeatBattleHint')}</div>
+        <div style="margin-top: 4px; margin-left: 24px;">
+          <label style="font-size: 11px; color: #8b949e; display: block; margin-bottom: 2px;">${t('settingsAlliedCodesLabel')}</label>
+          <input type="text" class="wia-allied-codes" placeholder="${t('settingsAlliedCodesPlaceholder')}" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;" value="${prevAlliedCodes}" />
+        </div>
         <details class="wia-help-details">
           <summary class="wia-help-summary">${t('settingsHelpSummary')}</summary>
           <div class="wia-help-content">${t('settingsHelpContent')}</div>
@@ -2819,6 +2889,15 @@
       GM_setValue(KEYS.featNotes, featNotes);
       CONFIG.featNotes = featNotes;
       if (featNotes) { initNotes(); } else { teardownNotes(); }
+
+      const featBattle = bg.querySelector('.wia-feat-battle').checked;
+      const rawCodes = bg.querySelector('.wia-allied-codes').value;
+      const alliedCodes = rawCodes.split(',').map(c => c.trim().toLowerCase()).filter(Boolean);
+      GM_setValue(KEYS.featBattleAdvisor, featBattle);
+      GM_setValue(KEYS.alliedCountryCodes, alliedCodes);
+      CONFIG.featBattleAdvisor = featBattle;
+      CONFIG.alliedCountryCodes = alliedCodes;
+      if (featBattle && isBattlePage()) { applyBattleAdvisory(); } else { teardownBattleAdvisory(); }
 
       if (tokenChanged) {
         clearCache();
@@ -2948,9 +3027,141 @@
       updateObserverTarget();
       debouncedScan();
       startRoutePolling();
+    } else if (isBattlePage()) {
+      observer.disconnect();
+      if (CONFIG.featBattleAdvisor) applyBattleAdvisory();
     } else {
+      teardownBattleAdvisory();
       observer.disconnect();
     }
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Battle Advisory module
+  // Highlights the ally-side button and clones orders into it on /battle/<id>
+  // ───────────────────────────────────────────────────────────────────────────
+  function isBattlePage() {
+    return /\/battle\/[0-9a-zA-Z]{6,}/.test(location.pathname)
+      && !/\/battles/.test(location.pathname);
+  }
+
+  function battleFlagCode(btnEl) {
+    return btnEl?.querySelector('img[src*="/images/flags/"]')
+      ?.getAttribute('src')?.match(/\/flags\/([a-z]{2})\.svg/)?.[1] || null;
+  }
+
+  function detectAllySide() {
+    const defBtn = document.querySelector('#defender-hit-button');
+    const atkBtn = document.querySelector('#attacker-hit-button');
+    if (!defBtn || !atkBtn) return null;
+
+    const defCode = battleFlagCode(defBtn);
+    const atkCode = battleFlagCode(atkBtn);
+    const allied = new Set((CONFIG.alliedCountryCodes || []).map(c => c.toLowerCase()));
+
+    // Primary: configurable allied country list
+    if (defCode && allied.has(defCode)) return 'defender';
+    if (atkCode && allied.has(atkCode)) return 'attacker';
+
+    // Fallback: structural — orders block (a[href*="/country/"]) sits in the ally column.
+    // The country link only appears in the orders block, NOT inside the buttons themselves.
+    const orderLink = document.querySelector('a[href*="/country/"]');
+    if (orderLink) {
+      const defParent = defBtn.parentElement?.parentElement;
+      const atkParent = atkBtn.parentElement?.parentElement;
+      if (defParent && defParent.contains(orderLink)) return 'defender';
+      if (atkParent && atkParent.contains(orderLink)) return 'attacker';
+    }
+
+    return null; // unknown — never highlight a guess
+  }
+
+  function cloneOrdersIntoButton(allyBtnEl) {
+    // Find the orders block: sibling container holding a[href*="/country/"] or a[href*="/mu/"]
+    // It lives two levels up from #defender/attacker-hit-button, as a sibling div.
+    const column = allyBtnEl.parentElement?.parentElement;
+    if (!column) return;
+
+    const orderRows = [...column.querySelectorAll(
+      ':scope > div a[href*="/country/"], :scope > div a[href*="/mu/"]'
+    )].map(a => a.closest('div._1dnmndyanw, div[class]') || a.parentElement?.parentElement);
+
+    // Deduplicate row containers and find the distinct order rows
+    const ordersBlock = column.querySelector(
+      ':scope > div:not([id]):not([class*="ahvacn"])'
+    );
+    if (!ordersBlock) return;
+
+    // Build a compact summary strip
+    const strip = document.createElement('div');
+    strip.className = 'wia-battle-orders';
+    strip.setAttribute('data-wia-injected', 'true');
+
+    // Collect all order rows: each row has either a country flag link or MU link
+    const rows = ordersBlock.querySelectorAll('a[href*="/country/"], a[href*="/mu/"]');
+    rows.forEach(anchor => {
+      const row = document.createElement('div');
+      row.className = 'wia-battle-order-row';
+
+      // Clone the avatar/flag thumbnail
+      const img = anchor.querySelector('img');
+      if (img) {
+        const thumb = document.createElement('img');
+        thumb.src = img.src;
+        thumb.alt = img.alt;
+        thumb.className = 'wia-battle-order-thumb';
+        row.appendChild(thumb);
+      }
+
+      // Grab the order text (the span._1dnmndyayv sibling)
+      const textSpan = anchor.closest('span')?.parentElement?.querySelector('[class*="ayv"]')
+        || anchor.parentElement?.nextElementSibling?.querySelector('span')
+        || anchor.parentElement?.nextElementSibling;
+      const text = textSpan?.textContent?.trim();
+      if (text) {
+        const label = document.createElement('span');
+        label.className = 'wia-battle-order-text';
+        label.textContent = text;
+        row.appendChild(label);
+      }
+
+      strip.appendChild(row);
+    });
+
+    if (!strip.children.length) return;
+
+    // Inject below the button label inside the button wrapper
+    const btnInner = allyBtnEl.querySelector('button');
+    if (btnInner) btnInner.appendChild(strip);
+  }
+
+  function applyBattleAdvisory() {
+    const defBtn = document.querySelector('#defender-hit-button');
+    const atkBtn = document.querySelector('#attacker-hit-button');
+    if (!defBtn || !atkBtn) {
+      // Buttons not yet in DOM — retry shortly (SPA lazy-load)
+      setTimeout(applyBattleAdvisory, 400);
+      return;
+    }
+
+    teardownBattleAdvisory(); // clean previous pass
+
+    const side = detectAllySide();
+    if (!side) return; // unknown side — leave UI untouched
+
+    const allyBtn  = side === 'defender' ? defBtn : atkBtn;
+    const enemyBtn = side === 'defender' ? atkBtn : defBtn;
+
+    allyBtn.classList.add('wia-battle-primary');
+    enemyBtn.classList.add('wia-battle-muted');
+
+    cloneOrdersIntoButton(allyBtn);
+  }
+
+  function teardownBattleAdvisory() {
+    document.querySelector('#defender-hit-button')?.classList.remove('wia-battle-primary', 'wia-battle-muted');
+    document.querySelector('#attacker-hit-button')?.classList.remove('wia-battle-primary', 'wia-battle-muted');
+    document.querySelectorAll('[data-wia-injected]').forEach(el => el.remove());
   }
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -3143,8 +3354,11 @@
     CONFIG.useLiveOffersApi = GM_getValue(KEYS.useLiveOffersApi, false);
     CONFIG.showScrapFlip = GM_getValue(KEYS.showScrapFlip, false);
     CONFIG.featNotes = GM_getValue(KEYS.featNotes, false);
+    CONFIG.featBattleAdvisor = GM_getValue(KEYS.featBattleAdvisor, false);
+    CONFIG.alliedCountryCodes = GM_getValue(KEYS.alliedCountryCodes, []);
     injectStyles();
     if (CONFIG.featNotes) initNotes();
+    if (CONFIG.featBattleAdvisor && isBattlePage()) applyBattleAdvisory();
     injectGear();
     refreshMenuCommands();
 
