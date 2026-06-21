@@ -287,6 +287,7 @@
         settingsScrapFlipCheckbox: 'Scrap-Flip indicator (experimental)',
         settingsScrapFlipHint: 'Highlights profitable salvage items on the market (buying and dismantling them for profit).',
         scrapFlipTooltip: 'Buy {buy} → scrap {yield}×{unit} net {net} = +{profit} profit',
+        hintToggleLabel: 'Explanation',
         settingsSave: 'Save',
         settingsClear: 'Clear Cache',
         settingsClose: 'Close',
@@ -406,6 +407,7 @@
         settingsScrapFlipCheckbox: 'Scrap-Flip-Indikator (experimentell)',
         settingsScrapFlipHint: 'Markiert profitable Gegenstände auf dem Markt, die für Gewinn gekauft und in Schrott zerlegt werden können.',
         scrapFlipTooltip: 'Kauf {buy} → Scrap {yield}×{unit} netto {net} = +{profit} Gewinn',
+        hintToggleLabel: 'Erklärung',
         settingsSave: 'Speichern',
         settingsClear: 'Cache leeren',
         settingsClose: 'Schließen',
@@ -2854,7 +2856,7 @@
           <div style="display: flex; align-items: center; gap: 8px;">
             <input type="checkbox" class="wia-live-offers" style="width: auto;" ${prevLiveOffers ? 'checked' : ''} />
             <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsLiveOffersCheckbox')}</label>
-            <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="Erklärung" title="Erklärung">ℹ</button>
+            <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
           </div>
           <div class="wia-hint" hidden>${t('settingsLiveOffersHint')}</div>
         </div>
@@ -2862,7 +2864,7 @@
           <div style="display: flex; align-items: center; gap: 8px;">
             <input type="checkbox" class="wia-scrap-flip" style="width: auto;" ${prevScrapFlip ? 'checked' : ''} />
             <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsScrapFlipCheckbox')}</label>
-            <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="Erklärung" title="Erklärung">ℹ</button>
+            <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
           </div>
           <div class="wia-hint" hidden>${t('settingsScrapFlipHint')}</div>
         </div>
@@ -2870,7 +2872,7 @@
           <div style="display: flex; align-items: center; gap: 8px;">
             <input type="checkbox" class="wia-feat-notes" style="width: auto;" ${prevFeatNotes ? 'checked' : ''} />
             <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatNotesCheckbox')}</label>
-            <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="Erklärung" title="Erklärung">ℹ</button>
+            <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
           </div>
           <div class="wia-hint" hidden>${t('settingsFeatNotesHint')}</div>
         </div>
@@ -2878,7 +2880,7 @@
           <div style="display: flex; align-items: center; gap: 8px;">
             <input type="checkbox" class="wia-feat-battle" style="width: auto;" ${prevFeatBattle ? 'checked' : ''} />
             <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatBattleCheckbox')}</label>
-            <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="Erklärung" title="Erklärung">ℹ</button>
+            <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
           </div>
           <div class="wia-hint" hidden>${t('settingsFeatBattleHint')}</div>
           <div class="wia-allied-codes-row" style="margin-top: 4px; margin-left: 24px; ${prevFeatBattle ? '' : 'display: none;'}">
@@ -2967,8 +2969,6 @@
       const newToken = tokenInput.value.trim();
       const tokenChanged = prevToken !== newToken;
       setToken(newToken);
-
-
 
       const useLiveOffers = bg.querySelector('.wia-live-offers').checked;
       GM_setValue(KEYS.useLiveOffersApi, useLiveOffers);
