@@ -1,5 +1,23 @@
 # CHANGELOG
 
+## 2026-06-21 | Spieler-Notizen integriert (v0.6.7)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `README.md`
+
+**Änderungen (Deutsch):**
+- Neu: **Spieler-Notizen** direkt in PROST integriert. In den Einstellungen (⚙️) unter „Spieler-Notizen bei Spieler-Links 📒 (experimentell)" aktivierbar.
+- Nach dem Aktivieren erscheint neben jedem Spieler-Link ein kleines `✎`-Icon. Wurde bereits eine Notiz gespeichert, wechselt das Icon auf 📒.
+- **Hover-Tooltip:** Beim Überfahren des Icons mit der Maus wird eine Vorschau der Notiz angezeigt (max. 120 Zeichen, danach gekürzt mit …).
+- Notizen werden lokal gespeichert und bleiben nach einem Reload erhalten.
+- Die Notizen-Daten sind kompatibel mit dem separaten „Warera User Notes"-Script — bitte nur eines von beiden aktivieren, nicht beide gleichzeitig.
+
+**Changes (English):**
+- New: **Player notes** built directly into PROST. Enable in settings (⚙️) under "User notes on player links 📒 (experimental)".
+- A small `✎` icon appears next to every player link; changes to 📒 once a note has been saved.
+- **Hover tooltip:** Hovering the icon shows a preview of the note (up to 120 characters, truncated with … if longer).
+- Notes are stored locally and persist across reloads.
+- Storage is compatible with the standalone "Warera User Notes" script — enable only one at a time.
+
 ## 2026-06-21 | Scrap-Flip-Indikator stabilisiert (v0.6.6)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `tests/test-advisor-load.js`
