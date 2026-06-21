@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## 2026-06-21 | Haltbarkeit & Profil-Layout Fixes (v0.6.9)
+
+**Geänderte Dateien:** `warera-prost.user.js`
+
+**Änderungen (Deutsch):**
+- **Haltbarkeit < 100% komplett ignoriert**: Items mit weniger als 100% Haltbarkeit (beschädigt) werden vom Advisor nun komplett ignoriert. Es wird kein Badge platziert und das originale Spiel-Tooltip bleibt vollständig erhalten (gilt auch für ausgerüstete Items).
+- **Fehlerhaftes Parsen korrigiert**: Ein Fehler im Parser wurde behoben, bei dem der Rüstungswert in die Haltbarkeits-Erkennung leckte (z. B. Rüstung 5 und Haltbarkeit 29% führten zu einem falschen Wert von 529% im Tooltip).
+- **Keine Overlays auf Charakterseite**: Der Ausrüstungs-Block auf der Charakter-Profilseite wird nun zuverlässig gefiltert. Es werden dort keine Advisor-Overlays oder Badges platziert.
+
+**Changes (English):**
+- **Durability < 100% fully ignored**: Items with less than 100% durability (damaged) are now completely ignored by the advisor. No badge is shown and the original game tooltip is fully preserved (also applies to equipped items).
+- **Durability parsing leak fixed**: Fixed a parser bug where the armor stat leaked into the durability regex parser (e.g., armor 5 and durability 29% showing as 529% in tooltip).
+- **No overlays on character page**: The equipment block on the character profile page is now filtered out. No advisor overlays or badges will be rendered there.
+
 ## 2026-06-21 | Battle-Advisor (v0.6.8)
 
 **Geänderte Dateien:** `warera-prost.user.js`

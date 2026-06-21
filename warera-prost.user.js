@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.6.8
+// @version      0.6.9
 // @description  PROST — Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -452,6 +452,8 @@
 
   };
 
+  const originalTitles = new WeakMap();
+
   // ───────────────────────────────────────────────────────────────────────────
   // Storage (namespaced GM_* with light token obfuscation)
   // ───────────────────────────────────────────────────────────────────────────
@@ -868,6 +870,22 @@
     return false;
   }
 
+  function isInsideProfileEquipment(el) {
+    let parent = el.parentElement;
+    for (let i = 0; i < 9 && parent; i++) {
+      if (
+        parent.querySelector('.CircularProgressbar') ||
+        parent.querySelector('img[src*="/avatars/"]') ||
+        parent.querySelector('img[alt*="avatar"]') ||
+        parent.querySelector('img[alt*="Avatar"]')
+      ) {
+        return true;
+      }
+      parent = parent.parentElement;
+    }
+    return false;
+  }
+
   function findItemUniqueId(card) {
     if (!card) return null;
     // 1. Check card element itself
@@ -924,15 +942,21 @@
     const cards = new Map(); // card element -> img
     imgs.forEach((img, idx) => {
       const isModal = isMarketPage() ? false : isInsideModalOrSidebar(img);
+      const isProfile = isMarketPage() ? false : isInsideProfileEquipment(img);
       const card = climbToCard(img);
       if (verbose) {
         log(`  [Image #${idx}] alt="${img.getAttribute('alt')}" src="${img.getAttribute('src')}"`);
         log(`    isInsideModalOrSidebar: ${isModal}`);
+        log(`    isInsideProfileEquipment: ${isProfile}`);
         log(`    climbToCard resolved element:`, card ? `${card.tagName}.${card.className}` : 'null');
       }
 
       if (isModal) {
         if (verbose) log(`    -> Skipped (inside modal/sidebar/drawer)`);
+        return;
+      }
+      if (isProfile) {
+        if (verbose) log(`    -> Skipped (inside character profile equipment)`);
         return;
       }
       if (card) {
@@ -1095,6 +1119,12 @@
     globalThis.itemCodeFromUrl = itemCodeFromUrl;
     globalThis.isMarketGridPage = isMarketGridPage;
     globalThis.isMarketDetailPage = isMarketDetailPage;
+    // Export internal functions for unit tests
+    globalThis.parseStats = parseStats;
+    globalThis.getItemState = getItemState;
+    globalThis.isInsideProfileEquipment = isInsideProfileEquipment;
+    globalThis.shouldSuppressItem = shouldSuppressItem;
+    globalThis.originalTitles = originalTitles;
   }
 
   function getLocale() {
@@ -1244,7 +1274,12 @@
     cleanIcons.forEach((cleanIcon) => {
       const parentDiv = cleanIcon.closest('div');
       if (parentDiv && parentDiv !== cleanCard) {
-        parentDiv.remove();
+        const container = parentDiv.className.includes('a6izou0') ? parentDiv.parentElement : parentDiv;
+        if (container && container !== cleanCard) {
+          container.remove();
+        } else {
+          parentDiv.remove();
+        }
       } else {
         cleanIcon.remove();
       }
@@ -1648,6 +1683,10 @@
     const cell = getItemCell(card);
     const state = getItemState(card, item.stats);
 
+    if (!originalTitles.has(card)) {
+      originalTitles.set(card, card.title || '');
+    }
+
     // 1. Equipped suppression check
     if (state.equipped) {
       suspendObserver();
@@ -1663,6 +1702,9 @@
         card.style.boxShadow = '';
         card.dataset.wiaSuppressed = '1';
         delete card.dataset.wiaDone;
+        if (originalTitles.has(card)) {
+          card.title = originalTitles.get(card);
+        }
       } finally {
         resumeObserver();
       }
@@ -1684,35 +1726,21 @@
     const oldTopBanner = card.querySelector('.wia-top-banner');
     if (oldTopBanner) oldTopBanner.remove();
 
-    const isTop3 = item.isStockKeep === true;
-    const isCrit = item.stats.crit != null && item.stats.crit >= CONFIG.critItemMinPercent;
-    
-    // Reco badge rules:
-    // Damaged (<100%): only if isTop3 || isCrit
-    // 100%: always shown
-    const showBadge = !state.damaged || (isTop3 || isCrit);
-
-    // 2. Existing Badge (action recommendation)
+    // 2. Recommendation Badge (always shown for active non-damaged items)
     let badge = card.querySelector('.wia-badge');
-    if (showBadge) {
-      if (!badge) {
-        badge = document.createElement('div');
-        badge.className = 'wia-badge';
-        card.appendChild(badge);
-      }
-      const emojiMap = { KEEP: '💎', SELL: '💰', SCRAP: '🔨', HOLD: '✋', UNKNOWN: '❓' };
-      badge.textContent = emojiMap[result.action] || '❓';
-      badge.style.background = BADGE_COLORS[result.action] || BADGE_COLORS.UNKNOWN;
-      badge.style.opacity = item.stale ? '0.55' : '1'; // dim when on cached/stale prices
-      badge.style.top = Math.round(WIA_HEADER_PX / 2) + 'px';
-      const tooltipText = buildTooltip(item, result);
-      badge.title = tooltipText;
-      card.title = tooltipText;
-    } else {
-      if (badge) badge.remove();
-      badge = null;
-      card.title = '';
+    if (!badge) {
+      badge = document.createElement('div');
+      badge.className = 'wia-badge';
+      card.appendChild(badge);
     }
+    const emojiMap = { KEEP: '💎', SELL: '💰', SCRAP: '🔨', HOLD: '✋', UNKNOWN: '❓' };
+    badge.textContent = emojiMap[result.action] || '❓';
+    badge.style.background = BADGE_COLORS[result.action] || BADGE_COLORS.UNKNOWN;
+    badge.style.opacity = item.stale ? '0.55' : '1'; // dim when on cached/stale prices
+    badge.style.top = Math.round(WIA_HEADER_PX / 2) + 'px';
+    const tooltipText = buildTooltip(item, result);
+    badge.title = tooltipText;
+    card.title = tooltipText;
 
     // 3. Score Sub-badge
     let scoreSub = card.querySelector('.wia-score-sub');
@@ -1734,29 +1762,24 @@
       scoreSub.remove();
     }
 
-    // 3.5. Grow card header if top overlays are active, otherwise reset it
-    const showHeader = showScore || showBadge;
+    // 3.5. Grow card header (always active for active non-damaged items)
     suspendObserver();
     try {
-      if (showHeader) {
-        card.style.minHeight = (48 + WIA_HEADER_PX) + 'px';
-        card.dataset.wiaHeader = '1';
-        const imgWrap = card.querySelector('img')?.parentElement;
-        if (imgWrap) {
-          imgWrap.style.top = WIA_HEADER_PX + 'px';
-          imgWrap.style.height = 'auto';
-          imgWrap.style.bottom = '0';
-          imgWrap.dataset.wiaShifted = '1';
-        }
-      } else {
-        cleanupCardHeader(card);
+      card.style.minHeight = (48 + WIA_HEADER_PX) + 'px';
+      card.dataset.wiaHeader = '1';
+      const imgWrap = card.querySelector('img')?.parentElement;
+      if (imgWrap) {
+        imgWrap.style.top = WIA_HEADER_PX + 'px';
+        imgWrap.style.height = 'auto';
+        imgWrap.style.bottom = '0';
+        imgWrap.dataset.wiaShifted = '1';
       }
     } finally {
       resumeObserver();
     }
 
     // 4. Price Sub-badge (only for 100% unequipped)
-    const showPrice = !state.damaged && (result.scrapValue != null || result.market != null);
+    const showPrice = result.scrapValue != null || result.market != null;
     let priceSub = cell.querySelector('.wia-price-sub');
 
     // Locate the durability progress-bar container inside the cell (contains scaleX style attribute)
@@ -1828,11 +1851,7 @@
     card.style.boxShadow = '';
 
     // 6. Sentinel management
-    if (showBadge) {
-      delete card.dataset.wiaSuppressed;
-    } else {
-      card.dataset.wiaSuppressed = '1';
-    }
+    delete card.dataset.wiaSuppressed;
   }
 
   function buildTooltip(item, result) {
@@ -2177,7 +2196,8 @@
   }
 
   function shouldSuppressItem(card, stats) {
-    return getItemState(card, stats).equipped;
+    const state = getItemState(card, stats);
+    return state.equipped || state.damaged;
   }
 
   function suspendObserver() {
@@ -2350,6 +2370,10 @@
         if (type === 'scrap' || type === 'unknown') return;
         const stats = parseStats(card, type);
         
+        if (!originalTitles.has(card)) {
+          originalTitles.set(card, card.title || '');
+        }
+
         if (shouldSuppressItem(card, stats)) {
           suspendObserver();
           try {
@@ -2365,6 +2389,9 @@
             card.style.boxShadow = '';
             card.dataset.wiaSuppressed = '1';
             delete card.dataset.wiaDone;
+            if (originalTitles.has(card)) {
+              card.title = originalTitles.get(card);
+            }
           } finally {
             resumeObserver();
           }
