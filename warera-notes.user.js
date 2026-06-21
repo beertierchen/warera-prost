@@ -10,6 +10,18 @@
 // @grant        GM_setValue
 // ==/UserScript==
 
+/*
+ * ⚠️  LEGACY STANDALONE SCRIPT — no longer actively developed.
+ *
+ * Player notes are now built into PROST (warera-prost.user.js) as an
+ * optional feature. Enable them in the PROST settings (⚙️) under
+ * "Spieler-Notizen bei Spieler-Links 📒 (experimentell)".
+ *
+ * Use this script OR the built-in PROST notes — not both at the same time.
+ * Both use the same GM storage keys (warera-note:<userId>) so your saved
+ * notes will be visible in either one.
+ */
+
 (function () {
   "use strict";
 

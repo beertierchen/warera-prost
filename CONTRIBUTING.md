@@ -1,6 +1,6 @@
 # Contributing to PROST 🍻
 
-Thanks for helping out! PROST is a suite of WareEra userscripts. Contributions of any size are welcome.
+Thanks for helping out! PROST is a single WareEra userscript that grows by adding self-contained modules. Contributions of any size are welcome.
 
 ## Ground rules
 
@@ -11,15 +11,19 @@ Thanks for helping out! PROST is a suite of WareEra userscripts. Contributions o
 ## Project layout
 
 ```
-warera-inventory-advisor.user.js   # main script (item advice, scrap-flip)
-warera-notes.user.js               # notes overlay
+warera-prost.user.js               # the one script — inventory advice, scrap-flip, notes, …
+warera-notes.user.js               # legacy standalone notes script (no longer actively developed)
 tests/                             # node test harness with Tampermonkey API mocks
 CHANGELOG.md
 ```
 
-> Today each script is a single `.user.js` file. As the suite grows, we plan to move to a
-> `src/` + small build (esbuild) layout with a feature-registry. If you're adding a large
-> new overlay feature, open an issue first so we can coordinate that split.
+**One script, no build step.** PROST is intentionally a single plain `.user.js` file. Greasy Fork requires fully readable, unminified code, and Tampermonkey needs no bundler. There is no `/src` split planned.
+
+New features are added as **self-contained modules** inside the main IIFE:
+- Add a `CONFIG` flag (`featMyThing: false`) and a `KEYS` entry to persist it.
+- Implement `initMyThing()` / `teardownMyThing()` functions.
+- Wire the toggle into the settings modal and `start()`.
+- Keep styles inside `injectStyles()`.
 
 ## Workflow
 
