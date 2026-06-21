@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.7.0
+// @version      0.7.1
 // @description  PROST — Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -202,7 +202,6 @@
       6: { dmg: { min: 221, max: 300 }, crit: { min: 41, max: 50 } }
     },
 
-    useHighCritWeightForHold: false,
     showScrapFlip: false,
 
     debug: false,
@@ -283,9 +282,10 @@
         settingsApiToken: 'API Token (api2.warera.io)',
         settingsTokenPlaceholder: 'Bearer token',
         settingsTokenNote: 'Saved locally (GM_setValue, lightly obfuscated — not real encryption).',
-        settingsHighCritCheckbox: 'Use high crit weight for HOLD evaluation (6.00 instead of 4.15)',
         settingsLiveOffersCheckbox: 'Fetch live offers via API (requires API Token)',
+        settingsLiveOffersHint: 'Fetches live market listings from the official API to rank item stats against currently active listings.',
         settingsScrapFlipCheckbox: 'Scrap-Flip indicator (experimental)',
+        settingsScrapFlipHint: 'Highlights profitable salvage items on the market (buying and dismantling them for profit).',
         scrapFlipTooltip: 'Buy {buy} → scrap {yield}×{unit} net {net} = +{profit} profit',
         settingsSave: 'Save',
         settingsClear: 'Clear Cache',
@@ -309,7 +309,6 @@
             <strong>Settings:</strong>
             <ul>
               <li><strong>API Token</strong>: Required to fetch fresh market values (equipment and scrap).</li>
-              <li><strong>High Crit Weight</strong>: Increases crit weight from 4.15 to 6.00 for the HOLD evaluation.</li>
             </ul>`,
         settingsPriceFormat: 'Price format: [Scrap Value]/[Market Price]',
         menuSettings: 'Inventory Advisor — Settings',
@@ -402,9 +401,10 @@
         settingsApiToken: 'API-Token (api2.warera.io)',
         settingsTokenPlaceholder: 'Bearer-Token',
         settingsTokenNote: 'Lokal gespeichert (GM_setValue, leicht verschleiert — keine echte Verschlüsselung).',
-        settingsHighCritCheckbox: 'Erhöhte Crit-Gewichtung für HOLD-Bewertung verwenden (6.00 statt 4.15)',
         settingsLiveOffersCheckbox: 'Live-Angebote über API abrufen (benötigt API-Token)',
+        settingsLiveOffersHint: 'Ruft aktuelle Angebote über die offizielle API ab, um Gegenstandswerte mit derzeit aktiven Angeboten zu vergleichen.',
         settingsScrapFlipCheckbox: 'Scrap-Flip-Indikator (experimentell)',
+        settingsScrapFlipHint: 'Markiert profitable Gegenstände auf dem Markt, die für Gewinn gekauft und in Schrott zerlegt werden können.',
         scrapFlipTooltip: 'Kauf {buy} → Scrap {yield}×{unit} netto {net} = +{profit} Gewinn',
         settingsSave: 'Speichern',
         settingsClear: 'Cache leeren',
@@ -428,7 +428,6 @@
             <strong>Einstellungen:</strong>
             <ul>
               <li><strong>API-Token</strong>: Erforderlich für den Abruf aktueller Marktpreise (Ausrüstung und Schrott).</li>
-              <li><strong>Erhöhte Crit-Gewichtung</strong>: Erhöht den Crit-Gewichtungsfaktor bei Waffen von 4.15 auf 6.00 für die HOLD-Prüfung.</li>
             </ul>`,
         settingsPriceFormat: 'Preisformat: [Schrottwert]/[Marktpreis]',
         menuSettings: 'Inventory Advisor — Einstellungen',
@@ -468,7 +467,6 @@
     apiBase: NS + 'apiBase',
     rateLimitedUntil: NS + 'rlUntil',
     scrapedPrices: NS + 'scrapedPrices',
-    highCritWeightForHold: NS + 'highCritHold',
     useLiveOffersApi: NS + 'useLiveOffers',
     showScrapFlip: NS + 'scrapFlip',
     featNotes: NS + 'featNotes',
@@ -1128,6 +1126,7 @@
     globalThis.detectAllySide = detectAllySide;
     globalThis.battleFlagCode = battleFlagCode;
     globalThis.injectCompactOrders = injectCompactOrders;
+    globalThis.renderSettingsModal = renderSettingsModal;
   }
 
   function getLocale() {
@@ -1452,7 +1451,7 @@
     if (type === 'weapon') item.weaponScore = myStat;
 
     // Calculate HOLD range-based check dynamically
-    const critWeight = CONFIG.useHighCritWeightForHold ? 6.0 : CONFIG.weaponCritWeight;
+    const critWeight = CONFIG.weaponCritWeight;
     let isTopItemscore = false;
     let rangeLabel = '';
     let thresholdVal = 0;
@@ -2543,18 +2542,45 @@
         background: #161b22; color: #c9d1d9; border: 1px solid #30363d;
         border-radius: 10px; padding: 20px; width: 420px; max-width: 95vw;
         font: 13px/1.5 system-ui, sans-serif; box-shadow: 0 8px 30px rgba(0,0,0,.6);
+        position: relative;
       }
-      .wia-help-details {
+      .wia-hint-toggle {
+        width: 18px; height: 18px; padding: 0; border: 0; border-radius: 50%;
+        background: transparent; color: #58a6ff; cursor: pointer;
+        font: bold 12px system-ui, sans-serif; line-height: 1; display: inline-flex;
+        align-items: center; justify-content: center;
+      }
+      .wia-hint-toggle:hover { background: rgba(88,166,255,.15); }
+      .wia-hint {
+        margin-top: 2px; margin-left: 24px; font-size: 11px; color: #8b949e;
+      }
+      .wia-hint[hidden] { display: none; }
+      .wia-help-toggle {
         margin-top: 15px; border-top: 1px solid #30363d; padding-top: 10px;
+        font-weight: 600; color: #58a6ff; cursor: pointer; user-select: none;
+        background: transparent; border-left: 0; border-right: 0; border-bottom: 0;
+        width: 100%; text-align: left; margin-bottom: 8px;
       }
-      .wia-help-summary {
-        font-weight: 600; color: #58a6ff; cursor: pointer; user-select: none; margin-bottom: 8px;
+      .wia-help-panel {
+        position: absolute; top: 0; left: 100%; margin-left: 12px;
+        width: 320px; max-height: 80vh; overflow-y: auto;
+        background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+        padding: 16px; box-shadow: 0 8px 30px rgba(0,0,0,.6); z-index: 1;
+        font: 13px/1.5 system-ui, sans-serif;
       }
+      .wia-help-panel[hidden] { display: none; }
       .wia-help-content {
-        font-size: 11px; line-height: 1.45; color: #8b949e; max-height: 200px; overflow-y: auto; padding-right: 5px;
+        font-size: 11px; line-height: 1.45; color: #8b949e;
       }
       .wia-help-content ul { margin: 5px 0; padding-left: 15px; }
       .wia-help-content li { margin-bottom: 4px; }
+      @media (max-width: 899px) {
+        .wia-help-panel {
+          position: static; left: auto; margin-left: 0; margin-top: 12px;
+          width: auto; max-height: 200px; box-shadow: none; border: 0;
+          border-top: 1px solid #30363d; border-radius: 0; padding: 10px 0 0;
+        }
+      }
       .wia-modal h2 { margin: 0 0 12px; font-size: 16px; }
       .wia-modal label { display: block; margin: 10px 0 4px; font-weight: 600; }
       .wia-modal input {
@@ -2799,7 +2825,6 @@
     const currentLocale = getLocale();
     const nextLocale = currentLocale === 'de' ? 'en' : 'de';
     const prevToken = bg.querySelector('.wia-token')?.value ?? getToken();
-    const prevHighCrit = bg.querySelector('.wia-high-crit')?.checked ?? CONFIG.useHighCritWeightForHold;
     const prevLiveOffers = bg.querySelector('.wia-live-offers')?.checked ?? CONFIG.useLiveOffersApi;
     const prevScrapFlip = bg.querySelector('.wia-scrap-flip')?.checked ?? CONFIG.showScrapFlip;
     const prevFeatNotes = bg.querySelector('.wia-feat-notes')?.checked ?? CONFIG.featNotes;
@@ -2825,36 +2850,46 @@
         <label>${t('settingsApiToken')}</label>
         <input type="password" class="wia-token" placeholder="${t('settingsTokenPlaceholder')}" />
         <div class="wia-note">${t('settingsTokenNote')}</div>
-        <div style="margin-top: 10px; display: flex; align-items: center; gap: 8px;">
-          <input type="checkbox" class="wia-high-crit" style="width: auto;" ${prevHighCrit ? 'checked' : ''} />
-          <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsHighCritCheckbox')}</label>
+        <div class="wia-feat-row" style="margin-top: 10px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <input type="checkbox" class="wia-live-offers" style="width: auto;" ${prevLiveOffers ? 'checked' : ''} />
+            <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsLiveOffersCheckbox')}</label>
+            <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="Erklärung" title="Erklärung">ℹ</button>
+          </div>
+          <div class="wia-hint" hidden>${t('settingsLiveOffersHint')}</div>
         </div>
-        <div style="margin-top: 6px; display: flex; align-items: center; gap: 8px;">
-          <input type="checkbox" class="wia-live-offers" style="width: auto;" ${prevLiveOffers ? 'checked' : ''} />
-          <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsLiveOffersCheckbox')}</label>
+        <div class="wia-feat-row" style="margin-top: 6px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <input type="checkbox" class="wia-scrap-flip" style="width: auto;" ${prevScrapFlip ? 'checked' : ''} />
+            <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsScrapFlipCheckbox')}</label>
+            <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="Erklärung" title="Erklärung">ℹ</button>
+          </div>
+          <div class="wia-hint" hidden>${t('settingsScrapFlipHint')}</div>
         </div>
-        <div style="margin-top: 6px; display: flex; align-items: center; gap: 8px;">
-          <input type="checkbox" class="wia-scrap-flip" style="width: auto;" ${prevScrapFlip ? 'checked' : ''} />
-          <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsScrapFlipCheckbox')}</label>
+        <div class="wia-feat-row" style="margin-top: 6px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <input type="checkbox" class="wia-feat-notes" style="width: auto;" ${prevFeatNotes ? 'checked' : ''} />
+            <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatNotesCheckbox')}</label>
+            <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="Erklärung" title="Erklärung">ℹ</button>
+          </div>
+          <div class="wia-hint" hidden>${t('settingsFeatNotesHint')}</div>
         </div>
-        <div style="margin-top: 6px; display: flex; align-items: center; gap: 8px;">
-          <input type="checkbox" class="wia-feat-notes" style="width: auto;" ${prevFeatNotes ? 'checked' : ''} />
-          <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatNotesCheckbox')}</label>
+        <div class="wia-feat-row" style="margin-top: 6px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <input type="checkbox" class="wia-feat-battle" style="width: auto;" ${prevFeatBattle ? 'checked' : ''} />
+            <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatBattleCheckbox')}</label>
+            <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="Erklärung" title="Erklärung">ℹ</button>
+          </div>
+          <div class="wia-hint" hidden>${t('settingsFeatBattleHint')}</div>
+          <div class="wia-allied-codes-row" style="margin-top: 4px; margin-left: 24px; ${prevFeatBattle ? '' : 'display: none;'}">
+            <label style="font-size: 11px; color: #8b949e; display: block; margin-bottom: 2px;">${t('settingsAlliedCodesLabel')}</label>
+            <input type="text" class="wia-allied-codes" placeholder="${t('settingsAlliedCodesPlaceholder')}" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;" value="${prevAlliedCodes}" />
+          </div>
         </div>
-        <div style="margin-top: 2px; margin-left: 24px; font-size: 11px; color: #8b949e;">${t('settingsFeatNotesHint')}</div>
-        <div style="margin-top: 6px; display: flex; align-items: center; gap: 8px;">
-          <input type="checkbox" class="wia-feat-battle" style="width: auto;" ${prevFeatBattle ? 'checked' : ''} />
-          <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatBattleCheckbox')}</label>
-        </div>
-        <div style="margin-top: 2px; margin-left: 24px; font-size: 11px; color: #8b949e;">${t('settingsFeatBattleHint')}</div>
-        <div style="margin-top: 4px; margin-left: 24px;">
-          <label style="font-size: 11px; color: #8b949e; display: block; margin-bottom: 2px;">${t('settingsAlliedCodesLabel')}</label>
-          <input type="text" class="wia-allied-codes" placeholder="${t('settingsAlliedCodesPlaceholder')}" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;" value="${prevAlliedCodes}" />
-        </div>
-        <details class="wia-help-details">
-          <summary class="wia-help-summary">${t('settingsHelpSummary')}</summary>
+        <button type="button" class="wia-help-toggle" aria-expanded="false">${t('settingsHelpSummary')}</button>
+        <aside class="wia-help-panel" hidden>
           <div class="wia-help-content">${t('settingsHelpContent')}</div>
-        </details>
+        </aside>
         <div class="wia-btns">
           <button class="wia-btn primary wia-save">${t('settingsSave')}</button>
           <button class="wia-btn wia-clear">${t('settingsClear')}</button>
@@ -2897,7 +2932,35 @@
       }
     };
 
-    modal.addEventListener('click', (e) => e.stopPropagation());
+    const featBattleCheckbox = modal.querySelector('.wia-feat-battle');
+    const alliedCodesRow = modal.querySelector('.wia-allied-codes-row');
+    if (featBattleCheckbox && alliedCodesRow) {
+      featBattleCheckbox.onchange = () => {
+        alliedCodesRow.style.display = featBattleCheckbox.checked ? 'block' : 'none';
+      };
+    }
+
+    modal.addEventListener('click', (e) => {
+      const hintBtn = e.target.closest('.wia-hint-toggle');
+      if (hintBtn) {
+        const hint = hintBtn.closest('.wia-feat-row')?.querySelector('.wia-hint');
+        if (hint) {
+          const open = hint.toggleAttribute('hidden') === false;
+          hintBtn.setAttribute('aria-expanded', String(open));
+        }
+      }
+
+      const helpBtn = e.target.closest('.wia-help-toggle');
+      if (helpBtn) {
+        const panel = modal.querySelector('.wia-help-panel');
+        if (panel) {
+          const open = panel.toggleAttribute('hidden') === false;
+          helpBtn.setAttribute('aria-expanded', String(open));
+        }
+      }
+
+      e.stopPropagation();
+    });
     window.setTimeout(() => tokenInput.focus(), 0);
 
     bg.querySelector('.wia-save').onclick = () => {
@@ -2905,9 +2968,7 @@
       const tokenChanged = prevToken !== newToken;
       setToken(newToken);
 
-      const useHighCrit = bg.querySelector('.wia-high-crit').checked;
-      GM_setValue(KEYS.highCritWeightForHold, useHighCrit);
-      CONFIG.useHighCritWeightForHold = useHighCrit;
+
 
       const useLiveOffers = bg.querySelector('.wia-live-offers').checked;
       GM_setValue(KEYS.useLiveOffersApi, useLiveOffers);
@@ -3385,7 +3446,6 @@
     if (typeof window !== 'undefined') {
       window.__WIA_LOCALE__ = CONFIG.locale;
     }
-    CONFIG.useHighCritWeightForHold = GM_getValue(KEYS.highCritWeightForHold, false);
     CONFIG.useLiveOffersApi = GM_getValue(KEYS.useLiveOffersApi, false);
     CONFIG.showScrapFlip = GM_getValue(KEYS.showScrapFlip, false);
     CONFIG.featNotes = GM_getValue(KEYS.featNotes, false);

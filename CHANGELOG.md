@@ -1,5 +1,25 @@
 # CHANGELOG
 
+## 2026-06-21 | Aufgeräumte Einstellungen & Rechtes Cheatsheet-Flyout (v0.7.1)
+
+**Geänderte Dateien:** `warera-prost.user.js`
+
+**Änderungen (Deutsch):**
+- **Schlankeres Einstellungs-Menü**: Feature-Beschreibungen wurden hinter einklappbare Info-Symbole (`ℹ`) verlegt, um das Einstellungsfenster kompakter und übersichtlicher zu halten.
+- **Cheatsheet als rechtes Flyout**: Das Hilfe-Cheatsheet klappt nun auf größeren Bildschirmen (> 900px Breite) rechts neben dem Einstellungsfenster auf. Auf kleineren Bildschirmen wird es wie bisher platzsparend darunter gestapelt.
+- **Bessere Benutzeroberfläche**:
+  - Der Eingabebereich für Ländercodes wird nur noch eingeblendet, wenn der Battle-Advisor aktiv ist (progressive Offenlegung).
+  - Info-Toggles wurden auch für den Scrap-Flip-Indikator und die Live API integriert.
+  - Die ungenutzte Option für erhöhte Crit-Gewichtung wurde entfernt.
+
+**Changes (English):**
+- **Cleaner Settings Menu**: Feature descriptions are now collapsed behind toggleable info icons (`ℹ`), making the settings window much more compact and organized.
+- **Cheatsheet as a Right-Flyout**: The help cheatsheet now opens to the right of the settings window on desktop viewports (> 900px width). On smaller screens, it automatically stacks below the settings.
+- **Improved UI Experience**:
+  - The allied country codes text box is dynamically hidden until the Battle Advisor option is enabled (progressive disclosure).
+  - Inline explanations (`ℹ` info toggles) were added to the Scrap-Flip indicator and the Live API fields.
+  - Removed the unused high crit weighting option.
+
 ## 2026-06-21 | Kompakte Inline Battle-Orders (v0.7.0)
 
 **Geänderte Dateien:** `warera-prost.user.js`

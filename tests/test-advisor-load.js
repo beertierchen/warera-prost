@@ -49,6 +49,49 @@ class MockElement {
     this.classList.classes = new Set(val.split(' ').filter(Boolean));
   }
 
+  set innerHTML(html) {
+    this.children = [];
+    const stack = [this];
+    const tokenRegex = /<([a-z0-9-]+)([^>]*?)\/?>|<\/([a-z0-9-]+)>|([^<]+)/gi;
+    let match;
+    while ((match = tokenRegex.exec(html)) !== null) {
+      const [full, openTag, attrsStr, closeTag, text] = match;
+      if (openTag) {
+        const child = new MockElement(openTag);
+        const attrRegex = /([a-z0-9-]+)\s*=\s*['"]([^'"]*)['"]/gi;
+        let attrMatch;
+        while ((attrMatch = attrRegex.exec(attrsStr)) !== null) {
+          child.setAttribute(attrMatch[1], attrMatch[2]);
+        }
+        const styleAttr = child.getAttribute('style');
+        if (styleAttr) {
+          styleAttr.split(';').forEach(s => {
+            const parts = s.split(':');
+            if (parts.length === 2) {
+              child.style[parts[0].trim()] = parts[1].trim();
+            }
+          });
+        }
+        if (attrsStr.toLowerCase().includes('checked')) {
+          child.checked = true;
+        }
+        if (/\bhidden\b/i.test(attrsStr)) {
+          child.setAttribute('hidden', 'true');
+        }
+        stack[stack.length - 1].appendChild(child);
+        if (!full.endsWith('/>') && !['input', 'img', 'br', 'hr'].includes(openTag.toLowerCase())) {
+          stack.push(child);
+        }
+      } else if (closeTag) {
+        if (stack.length > 1 && stack[stack.length - 1].tagName.toLowerCase() === closeTag.toLowerCase()) {
+          stack.pop();
+        }
+      } else if (text && text.trim()) {
+        stack[stack.length - 1].textContent = text.trim();
+      }
+    }
+  }
+
   get src() { return this.getAttribute('src'); }
   set src(val) { this.setAttribute('src', val); }
 
@@ -57,6 +100,24 @@ class MockElement {
 
   get alt() { return this.getAttribute('alt'); }
   set alt(val) { this.setAttribute('alt', val); }
+
+  addEventListener(event, callback) {
+    if (!this.listeners) this.listeners = {};
+    if (!this.listeners[event]) this.listeners[event] = [];
+    this.listeners[event].push(callback);
+  }
+
+  dispatchEvent(event, data = {}) {
+    if (this.listeners && this.listeners[event]) {
+      const e = {
+        target: data.target || this,
+        preventDefault: () => {},
+        stopPropagation: () => {},
+        ...data
+      };
+      this.listeners[event].forEach(cb => cb(e));
+    }
+  }
 
   appendChild(child) {
     if (child) {
@@ -99,6 +160,18 @@ class MockElement {
 
   removeAttribute(name) {
     this.attributes.delete(name);
+  }
+
+  toggleAttribute(name, force) {
+    const has = this.attributes.has(name);
+    const shouldHave = force !== undefined ? !!force : !has;
+    if (shouldHave) {
+      this.attributes.set(name, 'true');
+      return true;
+    } else {
+      this.attributes.delete(name);
+      return false;
+    }
   }
 
   cloneNode(deep = true) {
@@ -213,7 +286,8 @@ global.window = {
     return {
       color: el.style.color || 'rgb(59, 219, 139)'
     };
-  }
+  },
+  setTimeout: (fn, delay) => setTimeout(fn, delay)
 };
 const documentBody = new MockElement('body');
 global.document = {
@@ -494,6 +568,53 @@ try {
   assert.strictEqual(atkFlag.getAttribute('src'), 'https://media.warera.io/avatars/mu/1.webp', 'Attacker flag should point to MU avatar');
 
   console.log('Battle advisor highlights and compact order injection tests passed successfully.');
+
+  console.log('--- Testing settings cheatsheet and hints UI (PLAN-agy-settings-cheatsheet-ui.md) ---');
+  const bg = new MockElement('div');
+  globalThis.renderSettingsModal(bg);
+
+  const modalEl = bg.querySelector('.wia-modal');
+  assert.ok(modalEl, 'Settings modal should be rendered');
+
+  const hintBtns = bg.querySelectorAll('.wia-hint-toggle');
+  assert.strictEqual(hintBtns.length, 4, 'Should have exactly 4 hint toggle buttons (Notes, Battle, Live Offers, Scrap Flip)');
+
+  const liveOffersCheckbox = bg.querySelector('.wia-live-offers');
+  const scrapFlipCheckbox = bg.querySelector('.wia-scrap-flip');
+  assert.ok(liveOffersCheckbox, 'Live offers checkbox should be present');
+  assert.ok(scrapFlipCheckbox, 'Scrap flip checkbox should be present');
+
+  const highCritCheckbox = bg.querySelector('.wia-high-crit');
+  assert.strictEqual(highCritCheckbox, null, 'High crit checkbox should be removed');
+
+  const helpBtn = bg.querySelector('.wia-help-toggle');
+  assert.ok(helpBtn, 'Settings modal should have a cheatsheet help toggle button');
+
+  const helpPanel = bg.querySelector('.wia-help-panel');
+  assert.ok(helpPanel, 'Settings modal should have a cheatsheet panel');
+  assert.strictEqual(helpPanel.getAttribute('hidden'), 'true', 'Cheatsheet panel should start hidden');
+
+  // Verify cheatsheet panel toggle click
+  modalEl.dispatchEvent('click', { target: helpBtn });
+  assert.strictEqual(helpPanel.attributes.has('hidden'), false, 'Cheatsheet panel should be visible after toggling');
+
+  // Verify progressive disclosure of allied codes row
+  const featBattleCheckbox = bg.querySelector('.wia-feat-battle');
+  const alliedCodesRow = bg.querySelector('.wia-allied-codes-row');
+  assert.ok(featBattleCheckbox, 'Battle advisor checkbox should be present');
+  assert.ok(alliedCodesRow, 'Allied codes container row should be present');
+  
+  // Toggle the battle checkbox to unchecked and trigger change
+  featBattleCheckbox.checked = false;
+  if (featBattleCheckbox.onchange) featBattleCheckbox.onchange();
+  assert.strictEqual(alliedCodesRow.style.display, 'none', 'Allied codes row should be hidden when battle advisor is unchecked');
+
+  // Toggle it back to checked
+  featBattleCheckbox.checked = true;
+  if (featBattleCheckbox.onchange) featBattleCheckbox.onchange();
+  assert.strictEqual(alliedCodesRow.style.display, 'block', 'Allied codes row should be visible when battle advisor is checked');
+
+  console.log('Settings cheatsheet and hints UI tests passed successfully.');
 
   console.log('Success! The script loaded and initialized without throwing any runtime errors.');
   process.exit(0);
