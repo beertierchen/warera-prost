@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.6.6
+// @version      0.6.7
 // @description  PROST — Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -57,6 +57,7 @@
     itemOffersEndpoint: 'itemOffer.getItemOffers',
     offersLimit: 20,                    // how many offers to pull per itemCode
     useLiveOffersApi: false,            // disabled to avoid 401, using scraped market floors instead
+    featNotes: false,                    // experimental: user notes on /user/ links (off by default)
 
     // --- caching / rate-limit ---
     priceCacheTtlMs: 20 * 60 * 1000,    // 20 min (spec: 15-30 min)
@@ -259,9 +260,17 @@
         enemies: 'Enemies',
         yourCountry: 'Your country',
         editNote: 'Edit Note',
-        deleteNote: 'Delete Note',
+        editNoteAria: 'Edit note for {user}',
+        deleteNote: 'Delete',
         saveNote: 'Save',
+        cancel: 'Cancel',
         notePlaceholder: 'Enter note...',
+        noteTitle: 'Note: {user}',
+        noteClose: 'Close',
+        noteCloseAria: 'Close note editor',
+        noteUserLabel: 'User',
+        settingsFeatNotesCheckbox: 'User notes on player links 📒 (experimental)',
+        settingsFeatNotesHint: 'Adds a note icon next to player links. Disable if the standalone Warera User Notes script is also active.',
         settingsTitle: 'WareEra Inventory Advisor',
         gearTitle: 'WareEra Inventory Advisor — Settings',
         settingsDesc: 'The Inventory Advisor gives a quick overview of whether items should be kept (KEEP/HOLD), sold (SELL), or salvaged (SCRAP).',
@@ -366,9 +375,17 @@
         enemies: 'Gegner',
         yourCountry: 'Dein Land',
         editNote: 'Notiz bearbeiten',
-        deleteNote: 'Notiz löschen',
+        editNoteAria: 'Notiz für {user} bearbeiten',
+        deleteNote: 'Löschen',
         saveNote: 'Speichern',
-        notePlaceholder: 'Notiz eingeben...',
+        cancel: 'Abbrechen',
+        notePlaceholder: 'Notiz zu diesem Spieler...',
+        noteTitle: 'Notiz: {user}',
+        noteClose: 'Schließen',
+        noteCloseAria: 'Notizeditor schließen',
+        noteUserLabel: 'Benutzer',
+        settingsFeatNotesCheckbox: 'Spieler-Notizen bei Spieler-Links 📒 (experimentell)',
+        settingsFeatNotesHint: 'Fügt ein Notiz-Icon neben Spieler-Links hinzu. Deaktivieren, wenn das separate Warera User Notes-Script ebenfalls aktiv ist.',
         settingsTitle: 'WareEra Inventory Advisor',
         gearTitle: 'WareEra Inventory Advisor — Einstellungen',
         settingsDesc: 'Der Inventory Advisor soll eine schnelle Übersicht geben, ob Items behalten (KEEP/HOLD), gewinnbringend verkauft (SELL) oder zerschreddert (SCRAP) werden sollten.',
@@ -442,6 +459,7 @@
     highCritWeightForHold: NS + 'highCritHold',
     useLiveOffersApi: NS + 'useLiveOffers',
     showScrapFlip: NS + 'scrapFlip',
+    featNotes: NS + 'featNotes',
   };
   let menuSettingsId = null;
   let menuClearId = null;
@@ -2559,6 +2577,75 @@
       .wia-flip-tile {
         box-shadow: inset 0 0 0 2px #3fb950 !important;
       }
+
+      /* ── Notes module styles ── */
+      .warera-note-icon {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 18px; height: 18px; margin-left: 4px;
+        border: 0; border-radius: 4px; background: transparent;
+        color: #9ca3af; cursor: pointer; font-size: 14px; line-height: 1;
+        vertical-align: middle;
+      }
+      .warera-note-icon:hover, .warera-note-icon:focus-visible {
+        background: rgba(148,163,184,.18); color: #facc15; outline: none;
+      }
+      .warera-note-icon.has-note { color: #facc15; }
+      .warera-note-backdrop {
+        position: fixed; inset: 0; z-index: 2147483646;
+        display: none; align-items: center; justify-content: center;
+        padding: 18px; background: rgba(15,23,42,.62);
+      }
+      .warera-note-backdrop.is-open { display: flex; }
+      .warera-note-modal {
+        width: min(520px,100%); border: 1px solid rgba(148,163,184,.36);
+        border-radius: 8px; background: #111827; color: #f9fafb;
+        box-shadow: 0 18px 55px rgba(0,0,0,.42);
+        font-family: system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      }
+      .warera-note-header {
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 12px; padding: 14px 16px;
+        border-bottom: 1px solid rgba(148,163,184,.22);
+      }
+      .warera-note-title {
+        min-width: 0; margin: 0; overflow: hidden; color: #f9fafb;
+        font-size: 16px; font-weight: 650;
+        text-overflow: ellipsis; white-space: nowrap;
+      }
+      .warera-note-close {
+        flex: 0 0 auto; width: 34px; height: 34px; border: 0;
+        border-radius: 6px; background: transparent; color: #d1d5db;
+        cursor: pointer; font-size: 24px; line-height: 1;
+      }
+      .warera-note-close:hover, .warera-note-close:focus-visible {
+        background: rgba(148,163,184,.18); outline: none;
+      }
+      .warera-note-body { padding: 16px; }
+      .warera-note-textarea {
+        box-sizing: border-box; width: 100%; min-height: 180px; resize: vertical;
+        border: 1px solid rgba(148,163,184,.42); border-radius: 6px;
+        background: #020617; color: #f9fafb; padding: 10px 12px;
+        font: 14px/1.45 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      }
+      .warera-note-textarea:focus {
+        border-color: #facc15; outline: none;
+        box-shadow: 0 0 0 2px rgba(250,204,21,.18);
+      }
+      .warera-note-actions {
+        display: flex; justify-content: flex-end; gap: 8px; padding: 0 16px 16px;
+      }
+      .warera-note-button {
+        min-height: 36px; border: 1px solid rgba(148,163,184,.42);
+        border-radius: 6px; background: #1f2937; color: #f9fafb;
+        cursor: pointer; padding: 0 12px;
+        font: 600 13px/1 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      }
+      .warera-note-button:hover, .warera-note-button:focus-visible {
+        border-color: #facc15; outline: none;
+      }
+      .warera-note-button.primary {
+        border-color: #facc15; background: #facc15; color: #111827;
+      }
     `);
   }
 
@@ -2624,6 +2711,7 @@
     const prevHighCrit = bg.querySelector('.wia-high-crit')?.checked ?? CONFIG.useHighCritWeightForHold;
     const prevLiveOffers = bg.querySelector('.wia-live-offers')?.checked ?? CONFIG.useLiveOffersApi;
     const prevScrapFlip = bg.querySelector('.wia-scrap-flip')?.checked ?? CONFIG.showScrapFlip;
+    const prevFeatNotes = bg.querySelector('.wia-feat-notes')?.checked ?? CONFIG.featNotes;
 
     bg.innerHTML = `
       <div class="wia-modal">
@@ -2656,6 +2744,11 @@
           <input type="checkbox" class="wia-scrap-flip" style="width: auto;" ${prevScrapFlip ? 'checked' : ''} />
           <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsScrapFlipCheckbox')}</label>
         </div>
+        <div style="margin-top: 6px; display: flex; align-items: center; gap: 8px;">
+          <input type="checkbox" class="wia-feat-notes" style="width: auto;" ${prevFeatNotes ? 'checked' : ''} />
+          <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatNotesCheckbox')}</label>
+        </div>
+        <div style="margin-top: 2px; margin-left: 24px; font-size: 11px; color: #8b949e;">${t('settingsFeatNotesHint')}</div>
         <details class="wia-help-details">
           <summary class="wia-help-summary">${t('settingsHelpSummary')}</summary>
           <div class="wia-help-content">${t('settingsHelpContent')}</div>
@@ -2721,6 +2814,11 @@
       const showScrapFlip = bg.querySelector('.wia-scrap-flip').checked;
       GM_setValue(KEYS.showScrapFlip, showScrapFlip);
       CONFIG.showScrapFlip = showScrapFlip;
+
+      const featNotes = bg.querySelector('.wia-feat-notes').checked;
+      GM_setValue(KEYS.featNotes, featNotes);
+      CONFIG.featNotes = featNotes;
+      if (featNotes) { initNotes(); } else { teardownNotes(); }
 
       if (tokenChanged) {
         clearCache();
@@ -2855,6 +2953,187 @@
     }
   }
 
+  // ───────────────────────────────────────────────────────────────────────────
+  // Notes module (ported from warera-notes.user.js — reuses same GM keys/selectors
+  // so notes saved by the standalone script remain visible here too)
+  // ───────────────────────────────────────────────────────────────────────────
+  const NOTES_LINK_SEL  = "a[href*='/user/']";
+  const NOTES_ATTR      = 'data-warera-note-attached';
+  const NOTES_KEY_PFX   = 'warera-note:';
+  const NOTES_DEBOUNCE  = 150;
+
+  let notesObserver    = null;
+  let notesScanTimer   = null;
+  let notesActiveId    = null;
+  let notesActiveUser  = '';
+  let notesModal       = null;
+  let notesEscHandler  = null;
+
+  function noteKey(userId) { return NOTES_KEY_PFX + userId; }
+  function getNote(userId) { return GM_getValue(noteKey(userId), ''); }
+  function hasNote(userId) { return getNote(userId).trim().length > 0; }
+
+  function initNotes() {
+    if (notesObserver) return; // already running
+    notesModal = buildNotesModal();
+    document.body.appendChild(notesModal.backdrop);
+    notesEscHandler = (e) => {
+      if (e.key === 'Escape' && notesModal.backdrop.classList.contains('is-open')) closeNoteEditor();
+    };
+    document.addEventListener('keydown', notesEscHandler);
+    scanNoteLinks();
+    notesObserver = new MutationObserver((muts) => {
+      if (muts.some(m => m.addedNodes.length > 0)) scheduleNotesScan();
+    });
+    notesObserver.observe(document.body, { childList: true, subtree: true });
+  }
+
+  function teardownNotes() {
+    if (notesObserver) { notesObserver.disconnect(); notesObserver = null; }
+    if (notesEscHandler) { document.removeEventListener('keydown', notesEscHandler); notesEscHandler = null; }
+    if (notesModal) { notesModal.backdrop.remove(); notesModal = null; }
+    // Remove all injected icons and reset attached markers
+    document.querySelectorAll('.warera-note-icon').forEach(el => el.remove());
+    document.querySelectorAll('[' + NOTES_ATTR + ']').forEach(el => el.removeAttribute(NOTES_ATTR));
+    clearTimeout(notesScanTimer);
+    notesScanTimer = null;
+  }
+
+  function scheduleNotesScan() {
+    clearTimeout(notesScanTimer);
+    notesScanTimer = setTimeout(scanNoteLinks, NOTES_DEBOUNCE);
+  }
+
+  function scanNoteLinks() {
+    document.querySelectorAll(NOTES_LINK_SEL).forEach(link => {
+      if (!(link instanceof HTMLAnchorElement)) return;
+      if (link.getAttribute(NOTES_ATTR) === 'true') return; // already attached (by us or standalone script)
+      const userId = extractNoteUserId(link);
+      if (!userId) return;
+      attachNoteIcon(link, userId);
+    });
+  }
+
+  function extractNoteUserId(link) {
+    const href = link.getAttribute('href');
+    if (!href) return null;
+    try {
+      const url = new URL(href, window.location.origin);
+      const m = url.pathname.match(/^\/user\/([^/]+)\/?$/);
+      return m ? decodeURIComponent(m[1]) : null;
+    } catch (_) { return null; }
+  }
+
+  function notePreview(userId) {
+    const text = getNote(userId).trim();
+    if (!text) return t('editNote');
+    return text.length > 120 ? text.slice(0, 120) + '…' : text;
+  }
+
+  function attachNoteIcon(link, userId) {
+    const icon = document.createElement('button');
+    icon.type = 'button';
+    icon.className = 'warera-note-icon';
+    icon.textContent = hasNote(userId) ? '📒' : '✎';
+    icon.title = notePreview(userId);
+    icon.setAttribute('aria-label', t('editNoteAria', { user: link.textContent.trim() || t('noteUserLabel') }));
+    if (hasNote(userId)) icon.classList.add('has-note');
+    icon.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openNoteEditor(userId, link.textContent.trim() || t('noteUserLabel'));
+    });
+    link.insertAdjacentElement('afterend', icon);
+    link.setAttribute(NOTES_ATTR, 'true');
+  }
+
+  function buildNotesModal() {
+    const backdrop = document.createElement('div');
+    backdrop.className = 'warera-note-backdrop';
+
+    const dialog = document.createElement('section');
+    dialog.className = 'warera-note-modal';
+    dialog.setAttribute('role', 'dialog');
+    dialog.setAttribute('aria-modal', 'true');
+    dialog.setAttribute('aria-labelledby', 'warera-note-title');
+
+    const header = document.createElement('div');
+    header.className = 'warera-note-header';
+    const title = document.createElement('h2');
+    title.id = 'warera-note-title';
+    title.className = 'warera-note-title';
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'warera-note-close';
+    closeBtn.textContent = '×';
+    closeBtn.title = t('noteClose');
+    closeBtn.setAttribute('aria-label', t('noteCloseAria'));
+    closeBtn.addEventListener('click', closeNoteEditor);
+    header.append(title, closeBtn);
+
+    const body = document.createElement('div');
+    body.className = 'warera-note-body';
+    const textarea = document.createElement('textarea');
+    textarea.className = 'warera-note-textarea';
+    textarea.placeholder = t('notePlaceholder');
+    body.append(textarea);
+
+    const actions = document.createElement('div');
+    actions.className = 'warera-note-actions';
+    const delBtn = document.createElement('button');
+    delBtn.type = 'button'; delBtn.className = 'warera-note-button';
+    delBtn.textContent = t('deleteNote');
+    delBtn.addEventListener('click', () => { saveNoteValue(''); closeNoteEditor(); });
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button'; cancelBtn.className = 'warera-note-button';
+    cancelBtn.textContent = t('cancel');
+    cancelBtn.addEventListener('click', closeNoteEditor);
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'button'; saveBtn.className = 'warera-note-button primary';
+    saveBtn.textContent = t('saveNote');
+    saveBtn.addEventListener('click', () => { saveNoteValue(textarea.value); closeNoteEditor(); });
+    actions.append(delBtn, cancelBtn, saveBtn);
+
+    backdrop.addEventListener('click', (e) => { if (e.target === backdrop) closeNoteEditor(); });
+    dialog.append(header, body, actions);
+    backdrop.append(dialog);
+    return { backdrop, title, textarea };
+  }
+
+  function openNoteEditor(userId, userName) {
+    notesActiveId   = userId;
+    notesActiveUser = userName;
+    notesModal.title.textContent = t('noteTitle', { user: userName });
+    notesModal.textarea.value = getNote(userId);
+    notesModal.backdrop.classList.add('is-open');
+    notesModal.textarea.focus();
+  }
+
+  function closeNoteEditor() {
+    notesActiveId   = null;
+    notesActiveUser = '';
+    notesModal.backdrop.classList.remove('is-open');
+  }
+
+  function saveNoteValue(note) {
+    if (!notesActiveId) return;
+    GM_setValue(noteKey(notesActiveId), note.trim());
+    refreshNoteIcons(notesActiveId);
+  }
+
+  function refreshNoteIcons(userId) {
+    document.querySelectorAll(NOTES_LINK_SEL).forEach(link => {
+      if (!(link instanceof HTMLAnchorElement) || extractNoteUserId(link) !== userId) return;
+      const icon = link.nextElementSibling;
+      if (!icon || !icon.classList.contains('warera-note-icon')) return;
+      const saved = hasNote(userId);
+      icon.classList.toggle('has-note', saved);
+      icon.textContent = saved ? '📒' : '✎';
+      icon.title = notePreview(userId);
+      icon.setAttribute('aria-label', t('editNoteAria', { user: notesActiveUser || link.textContent.trim() || t('noteUserLabel') }));
+    });
+  }
+
   function start() {
     CONFIG.locale = GM_getValue(KEYS.locale, CONFIG.locale || 'de') || 'de';
     if (typeof window !== 'undefined') {
@@ -2863,7 +3142,9 @@
     CONFIG.useHighCritWeightForHold = GM_getValue(KEYS.highCritWeightForHold, false);
     CONFIG.useLiveOffersApi = GM_getValue(KEYS.useLiveOffersApi, false);
     CONFIG.showScrapFlip = GM_getValue(KEYS.showScrapFlip, false);
+    CONFIG.featNotes = GM_getValue(KEYS.featNotes, false);
     injectStyles();
+    if (CONFIG.featNotes) initNotes();
     injectGear();
     refreshMenuCommands();
 
