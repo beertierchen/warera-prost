@@ -10,6 +10,7 @@ A suite of client-side [userscripts](https://en.wikipedia.org/wiki/Userscript) f
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![No automation](https://img.shields.io/badge/automation-none-green.svg)
+[![Install from Greasy Fork](https://img.shields.io/badge/Greasy%20Fork-Install-red?logo=tampermonkey)](https://greasyfork.org/de/scripts/583766-prost)
 
 </div>
 
