@@ -17,12 +17,18 @@ global.GM_registerMenuCommand = () => {};
 class MockElement {
   constructor(tag, classes = '') {
     this.tagName = (tag || 'div').toUpperCase();
-    this.className = classes;
+    this._className = classes;
     this.style = {};
     this.classList = {
       classes: new Set(classes.split(' ').filter(Boolean)),
-      add: (c) => this.classList.classes.add(c),
-      remove: (c) => this.classList.classes.delete(c),
+      add: (c) => {
+        this.classList.classes.add(c);
+        this._className = Array.from(this.classList.classes).join(' ');
+      },
+      remove: (c) => {
+        this.classList.classes.delete(c);
+        this._className = Array.from(this.classList.classes).join(' ');
+      },
       contains: (c) => this.classList.classes.has(c)
     };
     this.children = [];
@@ -33,6 +39,24 @@ class MockElement {
     this.offsetWidth = 50;
     this.offsetHeight = 50;
   }
+
+  get className() {
+    return this._className;
+  }
+
+  set className(val) {
+    this._className = val;
+    this.classList.classes = new Set(val.split(' ').filter(Boolean));
+  }
+
+  get src() { return this.getAttribute('src'); }
+  set src(val) { this.setAttribute('src', val); }
+
+  get href() { return this.getAttribute('href'); }
+  set href(val) { this.setAttribute('href', val); }
+
+  get alt() { return this.getAttribute('alt'); }
+  set alt(val) { this.setAttribute('alt', val); }
 
   appendChild(child) {
     if (child) {
@@ -106,6 +130,9 @@ class MockElement {
   }
 
   matchesSelector(selector) {
+    if (selector.includes(',')) {
+      return selector.split(',').some(sel => this.matchesSelector(sel.trim()));
+    }
     let tag = null;
     let rest = selector;
     const tagMatch = selector.match(/^([a-z0-9]+)(.*)/i);
@@ -181,13 +208,31 @@ class MockElement {
 
 // Mock Browser globals
 global.window = {
-  addEventListener: () => {}
+  addEventListener: () => {},
+  getComputedStyle: (el) => {
+    return {
+      color: el.style.color || 'rgb(59, 219, 139)'
+    };
+  }
 };
+const documentBody = new MockElement('body');
 global.document = {
   createElement: (tag) => new MockElement(tag),
-  body: new MockElement('body'),
-  querySelectorAll: () => [],
-  querySelector: () => null
+  body: documentBody,
+  querySelectorAll: (selector) => documentBody.querySelectorAll(selector),
+  querySelector: (selector) => {
+    if (selector.startsWith('#')) {
+      const id = selector.slice(1);
+      const results = [];
+      const walk = (el) => {
+        if (el.getAttribute('id') === id) results.push(el);
+        el.children.forEach(walk);
+      };
+      walk(documentBody);
+      return results.length ? results[0] : null;
+    }
+    return documentBody.querySelector(selector);
+  }
 };
 global.history = {
   pushState: () => {},
@@ -320,6 +365,135 @@ try {
   assert.strictEqual(globalThis.shouldSuppressItem(normalCard2, { durability: 99 }), true, 'Normal damaged item should be suppressed');
 
   console.log('Test 3 passed: Equipped and damaged items suppressed correctly.');
+
+  console.log('--- Testing battle advisor highlights (PLAN-agy-battle-orders.md) ---');
+
+  // Helpers to build a mock battle page in documentBody
+  const buildBattlePage = (opts = {}) => {
+    // Clear documentBody
+    documentBody.children = [];
+
+    // Columns
+    const defCol = new MockElement('div', 'column-def');
+    const atkCol = new MockElement('div', 'column-atk');
+    documentBody.appendChild(defCol);
+    documentBody.appendChild(atkCol);
+
+    // Button wrappers inside columns
+    const defBtnWrapper = new MockElement('div');
+    const defBtn = new MockElement('div');
+    defBtn.setAttribute('id', 'defender-hit-button');
+    const defBtnInner = new MockElement('button');
+    const defFlag = new MockElement('img');
+    defFlag.setAttribute('src', '/images/flags/fr.svg');
+    defBtnInner.appendChild(defFlag);
+    defBtn.appendChild(defBtnInner);
+    defBtnWrapper.appendChild(defBtn);
+    defCol.appendChild(defBtnWrapper);
+
+    const atkBtnWrapper = new MockElement('div');
+    const atkBtn = new MockElement('div');
+    atkBtn.setAttribute('id', 'attacker-hit-button');
+    const atkBtnInner = new MockElement('button');
+    const atkFlag = new MockElement('img');
+    atkFlag.setAttribute('src', '/images/flags/pl.svg');
+    atkBtnInner.appendChild(atkFlag);
+    atkBtn.appendChild(atkBtnInner);
+    atkBtnWrapper.appendChild(atkBtn);
+    atkCol.appendChild(atkBtnWrapper);
+
+    // Add orders if requested
+    if (opts.defOrders) {
+      const ordersContainer = new MockElement('div');
+      opts.defOrders.forEach(url => {
+        const row = new MockElement('div');
+        const svg = new MockElement('svg');
+        svg.style.color = 'rgb(59, 219, 139)';
+        row.appendChild(svg);
+        const a = new MockElement('a');
+        a.setAttribute('href', url);
+        const img = new MockElement('img');
+        img.setAttribute('src', '/images/flags/de.svg');
+        a.appendChild(img);
+        row.appendChild(a);
+        ordersContainer.appendChild(row);
+      });
+      defCol.appendChild(ordersContainer);
+    }
+    if (opts.atkOrders) {
+      const ordersContainer = new MockElement('div');
+      opts.atkOrders.forEach(url => {
+        const row = new MockElement('div');
+        const svg = new MockElement('svg');
+        svg.style.color = 'rgb(248, 81, 73)';
+        row.appendChild(svg);
+        const a = new MockElement('a');
+        a.setAttribute('href', url);
+        const img = new MockElement('img');
+        img.setAttribute('src', 'https://media.warera.io/avatars/mu/1.webp');
+        a.appendChild(img);
+        row.appendChild(a);
+        ordersContainer.appendChild(row);
+      });
+      atkCol.appendChild(ordersContainer);
+    }
+  };
+
+  // Case A: Country orders on defender side, country NOT in allied list
+  buildBattlePage({ defOrders: ['/country/germany'] });
+  assert.strictEqual(globalThis.detectAllySide(), 'defender', 'Defender should be highlighted due to country orders');
+
+  // Case B: MU orders on defender side, defender NOT in allied list
+  buildBattlePage({ defOrders: ['/mu/1234'] });
+  assert.strictEqual(globalThis.detectAllySide(), 'defender', 'Defender should be highlighted due to MU-only orders');
+
+  // Case C: Attacker has MU orders, defender has no orders
+  buildBattlePage({ atkOrders: ['/mu/5678'] });
+  assert.strictEqual(globalThis.detectAllySide(), 'attacker', 'Attacker should be highlighted due to MU orders');
+
+  // Case D: Both sides have orders (should return null to never guess)
+  buildBattlePage({ defOrders: ['/country/germany'], atkOrders: ['/mu/5678'] });
+  assert.strictEqual(globalThis.detectAllySide(), null, 'Should return null when both sides have orders');
+
+  // Case E: Neither side has orders (should return null)
+  buildBattlePage({});
+  assert.strictEqual(globalThis.detectAllySide(), null, 'Should return null when neither side has orders');
+
+  // Case F: Verify compact orders injection
+  buildBattlePage({
+    defOrders: ['/country/germany'],
+    atkOrders: ['/mu/5678']
+  });
+
+  const defBtn = document.querySelector('#defender-hit-button');
+  const atkBtn = document.querySelector('#attacker-hit-button');
+
+  globalThis.injectCompactOrders(defBtn);
+  globalThis.injectCompactOrders(atkBtn);
+
+  // Defender button inner should have the injected container
+  const defInjected = defBtn.querySelector('.wia-compact-orders');
+  assert.ok(defInjected, 'Defender button should have compact orders injected');
+  assert.strictEqual(defInjected.children.length, 1, 'Defender should have 1 compact order item');
+  const defSymbol = defInjected.querySelector('.wia-compact-order-symbol');
+  const defFlag = defInjected.querySelector('.wia-compact-order-flag');
+  assert.ok(defSymbol, 'Should find order symbol in defender button');
+  assert.strictEqual(defSymbol.style.color, 'rgb(59, 219, 139)', 'Defender symbol should preserve green color');
+  assert.ok(defFlag, 'Should find order flag in defender button');
+  assert.strictEqual(defFlag.getAttribute('src'), '/images/flags/de.svg', 'Defender flag should point to Germany flag');
+
+  // Attacker button inner should have the injected container
+  const atkInjected = atkBtn.querySelector('.wia-compact-orders');
+  assert.ok(atkInjected, 'Attacker button should have compact orders injected');
+  assert.strictEqual(atkInjected.children.length, 1, 'Attacker should have 1 compact order item');
+  const atkSymbol = atkInjected.querySelector('.wia-compact-order-symbol');
+  const atkFlag = atkInjected.querySelector('.wia-compact-order-flag');
+  assert.ok(atkSymbol, 'Should find order symbol in attacker button');
+  assert.strictEqual(atkSymbol.style.color, 'rgb(248, 81, 73)', 'Attacker symbol should preserve red color');
+  assert.ok(atkFlag, 'Should find order flag in attacker button');
+  assert.strictEqual(atkFlag.getAttribute('src'), 'https://media.warera.io/avatars/mu/1.webp', 'Attacker flag should point to MU avatar');
+
+  console.log('Battle advisor highlights and compact order injection tests passed successfully.');
 
   console.log('Success! The script loaded and initialized without throwing any runtime errors.');
   process.exit(0);

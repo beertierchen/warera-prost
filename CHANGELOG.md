@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## 2026-06-21 | Kompakte Inline Battle-Orders (v0.7.0)
+
+**Geänderte Dateien:** `warera-prost.user.js`
+
+**Änderungen (Deutsch):**
+- **Kompakte Orders im Angriffs-/Verteidigungsbutton**: Anstelle eines klobigen Blocks unter dem Button werden die aktiven Angriffs-/Verteidigungsbefehle jetzt inline und kompakt direkt in den Buttons angezeigt (neben dem Text und der Landesflagge).
+- **Anzeige von Symbol & Flagge**: Es wird ausschließlich das Prioritäts-Fadenkreuz (in der originalen Farbe: grün, gelb oder rot) und die Landes- oder Militäreinheit-Flagge (MU) dargestellt (kein Text).
+- **Unabhängige Anzeige**: Beide Buttons zeigen ihre jeweiligen Orders an, wenn welche vorliegen, unabhängig von der Bündnis-Hervorhebung.
+
+**Changes (English):**
+- **Compact Orders inside attack/defend buttons**: Instead of a bulky block below the button, active attack/defend orders are now displayed inline and compactly inside the buttons (next to the label and base flag).
+- **Icons & Flags only**: Only displays the priority crosshair (preserving the original green/yellow/red color) and the country or military unit (MU) flag (no text description).
+- **Independent Display**: Both buttons show their respective orders if present, independent of alliance highlight styling.
+
 ## 2026-06-21 | Haltbarkeit & Profil-Layout Fixes (v0.6.9)
 
 **Geänderte Dateien:** `warera-prost.user.js`

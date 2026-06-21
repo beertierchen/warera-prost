@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.6.9
+// @version      0.7.0
 // @description  PROST — Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -1125,6 +1125,9 @@
     globalThis.isInsideProfileEquipment = isInsideProfileEquipment;
     globalThis.shouldSuppressItem = shouldSuppressItem;
     globalThis.originalTitles = originalTitles;
+    globalThis.detectAllySide = detectAllySide;
+    globalThis.battleFlagCode = battleFlagCode;
+    globalThis.injectCompactOrders = injectCompactOrders;
   }
 
   function getLocale() {
@@ -2701,35 +2704,38 @@
         transform: scale(.94);
         transition: transform 0.2s, opacity 0.2s, filter 0.2s;
       }
-      .wia-battle-orders {
-        display: flex;
-        flex-direction: column;
-        gap: 3px;
-        margin-top: 6px;
-        padding: 4px 6px;
-        border-radius: 4px;
-        background: rgba(0,0,0,.35);
-        pointer-events: none;
-      }
-      .wia-battle-order-row {
-        display: flex;
+      .wia-compact-orders {
+        display: inline-flex;
         align-items: center;
         gap: 5px;
+        margin-left: 8px;
+        vertical-align: middle;
+        pointer-events: none;
       }
-      .wia-battle-order-thumb {
+      .wia-compact-order-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+      }
+      .wia-compact-order-symbol {
+        width: 1.1em;
+        height: 1.1em;
+        display: inline-block;
+        vertical-align: middle;
+      }
+      .wia-compact-order-symbol svg {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+      .wia-compact-order-flag {
         width: 1.1em;
         height: 1.1em;
         object-fit: cover;
         border-radius: 2px;
+        display: inline-block;
+        vertical-align: middle;
         flex-shrink: 0;
-      }
-      .wia-battle-order-text {
-        font: 600 10px/1.2 system-ui, sans-serif;
-        color: #f9fafb;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        max-width: 140px;
       }
     `);
   }
@@ -3089,76 +3095,77 @@
     if (defCode && allied.has(defCode)) return 'defender';
     if (atkCode && allied.has(atkCode)) return 'attacker';
 
-    // Fallback: structural — orders block (a[href*="/country/"]) sits in the ally column.
-    // The country link only appears in the orders block, NOT inside the buttons themselves.
-    const orderLink = document.querySelector('a[href*="/country/"]');
-    if (orderLink) {
-      const defParent = defBtn.parentElement?.parentElement;
-      const atkParent = atkBtn.parentElement?.parentElement;
-      if (defParent && defParent.contains(orderLink)) return 'defender';
-      if (atkParent && atkParent.contains(orderLink)) return 'attacker';
-    }
+    // Fallback: structural — check both defender and attacker parents independently for orders (country or MU)
+    const defParent = defBtn.parentElement?.parentElement;
+    const atkParent = atkBtn.parentElement?.parentElement;
+
+    const defHasOrders = !!(defParent && defParent.querySelector('a[href*="/country/"], a[href*="/mu/"]'));
+    const atkHasOrders = !!(atkParent && atkParent.querySelector('a[href*="/country/"], a[href*="/mu/"]'));
+
+    // Highlight only if exactly one side has orders (never guess if both or neither do)
+    if (defHasOrders && !atkHasOrders) return 'defender';
+    if (atkHasOrders && !defHasOrders) return 'attacker';
 
     return null; // unknown — never highlight a guess
   }
 
-  function cloneOrdersIntoButton(allyBtnEl) {
-    // Find the orders block: sibling container holding a[href*="/country/"] or a[href*="/mu/"]
-    // It lives two levels up from #defender/attacker-hit-button, as a sibling div.
-    const column = allyBtnEl.parentElement?.parentElement;
+  function injectCompactOrders(btnEl) {
+    if (!btnEl) return;
+    const column = btnEl.parentElement?.parentElement;
     if (!column) return;
 
-    const orderRows = [...column.querySelectorAll(
-      ':scope > div a[href*="/country/"], :scope > div a[href*="/mu/"]'
-    )].map(a => a.closest('div._1dnmndyanw, div[class]') || a.parentElement?.parentElement);
+    const rows = column.querySelectorAll('a[href*="/country/"], a[href*="/mu/"]');
+    if (!rows.length) return;
 
-    // Deduplicate row containers and find the distinct order rows
-    const ordersBlock = column.querySelector(
-      ':scope > div:not([id]):not([class*="ahvacn"])'
-    );
-    if (!ordersBlock) return;
-
-    // Build a compact summary strip
-    const strip = document.createElement('div');
-    strip.className = 'wia-battle-orders';
+    const strip = document.createElement('span');
+    strip.className = 'wia-compact-orders';
     strip.setAttribute('data-wia-injected', 'true');
 
-    // Collect all order rows: each row has either a country flag link or MU link
-    const rows = ordersBlock.querySelectorAll('a[href*="/country/"], a[href*="/mu/"]');
     rows.forEach(anchor => {
-      const row = document.createElement('div');
-      row.className = 'wia-battle-order-row';
-
-      // Clone the avatar/flag thumbnail
+      const rowContainer = anchor.closest('div._1dnmndyl3l, div[class]') || anchor.parentElement?.parentElement;
+      const originalSvg = rowContainer?.querySelector('svg');
       const img = anchor.querySelector('img');
+
+      if (!originalSvg && !img) return;
+
+      const item = document.createElement('span');
+      item.className = 'wia-compact-order-item';
+
+      if (originalSvg) {
+        const clonedSvg = originalSvg.cloneNode(true);
+        clonedSvg.setAttribute('class', 'wia-compact-order-symbol');
+        
+        let color = 'currentColor';
+        if (typeof window !== 'undefined' && typeof window.getComputedStyle === 'function') {
+          try {
+            const cs = window.getComputedStyle(originalSvg);
+            color = cs.color || 'currentColor';
+          } catch (e) {}
+        }
+        clonedSvg.style.color = color;
+        item.appendChild(clonedSvg);
+      }
+
       if (img) {
-        const thumb = document.createElement('img');
-        thumb.src = img.src;
-        thumb.alt = img.alt;
-        thumb.className = 'wia-battle-order-thumb';
-        row.appendChild(thumb);
+        const clonedImg = document.createElement('img');
+        clonedImg.src = img.src;
+        clonedImg.alt = img.alt;
+        clonedImg.className = 'wia-compact-order-flag';
+        item.appendChild(clonedImg);
       }
 
-      // Grab the order text (the span._1dnmndyayv sibling)
-      const textSpan = anchor.closest('span')?.parentElement?.querySelector('[class*="ayv"]')
-        || anchor.parentElement?.nextElementSibling?.querySelector('span')
-        || anchor.parentElement?.nextElementSibling;
-      const text = textSpan?.textContent?.trim();
-      if (text) {
-        const label = document.createElement('span');
-        label.className = 'wia-battle-order-text';
-        label.textContent = text;
-        row.appendChild(label);
-      }
-
-      strip.appendChild(row);
+      strip.appendChild(item);
     });
 
     if (!strip.children.length) return;
 
-    // Inject below the button label inside the button wrapper
-    const btnInner = allyBtnEl.querySelector('button');
-    if (btnInner) btnInner.appendChild(strip);
+    // Find the inner label container inside the button (e.g. Defend/Attack text wrapper next to the country flag)
+    const labelContainer = btnEl.querySelector('button img[src*="/flags/"]')?.closest('[aria-haspopup="dialog"]')?.parentElement
+      || btnEl.querySelector('button');
+
+    if (labelContainer) {
+      labelContainer.appendChild(strip);
+    }
   }
 
   function applyBattleAdvisory() {
@@ -3172,16 +3179,18 @@
 
     teardownBattleAdvisory(); // clean previous pass
 
+    // Unconditionally inject compact orders for each side if present
+    injectCompactOrders(defBtn);
+    injectCompactOrders(atkBtn);
+
     const side = detectAllySide();
-    if (!side) return; // unknown side — leave UI untouched
+    if (!side) return; // unknown side — leave highlighting untouched
 
     const allyBtn  = side === 'defender' ? defBtn : atkBtn;
     const enemyBtn = side === 'defender' ? atkBtn : defBtn;
 
     allyBtn.classList.add('wia-battle-primary');
     enemyBtn.classList.add('wia-battle-muted');
-
-    cloneOrdersIntoButton(allyBtn);
   }
 
   function teardownBattleAdvisory() {
