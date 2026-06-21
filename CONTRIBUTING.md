@@ -14,6 +14,9 @@ Thanks for helping out! PROST is a single WareEra userscript that grows by addin
 warera-prost.user.js               # the one script — inventory advice, scrap-flip, notes, …
 warera-notes.user.js               # legacy standalone notes script (no longer actively developed)
 tests/                             # node test harness with Tampermonkey API mocks
+docs/wiki/                         # GitHub Wiki source (EN + *.de.md), images in docs/wiki/images/
+scripts/publish-wiki.sh            # mirrors docs/wiki/ → the GitHub Wiki repo
+.github/workflows/publish-wiki.yml # auto-publishes the wiki on push to main
 CHANGELOG.md
 ```
 
@@ -33,6 +36,16 @@ New features are added as **self-contained modules** inside the main IIFE:
 4. Add an entry to `CHANGELOG.md`.
 5. Run the tests: `npm test`.
 6. Open a PR against `main` with a clear description. Squash-merge is preferred.
+
+## Documentation (Wiki)
+
+The [GitHub Wiki](https://github.com/beertierchen/warera-prost/wiki) is **generated**, not edited directly.
+
+- **Source of truth:** `docs/wiki/`. Edit the `.md` there in a normal PR.
+- **Bilingual:** every page exists as `Page.md` (EN) and `Page.de.md` (DE). Keep both in sync; images are language-neutral and live once in `docs/wiki/images/`.
+- **Publishing:** on push to `main`, `.github/workflows/publish-wiki.yml` mirrors `docs/wiki/` into the wiki via `scripts/publish-wiki.sh`. Editing the wiki on GitHub directly will be overwritten on the next sync.
+- **One-time setup:** GitHub creates the wiki repo only after the first page is saved in the Wiki tab UI. Create any page once; the script/workflow sync over it afterwards.
+- **Local publish:** `GIT_TOKEN="$(gh auth token)" bash scripts/publish-wiki.sh`.
 
 ## Testing
 
