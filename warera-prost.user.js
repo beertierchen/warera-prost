@@ -4875,9 +4875,11 @@
   // ───────────────────────────────────────────────────────────────────────────
   // Resource Market Intraday Graph module
   // ───────────────────────────────────────────────────────────────────────────
-  let marketGraphObserver = null;
+  let modalObserver = null;
+  let bodyObserver = null;
   let lastMktState = null;
   let renderingIntraday = false;
+  let nextRenderRequest = null;
   const EXCLUDED_ALTS = new Set(['gold', 'money', 'coins', 'xp', 'avatar', 'logo']);
   const resourceTxsInFlight = {}; // code -> promise
 
@@ -4999,10 +5001,8 @@
   }
 
   function getNativeSvgFingerprint(svg) {
-    const clone = svg.cloneNode(true);
-    const ourEls = clone.querySelectorAll('[class^="wia-mkt-"], [class*=" wia-mkt-"]');
-    ourEls.forEach(el => el.remove());
-    return clone.innerHTML.length;
+    const nativePath = svg.querySelector('path[stroke="#A19638"]');
+    return nativePath ? nativePath.getAttribute('d') || '' : '';
   }
 
   function formatHoverTime(timestamp, rangeType) {
@@ -5025,15 +5025,18 @@
   }
 
   async function renderIntradayLine(code, range, svg, modal) {
-    if (renderingIntraday) return;
+    if (renderingIntraday) {
+      nextRenderRequest = { code, range, svg, modal };
+      return;
+    }
     renderingIntraday = true;
     
     try {
       const oldToggle = modal.querySelector('.wia-mkt-toggle-row');
       if (oldToggle) oldToggle.remove();
       
-      const ourSvgEls = svg.querySelectorAll('[class^="wia-mkt-"], [class*=" wia-mkt-"]');
-      ourSvgEls.forEach(el => el.remove());
+      const oldOverlay = modal.querySelector('.wia-mkt-overlay-svg');
+      if (oldOverlay) oldOverlay.remove();
       
       const toggleRow = document.createElement('div');
       toggleRow.className = 'wia-mkt-toggle-row';
@@ -5058,7 +5061,26 @@
         };
       });
       
-      svg.parentElement.insertBefore(toggleRow, svg);
+      const parent = svg.parentElement;
+      if (parent) {
+        if (parent.style.position !== 'relative') {
+          parent.style.position = 'relative';
+        }
+        parent.insertBefore(toggleRow, svg);
+      }
+      
+      const overlaySvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      overlaySvg.setAttribute('width', '428');
+      overlaySvg.setAttribute('height', '60');
+      overlaySvg.setAttribute('class', 'wia-mkt-overlay-svg');
+      
+      const overlayG = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      overlayG.setAttribute('transform', 'translate(4,6)');
+      overlaySvg.appendChild(overlayG);
+      
+      if (parent) {
+        parent.insertBefore(overlaySvg, svg.nextSibling);
+      }
       
       const maxSpanMs = range === '24h' ? 24 * 60 * 60 * 1000 : 72 * 60 * 60 * 1000;
       const txs = await seedResourceTransactions(code, maxSpanMs);
@@ -5096,8 +5118,7 @@
         warnText.setAttribute('class', 'wia-mkt-warning');
         warnText.textContent = getLocale() === 'de' ? 'Intraday-Daten spärlich (lade...)' : 'Intraday data sparse (loading...)';
         
-        const innerG = svg.querySelector('g[transform="translate(4,6)"]');
-        if (innerG) innerG.appendChild(warnText);
+        overlayG.appendChild(warnText);
         
         lastMktState = `${code}-${range}-${getNativeSvgFingerprint(svg)}`;
         return;
@@ -5185,12 +5206,6 @@
         }
       });
       
-      const innerG = svg.querySelector('g[transform="translate(4,6)"]');
-      if (!innerG) {
-        lastMktState = `${code}-${range}-${getNativeSvgFingerprint(svg)}`;
-        return;
-      }
-      
       const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       pathEl.setAttribute('d', pathD);
       pathEl.setAttribute('fill', 'none');
@@ -5200,13 +5215,13 @@
       pathEl.setAttribute('stroke-linejoin', 'round');
       pathEl.setAttribute('class', 'wia-mkt-line');
       
-      const nativePath = innerG.querySelector('path[stroke="#A19638"]');
+      const nativePath = svg.querySelector('g[transform="translate(4,6)"] path[stroke="#A19638"]');
       if (nativePath) {
         const filterVal = nativePath.getAttribute('filter');
         if (filterVal) pathEl.setAttribute('filter', filterVal);
       }
       
-      innerG.appendChild(pathEl);
+      overlayG.appendChild(pathEl);
       
       plottedPoints.forEach(pt => {
         const cx = getX(pt);
@@ -5223,7 +5238,7 @@
         titleEl.textContent = titleText;
         circle.appendChild(titleEl);
         
-        innerG.appendChild(circle);
+        overlayG.appendChild(circle);
       });
       
       const maxText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
@@ -5238,14 +5253,19 @@
       minText.setAttribute('class', 'wia-mkt-axis-label');
       minText.textContent = fmt(yMin);
       
-      innerG.appendChild(maxText);
-      innerG.appendChild(minText);
+      overlayG.appendChild(maxText);
+      overlayG.appendChild(minText);
       
       lastMktState = `${code}-${range}-${getNativeSvgFingerprint(svg)}`;
     } catch (e) {
       log('renderIntradayLine error:', e);
     } finally {
       renderingIntraday = false;
+      if (nextRenderRequest) {
+        const req = nextRenderRequest;
+        nextRenderRequest = null;
+        debouncedRenderIntraday(req.code, req.range, req.svg, req.modal);
+      }
     }
   }
 
@@ -5294,39 +5314,72 @@
   }
 
   function initMarketGraph() {
-    if (marketGraphObserver) marketGraphObserver.disconnect();
+    teardownMarketGraph();
     
-    marketGraphObserver = new MutationObserver(() => {
+    bodyObserver = new MutationObserver(() => {
       if (!CONFIG.featMarketGraph) return;
       
       const found = findMarketGraph();
-      if (!found) {
+      if (found) {
+        setupModalObserver(found.modal);
+        checkAndRenderGraph(found);
+      } else {
+        if (modalObserver) {
+          modalObserver.disconnect();
+          modalObserver = null;
+        }
         lastMktState = null;
-        return;
       }
-      
-      const { modal, svg } = found;
-      const code = getModalResourceCode(modal);
-      if (!code) {
-        lastMktState = null;
-        return;
-      }
-      
-      const range = GM_getValue(KEYS.marketGraphRange, '24h');
-      const stateKey = `${code}-${range}-${getNativeSvgFingerprint(svg)}`;
-      if (stateKey === lastMktState) return;
-      lastMktState = stateKey;
-      
-      debouncedRenderIntraday(code, range, svg, modal);
     });
     
-    marketGraphObserver.observe(document.body, { childList: true, subtree: true });
+    bodyObserver.observe(document.body, { childList: true });
+    
+    const found = findMarketGraph();
+    if (found) {
+      setupModalObserver(found.modal);
+      checkAndRenderGraph(found);
+    }
+  }
+
+  function setupModalObserver(modal) {
+    if (modalObserver) return;
+    
+    modalObserver = new MutationObserver(() => {
+      if (!CONFIG.featMarketGraph) return;
+      const found = findMarketGraph();
+      if (found) {
+        checkAndRenderGraph(found);
+      }
+    });
+    
+    modalObserver.observe(modal, { childList: true, subtree: true });
+  }
+
+  function checkAndRenderGraph(found) {
+    const { modal, svg } = found;
+    const code = getModalResourceCode(modal);
+    if (!code) {
+      lastMktState = null;
+      return;
+    }
+    
+    const range = GM_getValue(KEYS.marketGraphRange, '24h');
+    const fingerprint = getNativeSvgFingerprint(svg);
+    const stateKey = `${code}-${range}-${fingerprint}`;
+    if (stateKey === lastMktState) return;
+    lastMktState = stateKey;
+    
+    debouncedRenderIntraday(code, range, svg, modal);
   }
 
   function teardownMarketGraph() {
-    if (marketGraphObserver) {
-      marketGraphObserver.disconnect();
-      marketGraphObserver = null;
+    if (bodyObserver) {
+      bodyObserver.disconnect();
+      bodyObserver = null;
+    }
+    if (modalObserver) {
+      modalObserver.disconnect();
+      modalObserver = null;
     }
     lastMktState = null;
   }

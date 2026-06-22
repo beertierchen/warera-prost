@@ -1184,7 +1184,8 @@ try {
   nativeG.appendChild(nativePath);
   mockSvg.appendChild(nativeG);
   
-  const lengthBefore = mockSvg.innerHTML.length;
+  const fingerprintBefore = globalThis.getNativeSvgFingerprint(mockSvg);
+  assert.strictEqual(fingerprintBefore, 'M0,0 L10,10', 'Fingerprint should match d attribute of native gold path');
   
   // Injected elements
   const injectedPath = new MockElement('path');
@@ -1192,8 +1193,8 @@ try {
   injectedPath.setAttribute('stroke', '#4ec9d4');
   nativeG.appendChild(injectedPath);
   
-  const fingerprint = globalThis.getNativeSvgFingerprint(mockSvg);
-  assert.strictEqual(fingerprint, lengthBefore, 'getNativeSvgFingerprint should exclude wia-mkt- elements');
+  const fingerprintAfter = globalThis.getNativeSvgFingerprint(mockSvg);
+  assert.strictEqual(fingerprintAfter, 'M0,0 L10,10', 'Fingerprint should be unaffected by injected wia-mkt- elements');
 
   console.log('Resource Market Intraday Graph tests passed successfully.');
 
