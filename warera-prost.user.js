@@ -3104,6 +3104,30 @@
         stroke-linejoin: miter;
         fill: #4ec9d4;
         font-family: inherit;
+        pointer-events: none;
+      }
+      .wia-mkt-line {
+        pointer-events: none;
+      }
+      .wia-mkt-warning {
+        pointer-events: none;
+      }
+      .wia-mkt-tooltip {
+        position: absolute;
+        display: none;
+        z-index: 100002;
+        background: rgba(15, 23, 42, 0.95);
+        border: 1px solid rgba(78, 201, 212, 0.4);
+        border-radius: 6px;
+        padding: 6px 10px;
+        color: #f8fafc;
+        font-size: 11px;
+        font-weight: 600;
+        pointer-events: none;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+        transition: opacity 0.15s ease;
+        font-family: system-ui, -apple-system, sans-serif;
+        white-space: nowrap;
       }
     `);
   }
@@ -4882,6 +4906,17 @@
   let nextRenderRequest = null;
   const EXCLUDED_ALTS = new Set(['gold', 'money', 'coins', 'xp', 'avatar', 'logo']);
   const resourceTxsInFlight = {}; // code -> promise
+  let marketTooltip = null;
+
+  function getOrCreateTooltip() {
+    let el = document.querySelector('.wia-mkt-tooltip');
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'wia-mkt-tooltip';
+      document.body.appendChild(el);
+    }
+    return el;
+  }
 
   async function tickPriceSampler() {
     if (!CONFIG.featMarketGraph) return;
@@ -5035,8 +5070,14 @@
       const oldToggle = modal.querySelector('.wia-mkt-toggle-row');
       if (oldToggle) oldToggle.remove();
       
-      const oldOverlay = modal.querySelector('.wia-mkt-overlay-svg');
-      if (oldOverlay) oldOverlay.remove();
+      const innerG = svg.querySelector('g[transform="translate(4,6)"]');
+      if (!innerG) {
+        lastMktState = `${code}-${range}-${getNativeSvgFingerprint(svg)}`;
+        return;
+      }
+      
+      const ourSvgEls = innerG.querySelectorAll('[class^="wia-mkt-"], [class*=" wia-mkt-"]');
+      ourSvgEls.forEach(el => el.remove());
       
       const toggleRow = document.createElement('div');
       toggleRow.className = 'wia-mkt-toggle-row';
@@ -5067,19 +5108,6 @@
           parent.style.position = 'relative';
         }
         parent.insertBefore(toggleRow, svg);
-      }
-      
-      const overlaySvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      overlaySvg.setAttribute('width', '428');
-      overlaySvg.setAttribute('height', '60');
-      overlaySvg.setAttribute('class', 'wia-mkt-overlay-svg');
-      
-      const overlayG = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-      overlayG.setAttribute('transform', 'translate(4,6)');
-      overlaySvg.appendChild(overlayG);
-      
-      if (parent) {
-        parent.insertBefore(overlaySvg, svg.nextSibling);
       }
       
       const maxSpanMs = range === '24h' ? 24 * 60 * 60 * 1000 : 72 * 60 * 60 * 1000;
@@ -5118,7 +5146,7 @@
         warnText.setAttribute('class', 'wia-mkt-warning');
         warnText.textContent = getLocale() === 'de' ? 'Intraday-Daten spärlich (lade...)' : 'Intraday data sparse (loading...)';
         
-        overlayG.appendChild(warnText);
+        innerG.appendChild(warnText);
         
         lastMktState = `${code}-${range}-${getNativeSvgFingerprint(svg)}`;
         return;
@@ -5210,18 +5238,26 @@
       pathEl.setAttribute('d', pathD);
       pathEl.setAttribute('fill', 'none');
       pathEl.setAttribute('stroke', '#4ec9d4');
-      pathEl.setAttribute('stroke-width', '2');
-      pathEl.setAttribute('stroke-linecap', 'round');
-      pathEl.setAttribute('stroke-linejoin', 'round');
       pathEl.setAttribute('class', 'wia-mkt-line');
       
       const nativePath = svg.querySelector('g[transform="translate(4,6)"] path[stroke="#A19638"]');
       if (nativePath) {
+        const strokeWidth = nativePath.getAttribute('stroke-width') || '2';
+        const strokeLinecap = nativePath.getAttribute('stroke-linecap') || 'round';
+        const strokeLinejoin = nativePath.getAttribute('stroke-linejoin') || 'round';
         const filterVal = nativePath.getAttribute('filter');
+        
+        pathEl.setAttribute('stroke-width', strokeWidth);
+        pathEl.setAttribute('stroke-linecap', strokeLinecap);
+        pathEl.setAttribute('stroke-linejoin', strokeLinejoin);
         if (filterVal) pathEl.setAttribute('filter', filterVal);
+      } else {
+        pathEl.setAttribute('stroke-width', '2');
+        pathEl.setAttribute('stroke-linecap', 'round');
+        pathEl.setAttribute('stroke-linejoin', 'round');
       }
       
-      overlayG.appendChild(pathEl);
+      innerG.appendChild(pathEl);
       
       plottedPoints.forEach(pt => {
         const cx = getX(pt);
@@ -5233,12 +5269,22 @@
         circle.setAttribute('r', '3');
         circle.setAttribute('class', 'wia-mkt-point');
         
-        const titleText = `${formatHoverTime(pt.t, range)} · ${t('marketGraphHoverPrice', { price: fmt(pt.price) })}`;
-        const titleEl = document.createElementNS('http://www.w3.org/2000/svg', 'title');
-        titleEl.textContent = titleText;
-        circle.appendChild(titleEl);
+        circle.onmouseenter = (e) => {
+          const tooltip = getOrCreateTooltip();
+          tooltip.innerHTML = `${formatHoverTime(pt.t, range)} · <span style="color: #4ec9d4;">${t('marketGraphHoverPrice', { price: fmt(pt.price) })}</span>`;
+          tooltip.style.display = 'block';
+        };
+        circle.onmousemove = (e) => {
+          const tooltip = getOrCreateTooltip();
+          tooltip.style.left = `${e.pageX + 10}px`;
+          tooltip.style.top = `${e.pageY - 28}px`;
+        };
+        circle.onmouseleave = () => {
+          const tooltip = getOrCreateTooltip();
+          tooltip.style.display = 'none';
+        };
         
-        overlayG.appendChild(circle);
+        innerG.appendChild(circle);
       });
       
       const maxText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
@@ -5253,8 +5299,8 @@
       minText.setAttribute('class', 'wia-mkt-axis-label');
       minText.textContent = fmt(yMin);
       
-      overlayG.appendChild(maxText);
-      overlayG.appendChild(minText);
+      innerG.appendChild(maxText);
+      innerG.appendChild(minText);
       
       lastMktState = `${code}-${range}-${getNativeSvgFingerprint(svg)}`;
     } catch (e) {
@@ -5366,7 +5412,9 @@
     const range = GM_getValue(KEYS.marketGraphRange, '24h');
     const fingerprint = getNativeSvgFingerprint(svg);
     const stateKey = `${code}-${range}-${fingerprint}`;
-    if (stateKey === lastMktState) return;
+    
+    const lineMissing = !svg.querySelector('.wia-mkt-line') && !svg.querySelector('.wia-mkt-warning');
+    if (stateKey === lastMktState && !lineMissing) return;
     lastMktState = stateKey;
     
     debouncedRenderIntraday(code, range, svg, modal);
@@ -5382,6 +5430,8 @@
       modalObserver = null;
     }
     lastMktState = null;
+    const tooltip = document.querySelector('.wia-mkt-tooltip');
+    if (tooltip) tooltip.remove();
   }
 
   // ───────────────────────────────────────────────────────────────────────────
