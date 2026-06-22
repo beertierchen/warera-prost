@@ -4929,30 +4929,18 @@
 
     // 3. Resource Requirements
     let scrapsRequired = 0;
-    const scrapsImg = modal.querySelector('img[alt="scraps"]');
-    if (scrapsImg) {
-      let container = scrapsImg.parentElement;
-      while (container && container !== modal) {
-        const slashSpan = Array.from(container.querySelectorAll('span')).find(span => span.textContent.trim().startsWith('/'));
-        if (slashSpan) {
-          scrapsRequired = parseInt(slashSpan.textContent.replace(/[^0-9]/g, ''), 10) || 0;
-          break;
-        }
-        container = container.parentElement;
-      }
-    }
-
     let steelRequired = 0;
-    const steelImg = modal.querySelector('img[alt="steel"]');
-    if (steelImg) {
-      let container = steelImg.parentElement;
-      while (container && container !== modal) {
-        const slashSpan = Array.from(container.querySelectorAll('span')).find(span => span.textContent.trim().startsWith('/'));
-        if (slashSpan) {
-          steelRequired = parseInt(slashSpan.textContent.replace(/[^0-9]/g, ''), 10) || 0;
-          break;
+
+    const slashSpans = Array.from(modal.querySelectorAll('span')).filter(span => span.textContent.trim().startsWith('/'));
+    for (const slashSpan of slashSpans) {
+      const val = parseInt(slashSpan.textContent.replace(/[^0-9]/g, ''), 10) || 0;
+      const parent = slashSpan.parentElement;
+      if (parent) {
+        if (parent.querySelector('img[src*="scrap"], img[src*="scraps"], img[alt="scraps"], img[alt="scrap"]')) {
+          scrapsRequired = val;
+        } else if (parent.querySelector('img[src*="steel"], img[alt="steel"]')) {
+          steelRequired = val;
         }
-        container = container.parentElement;
       }
     }
 

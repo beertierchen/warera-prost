@@ -1066,7 +1066,11 @@ try {
   const scrapsWrap = new MockElement('span');
   const scrapsImg = new MockElement('img');
   scrapsImg.setAttribute('alt', 'scraps');
+  scrapsImg.setAttribute('src', '/images/items/scraps.png');
   scrapsWrap.appendChild(scrapsImg);
+  const scrapsCurrentSpan = new MockElement('span');
+  scrapsCurrentSpan.textContent = '100';
+  scrapsWrap.appendChild(scrapsCurrentSpan);
   const scrapsInnerSpan = new MockElement('span');
   scrapsInnerSpan.textContent = '/6';
   scrapsWrap.appendChild(scrapsInnerSpan);
@@ -1075,7 +1079,11 @@ try {
   const steelWrap = new MockElement('span');
   const steelImg = new MockElement('img');
   steelImg.setAttribute('alt', 'steel');
+  steelImg.setAttribute('src', '/images/items/steel.png');
   steelWrap.appendChild(steelImg);
+  const steelCurrentSpan = new MockElement('span');
+  steelCurrentSpan.textContent = '10';
+  steelWrap.appendChild(steelCurrentSpan);
   const steelInnerSpan = new MockElement('span');
   steelInnerSpan.textContent = '/1';
   steelWrap.appendChild(steelInnerSpan);
