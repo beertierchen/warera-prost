@@ -50,6 +50,24 @@ class MockElement {
     this.classList.classes = new Set(val.split(' ').filter(Boolean));
   }
 
+  get innerHTML() {
+    const serializeAttr = (k, v) => `${k}="${v}"`;
+    return this.children.map(c => {
+      const tag = c.tagName.toLowerCase();
+      const attrs = [];
+      if (c.className) attrs.push(serializeAttr('class', c.className));
+      for (const [k, v] of c.attributes.entries()) {
+        if (k !== 'class') attrs.push(serializeAttr(k, v));
+      }
+      const attrsStr = attrs.length ? ' ' + attrs.join(' ') : '';
+      if (['input', 'img', 'br', 'hr'].includes(tag)) {
+        return `<${tag}${attrsStr} />`;
+      }
+      const childContent = c.innerHTML || c.textContent;
+      return `<${tag}${attrsStr}>${childContent}</${tag}>`;
+    }).join('');
+  }
+
   set innerHTML(html) {
     this.children = [];
     const stack = [this];
@@ -607,14 +625,16 @@ try {
   assert.ok(modalEl, 'Settings modal should be rendered');
 
   const hintBtns = bg.querySelectorAll('.wia-hint-toggle');
-  assert.strictEqual(hintBtns.length, 5, 'Should have exactly 5 hint toggle buttons (Notes, Battle, Live Offers, Scrap Flip, Pill Reminder)');
+  assert.strictEqual(hintBtns.length, 6, 'Should have exactly 6 hint toggle buttons (Notes, Battle, Live Offers, Scrap Flip, Pill Reminder, Market Graph)');
 
   const liveOffersCheckbox = bg.querySelector('.wia-live-offers');
   const scrapFlipCheckbox = bg.querySelector('.wia-scrap-flip');
   const featPillCheckbox = bg.querySelector('.wia-feat-pill');
+  const featMarketGraphCheckbox = bg.querySelector('.wia-feat-market-graph');
   assert.ok(liveOffersCheckbox, 'Live offers checkbox should be present');
   assert.ok(scrapFlipCheckbox, 'Scrap flip checkbox should be present');
   assert.ok(featPillCheckbox, 'Pill reminder checkbox should be present');
+  assert.ok(featMarketGraphCheckbox, 'Market graph checkbox should be present');
 
   const highCritCheckbox = bg.querySelector('.wia-high-crit');
   assert.strictEqual(highCritCheckbox, null, 'High crit checkbox should be removed');
@@ -1113,6 +1133,69 @@ try {
 
   modalDiv.remove();
   console.log('Crafting Advisor tests passed successfully.');
+
+  console.log('--- Testing Resource Market Intraday Graph module ---');
+  
+  // 1. formatHoverTime tests
+  const testTime = new Date(2026, 5, 22, 20, 30).getTime(); // June 22, 2026 20:30
+  
+  // 24h range test
+  const hover24h = globalThis.formatHoverTime(testTime, '24h');
+  assert.strictEqual(hover24h, '20:30', 'Hover time for 24h should be formatted as HH:MM');
+  
+  // 3d range test DE
+  globalThis.CONFIG.locale = 'de';
+  const hover3dDe = globalThis.formatHoverTime(testTime, '3d');
+  assert.strictEqual(hover3dDe, '22.06. 20:30', 'Hover time for 3d in DE should be DD.MM. HH:MM');
+  
+  // 3d range test EN
+  globalThis.CONFIG.locale = 'en';
+  const hover3dEn = globalThis.formatHoverTime(testTime, '3d');
+  assert.strictEqual(hover3dEn, '06-22 20:30', 'Hover time for 3d in EN should be MM-DD HH:MM');
+  
+  // 2. getModalResourceCode tests
+  const mockModal = new MockElement('div');
+  const mockImg = new MockElement('img');
+  mockImg.setAttribute('src', '/images/items/steel.png?v=3');
+  mockImg.setAttribute('alt', 'steel');
+  mockModal.appendChild(mockImg);
+  
+  const parsedCode = globalThis.getModalResourceCode(mockModal);
+  assert.strictEqual(parsedCode, 'steel', 'Should parse code from image src/alt as steel');
+  
+  // Try with excluded alt
+  mockImg.setAttribute('src', '/images/items/gold.png');
+  mockImg.setAttribute('alt', 'gold');
+  const parsedExcluded = globalThis.getModalResourceCode(mockModal);
+  assert.strictEqual(parsedExcluded, null, 'Should return null for excluded alt code');
+  
+  // Try with src-only (no alt)
+  mockImg.removeAttribute('alt');
+  mockImg.setAttribute('src', '/images/items/limestone.png');
+  const parsedSrcOnly = globalThis.getModalResourceCode(mockModal);
+  assert.strictEqual(parsedSrcOnly, 'limestone', 'Should parse code from src even if alt is missing');
+  
+  // 3. getNativeSvgFingerprint tests
+  const mockSvg = new MockElement('svg');
+  const nativeG = new MockElement('g');
+  const nativePath = new MockElement('path');
+  nativePath.setAttribute('stroke', '#A19638');
+  nativePath.setAttribute('d', 'M0,0 L10,10');
+  nativeG.appendChild(nativePath);
+  mockSvg.appendChild(nativeG);
+  
+  const lengthBefore = mockSvg.innerHTML.length;
+  
+  // Injected elements
+  const injectedPath = new MockElement('path');
+  injectedPath.setAttribute('class', 'wia-mkt-line');
+  injectedPath.setAttribute('stroke', '#4ec9d4');
+  nativeG.appendChild(injectedPath);
+  
+  const fingerprint = globalThis.getNativeSvgFingerprint(mockSvg);
+  assert.strictEqual(fingerprint, lengthBefore, 'getNativeSvgFingerprint should exclude wia-mkt- elements');
+
+  console.log('Resource Market Intraday Graph tests passed successfully.');
 
   console.log('Success! The script loaded and initialized without throwing any runtime errors.');
   process.exit(0);

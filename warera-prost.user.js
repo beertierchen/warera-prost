@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         PROST
+// @name         TEST PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.7.5
+// @version      0.7.5-unstable
 // @description  PROST — Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -60,11 +60,14 @@
     featNotes: false,                    // experimental: user notes on /user/ links (off by default)
     featBattleAdvisor: false,            // experimental: highlight ally button on /battle/<id> pages
     alliedCountryCodes: ['de','pt','es','gm','ir','na','sr','th','at','fi','ie','no','se','uk','va','bf','cd','ye','ne','au','br','id'],
+    featMarketGraph: false,
 
     // --- caching / rate-limit ---
     priceCacheTtlMs: 20 * 60 * 1000,    // 20 min (spec: 15-30 min)
     scrapedPriceTtlMs: 6 * 60 * 60 * 1000, // 6 hours for scraped market prices
     txCacheTtlMs: 60 * 60 * 1000,       // 1 hour for transaction history
+    priceSampleIntervalMs: 15 * 60 * 1000, // sample every 15 mins
+    priceSeriesWindowMs: 3 * 24 * 60 * 60 * 1000, // 3 days history
     minRequestIntervalMs: 3000,         // throttle: no two network calls closer than this
     rescanDebounceMs: 150,
     rateLimitBackoffMs: 60 * 1000,      // after a 429, suppress requests this long
@@ -396,7 +399,14 @@
         status_rateLimited: 'RATE-LIMITED',
         status_stale: 'stale (past cache TTL)',
         status_fresh: 'fresh',
-        rateLimitBanner: '⚠ API limit reached! Backoff active ({sec}s) — displaying cached prices.'
+        rateLimitBanner: '⚠ API limit reached! Backoff active ({sec}s) — displaying cached prices.',
+        marketGraph24h: '24h',
+        marketGraph3d: '3d',
+        marketGraphLegendNative: 'Daily avg',
+        marketGraphLegendIntraday: 'Intraday',
+        marketGraphHoverPrice: '☉ {price}',
+        settingsFeatMarketGraphCheckbox: 'Resource Market Intraday Graph 💹',
+        settingsFeatMarketGraphHint: 'Overlay an intraday (24h/3d) price graph on resource market buy/sell modals.'
       },
       de: {
         never: 'nie',
@@ -574,7 +584,14 @@
         status_rateLimited: 'API-LIMITERREICHT',
         status_stale: 'veraltet (Cache TTL abgelaufen)',
         status_fresh: 'aktuell',
-        rateLimitBanner: '⚠ API-Limit erreicht! Wartezeit aktiv ({sec}s) — zeige zwischengespeicherte Preise.'
+        rateLimitBanner: '⚠ API-Limit erreicht! Wartezeit aktiv ({sec}s) — zeige zwischengespeicherte Preise.',
+        marketGraph24h: '24h',
+        marketGraph3d: '3d',
+        marketGraphLegendNative: 'Tagesschnitt',
+        marketGraphLegendIntraday: 'Intraday',
+        marketGraphHoverPrice: '☉ {price}',
+        settingsFeatMarketGraphCheckbox: 'Ressourcen-Markt Intraday-Grafik 💹',
+        settingsFeatMarketGraphHint: 'Blendet einen Intraday-Preisverlauf (24h/3d) im Kauf-/Verkaufs-Modal von Ressourcen ein.'
       }
     },
 
@@ -609,6 +626,9 @@
     pillDebuffH: NS + 'pillDebuffH',
     pillPrefWindowFrom: NS + 'pillPrefFrom',
     pillPrefWindowTo: NS + 'pillPrefTo',
+    featMarketGraph: NS + 'featMarketGraph',
+    marketGraphRange: NS + 'mktGraphRange',
+    priceSeries: NS + 'priceSeries',
   };
   let menuSettingsId = null;
   let menuClearId = null;
@@ -636,6 +656,7 @@
     GM_setValue(KEYS.offersCache, {});
     GM_setValue(KEYS.transactionsCache, {});
     GM_setValue(KEYS.scrapedPrices, {});
+    GM_setValue(KEYS.priceSeries, {});
     GM_setValue(KEYS.apiBase, '');
     inFlightPrices = null;
     log('cache cleared');
@@ -1278,6 +1299,9 @@
     globalThis.getTierItemCodes = getTierItemCodes;
     globalThis.formatItemCode = formatItemCode;
     globalThis.parseCraftingState = parseCraftingState;
+    globalThis.formatHoverTime = formatHoverTime;
+    globalThis.getModalResourceCode = getModalResourceCode;
+    globalThis.getNativeSvgFingerprint = getNativeSvgFingerprint;
   }
 
   function getLocale() {
@@ -3011,6 +3035,76 @@
         vertical-align: middle;
         flex-shrink: 0;
       }
+      
+      /* ── Resource Market Intraday Graph ── */
+      .wia-mkt-toggle-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 6px;
+        font-size: 11px;
+        user-select: none;
+      }
+      .wia-mkt-toggle-btn {
+        background: #0f172a;
+        border: 1px solid rgba(148,163,184,0.2);
+        border-radius: 4px;
+        color: #94a3b8;
+        padding: 2px 6px;
+        cursor: pointer;
+        font-weight: bold;
+        transition: all 0.15s ease;
+      }
+      .wia-mkt-toggle-btn:hover {
+        border-color: rgba(148,163,184,0.4);
+        color: #f8fafc;
+      }
+      .wia-mkt-toggle-btn.wia-active {
+        background: #4ec9d4;
+        border-color: #4ec9d4;
+        color: #020617;
+      }
+      .wia-mkt-legend {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        color: #94a3b8;
+      }
+      .wia-legend-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        display: inline-block;
+      }
+      .wia-legend-dot.native {
+        background-color: #A19638;
+      }
+      .wia-legend-dot.intraday {
+        background-color: #4ec9d4;
+      }
+      .wia-legend-text {
+        margin-right: 6px;
+      }
+      .wia-mkt-point {
+        fill: #4ec9d4;
+        transition: r 0.15s ease, opacity 0.15s ease;
+        opacity: 0.6;
+        cursor: pointer;
+      }
+      .wia-mkt-point:hover {
+        r: 5px;
+        opacity: 1;
+      }
+      .wia-mkt-axis-label {
+        paint-order: stroke;
+        stroke: #020617;
+        stroke-width: 2px;
+        stroke-linecap: butt;
+        stroke-linejoin: miter;
+        fill: #4ec9d4;
+        font-family: inherit;
+      }
     `);
   }
 
@@ -3079,6 +3173,7 @@
     const prevFeatBattle = bg.querySelector('.wia-feat-battle')?.checked ?? CONFIG.featBattleAdvisor;
     const prevAlliedCodes = bg.querySelector('.wia-allied-codes')?.value ?? CONFIG.alliedCountryCodes.join(',');
     const prevFeatPill = bg.querySelector('.wia-feat-pill')?.checked ?? CONFIG.featPillReminder;
+    const prevFeatMarketGraph = bg.querySelector('.wia-feat-market-graph')?.checked ?? CONFIG.featMarketGraph;
     const prevPillBuff = bg.querySelector('.wia-pill-buff')?.value ?? CONFIG.pillBuffH;
     const prevPillKnife = bg.querySelector('.wia-pill-knife')?.value ?? CONFIG.pillKnifeH;
     const prevPillDebuff = bg.querySelector('.wia-pill-debuff')?.value ?? CONFIG.pillDebuffH;
@@ -3178,6 +3273,14 @@
               </div>
             </div>
           </details>
+        </div>
+        <div class="wia-feat-row" style="margin-top: 6px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <input type="checkbox" class="wia-feat-market-graph" style="width: auto;" ${prevFeatMarketGraph ? 'checked' : ''} />
+            <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatMarketGraphCheckbox')}</label>
+            <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
+          </div>
+          <div class="wia-hint" hidden>${t('settingsFeatMarketGraphHint')}</div>
         </div>
         <button type="button" class="wia-help-toggle" aria-expanded="false">${t('settingsHelpSummary')}</button>
         <aside class="wia-help-panel" hidden>
@@ -3325,6 +3428,11 @@
 
       if (featPill) { initPillReminder(); } else { teardownPillReminder(); }
 
+      const featMarketGraph = bg.querySelector('.wia-feat-market-graph').checked;
+      GM_setValue(KEYS.featMarketGraph, featMarketGraph);
+      CONFIG.featMarketGraph = featMarketGraph;
+      if (featMarketGraph) { initMarketGraph(); } else { teardownMarketGraph(); }
+
       if (tokenChanged) {
         clearCache();
       }
@@ -3443,6 +3551,7 @@
     lastPath = location.pathname;
     lastInventoryCards = null; // Reset fingerprint on route change
     lastInventoryCardTexts.clear();
+    lastMktState = null;
     
     if (routePollInterval) {
       clearInterval(routePollInterval);
@@ -4764,6 +4873,465 @@
   }
 
   // ───────────────────────────────────────────────────────────────────────────
+  // Resource Market Intraday Graph module
+  // ───────────────────────────────────────────────────────────────────────────
+  let marketGraphObserver = null;
+  let lastMktState = null;
+  let renderingIntraday = false;
+  const EXCLUDED_ALTS = new Set(['gold', 'money', 'coins', 'xp', 'avatar', 'logo']);
+  const resourceTxsInFlight = {}; // code -> promise
+
+  async function tickPriceSampler() {
+    if (!CONFIG.featMarketGraph) return;
+    const nowMs = now();
+    const lastSample = GM_getValue(NS + 'lastSampleTime', 0);
+    const intervalMs = CONFIG.priceSampleIntervalMs || 15 * 60 * 1000;
+    if (nowMs - lastSample < intervalMs) return;
+
+    try {
+      const prices = await fetchPrices(false);
+      if (prices && Object.keys(prices).length > 0) {
+        const store = GM_getValue(KEYS.priceSeries, {}) || {};
+        const maxWindow = CONFIG.priceSeriesWindowMs || 3 * 24 * 60 * 60 * 1000;
+        const cutoff = nowMs - maxWindow;
+        
+        let updated = false;
+        for (const [itemCode, price] of Object.entries(prices)) {
+          if (price == null || isNaN(price)) continue;
+          if (!store[itemCode]) store[itemCode] = [];
+          
+          store[itemCode].push({ t: nowMs, price: price });
+          store[itemCode] = store[itemCode].filter(pt => pt.t >= cutoff);
+          updated = true;
+        }
+        
+        if (updated) {
+          GM_setValue(KEYS.priceSeries, store);
+          GM_setValue(NS + 'lastSampleTime', nowMs);
+          log('Price series sampler successfully updated.');
+        }
+      }
+    } catch (e) {
+      log('Price series sampler tick failed:', e.message);
+    }
+  }
+
+  async function fetchResourceTransactions(code, force, cursor) {
+    if (!code) return null;
+    const cacheKey = code + (cursor ? `_${cursor}` : '');
+    if (resourceTxsInFlight[cacheKey]) return resourceTxsInFlight[cacheKey];
+    if (isRateLimited()) return null;
+    
+    resourceTxsInFlight[cacheKey] = (async () => {
+      try {
+        const url = 'https://gateway.warerastats.io/trpc/transaction.getPaginatedTransactions';
+        const body = JSON.stringify({
+          limit: 100,
+          itemCode: code,
+          transactionType: 'trading',
+          cursor: cursor || undefined
+        });
+        const res = await gmRequest({
+          method: 'POST',
+          url,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-API-Key': 'wia-userscript'
+          },
+          data: body
+        });
+        if (res.status === 429) { tripRateLimit(); return null; }
+        if (res.status < 200 || res.status >= 300) return null;
+        
+        const json = JSON.parse(res.text);
+        const data = json?.result?.data || {};
+        return {
+          items: data.items || [],
+          nextCursor: data.nextCursor || null
+        };
+      } catch (e) {
+        log('fetchResourceTransactions failed:', code, e.message);
+        return null;
+      } finally {
+        renderRateLimitBanner();
+        delete resourceTxsInFlight[cacheKey];
+      }
+    })();
+    return resourceTxsInFlight[cacheKey];
+  }
+
+  async function seedResourceTransactions(code, maxSpanMs) {
+    const startTime = now() - maxSpanMs;
+    let cursor = null;
+    let allTx = [];
+    const seenIds = new Set();
+    const pageCap = 6;
+    let pagesFetched = 0;
+    
+    while (pagesFetched < pageCap) {
+      const res = await fetchResourceTransactions(code, false, cursor);
+      if (!res || !res.items || res.items.length === 0) break;
+      
+      let oldestTime = now();
+      for (const item of res.items) {
+        if (!seenIds.has(item._id)) {
+          seenIds.add(item._id);
+          allTx.push(item);
+        }
+        const itemTime = new Date(item.createdAt).getTime();
+        if (itemTime < oldestTime) {
+          oldestTime = itemTime;
+        }
+      }
+      
+      pagesFetched++;
+      cursor = res.nextCursor;
+      
+      if (!cursor) break;
+      if (oldestTime <= startTime) break;
+      if (now() - oldestTime > 3 * 60 * 60 * 1000) {
+        log(`seedResourceTransactions: bounded seed reached > 3h span for ${code}. Truncating fetch.`);
+        break;
+      }
+    }
+    
+    return allTx;
+  }
+
+  function getNativeSvgFingerprint(svg) {
+    const clone = svg.cloneNode(true);
+    const ourEls = clone.querySelectorAll('[class^="wia-mkt-"], [class*=" wia-mkt-"]');
+    ourEls.forEach(el => el.remove());
+    return clone.innerHTML.length;
+  }
+
+  function formatHoverTime(timestamp, rangeType) {
+    const d = new Date(timestamp);
+    const pad = (n) => String(n).padStart(2, '0');
+    const hh = pad(d.getHours());
+    const mm = pad(d.getMinutes());
+    
+    if (rangeType === '24h') {
+      return `${hh}:${mm}`;
+    } else {
+      const month = pad(d.getMonth() + 1);
+      const date = pad(d.getDate());
+      if (getLocale() === 'de') {
+        return `${date}.${month}. ${hh}:${mm}`;
+      } else {
+        return `${month}-${date} ${hh}:${mm}`;
+      }
+    }
+  }
+
+  async function renderIntradayLine(code, range, svg, modal) {
+    if (renderingIntraday) return;
+    renderingIntraday = true;
+    
+    try {
+      const oldToggle = modal.querySelector('.wia-mkt-toggle-row');
+      if (oldToggle) oldToggle.remove();
+      
+      const ourSvgEls = svg.querySelectorAll('[class^="wia-mkt-"], [class*=" wia-mkt-"]');
+      ourSvgEls.forEach(el => el.remove());
+      
+      const toggleRow = document.createElement('div');
+      toggleRow.className = 'wia-mkt-toggle-row';
+      toggleRow.innerHTML = `
+        <button type="button" class="wia-mkt-toggle-btn ${range === '24h' ? 'wia-active' : ''}" data-range="24h">${t('marketGraph24h')}</button>
+        <button type="button" class="wia-mkt-toggle-btn ${range === '3d' ? 'wia-active' : ''}" data-range="3d">${t('marketGraph3d')}</button>
+        <span class="wia-mkt-legend">
+          <span class="wia-legend-dot native"></span> <span class="wia-legend-text">${t('marketGraphLegendNative')}</span>
+          <span class="wia-legend-dot intraday"></span> <span class="wia-legend-text">${t('marketGraphLegendIntraday')}</span>
+        </span>
+      `;
+      
+      const btns = toggleRow.querySelectorAll('.wia-mkt-toggle-btn');
+      btns.forEach(btn => {
+        btn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const newRange = btn.getAttribute('data-range');
+          GM_setValue(KEYS.marketGraphRange, newRange);
+          lastMktState = null;
+          debouncedRenderIntraday(code, newRange, svg, modal);
+        };
+      });
+      
+      svg.parentElement.insertBefore(toggleRow, svg);
+      
+      const maxSpanMs = range === '24h' ? 24 * 60 * 60 * 1000 : 72 * 60 * 60 * 1000;
+      const txs = await seedResourceTransactions(code, maxSpanMs);
+      
+      const pollerStore = GM_getValue(KEYS.priceSeries, {}) || {};
+      const samples = pollerStore[code] || [];
+      
+      const points = [];
+      const seenTimes = new Set();
+      
+      txs.forEach(tx => {
+        const t = new Date(tx.createdAt).getTime();
+        const price = Number(tx.money) / Number(tx.quantity);
+        if (!isNaN(price) && !seenTimes.has(t)) {
+          seenTimes.add(t);
+          points.push({ t, price });
+        }
+      });
+      
+      samples.forEach(pt => {
+        if (!seenTimes.has(pt.t)) {
+          seenTimes.add(pt.t);
+          points.push({ t: pt.t, price: pt.price });
+        }
+      });
+      
+      if (points.length === 0) {
+        log(`No intraday price points found for ${code}`);
+        const warnText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        warnText.setAttribute('x', '210');
+        warnText.setAttribute('y', '30');
+        warnText.setAttribute('fill', '#94a3b8');
+        warnText.setAttribute('text-anchor', 'middle');
+        warnText.setAttribute('font-size', '10px');
+        warnText.setAttribute('class', 'wia-mkt-warning');
+        warnText.textContent = getLocale() === 'de' ? 'Intraday-Daten spärlich (lade...)' : 'Intraday data sparse (loading...)';
+        
+        const innerG = svg.querySelector('g[transform="translate(4,6)"]');
+        if (innerG) innerG.appendChild(warnText);
+        
+        lastMktState = `${code}-${range}-${getNativeSvgFingerprint(svg)}`;
+        return;
+      }
+      
+      points.sort((a, b) => a.t - b.t);
+      
+      const tMax = now();
+      const tMin = tMax - maxSpanMs;
+      const bucketDuration = range === '24h' ? 60 * 60 * 1000 : 3 * 60 * 60 * 1000;
+      const numBuckets = Math.ceil(maxSpanMs / bucketDuration);
+      
+      const buckets = Array.from({ length: numBuckets }, (_, i) => {
+        const bStart = tMin + i * bucketDuration;
+        const bEnd = bStart + bucketDuration;
+        return {
+          start: bStart,
+          end: bEnd,
+          sum: 0,
+          count: 0
+        };
+      });
+      
+      points.forEach(pt => {
+        if (pt.t >= tMin && pt.t <= tMax) {
+          const bucketIdx = Math.floor((pt.t - tMin) / bucketDuration);
+          if (bucketIdx >= 0 && bucketIdx < numBuckets) {
+            buckets[bucketIdx].sum += pt.price;
+            buckets[bucketIdx].count += 1;
+          }
+        }
+      });
+      
+      const plottedPoints = buckets
+        .map((b, idx) => {
+          if (b.count > 0) {
+            return {
+              t: (b.start + b.end) / 2,
+              price: b.sum / b.count,
+              index: idx
+            };
+          }
+          return null;
+        })
+        .filter(Boolean);
+        
+      if (plottedPoints.length === 0) {
+        lastMktState = `${code}-${range}-${getNativeSvgFingerprint(svg)}`;
+        return;
+      }
+      
+      const W = 420;
+      const H = 48;
+      
+      const prices = plottedPoints.map(p => p.price);
+      let yMin = Math.min(...prices);
+      let yMax = Math.max(...prices);
+      if (yMax === yMin) {
+        yMin = yMin * 0.9;
+        yMax = yMax * 1.1;
+      } else {
+        const pad = (yMax - yMin) * 0.1;
+        yMin -= pad;
+        yMax += pad;
+      }
+      
+      const getX = (pt) => {
+        const pctX = pt.index / (numBuckets - 1 || 1);
+        return pctX * W;
+      };
+      
+      const getY = (price) => {
+        const pctY = (price - yMin) / (yMax - yMin);
+        return H - pctY * H;
+      };
+      
+      let pathD = '';
+      plottedPoints.forEach((pt, i) => {
+        const x = getX(pt);
+        const y = getY(pt.price);
+        if (i === 0) {
+          pathD = `M ${x.toFixed(2)} ${y.toFixed(2)}`;
+        } else {
+          pathD += ` L ${x.toFixed(2)} ${y.toFixed(2)}`;
+        }
+      });
+      
+      const innerG = svg.querySelector('g[transform="translate(4,6)"]');
+      if (!innerG) {
+        lastMktState = `${code}-${range}-${getNativeSvgFingerprint(svg)}`;
+        return;
+      }
+      
+      const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      pathEl.setAttribute('d', pathD);
+      pathEl.setAttribute('fill', 'none');
+      pathEl.setAttribute('stroke', '#4ec9d4');
+      pathEl.setAttribute('stroke-width', '2');
+      pathEl.setAttribute('stroke-linecap', 'round');
+      pathEl.setAttribute('stroke-linejoin', 'round');
+      pathEl.setAttribute('class', 'wia-mkt-line');
+      
+      const nativePath = innerG.querySelector('path[stroke="#A19638"]');
+      if (nativePath) {
+        const filterVal = nativePath.getAttribute('filter');
+        if (filterVal) pathEl.setAttribute('filter', filterVal);
+      }
+      
+      innerG.appendChild(pathEl);
+      
+      plottedPoints.forEach(pt => {
+        const cx = getX(pt);
+        const cy = getY(pt.price);
+        
+        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        circle.setAttribute('cx', cx.toFixed(2));
+        circle.setAttribute('cy', cy.toFixed(2));
+        circle.setAttribute('r', '3');
+        circle.setAttribute('class', 'wia-mkt-point');
+        
+        const titleText = `${formatHoverTime(pt.t, range)} · ${t('marketGraphHoverPrice', { price: fmt(pt.price) })}`;
+        const titleEl = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+        titleEl.textContent = titleText;
+        circle.appendChild(titleEl);
+        
+        innerG.appendChild(circle);
+      });
+      
+      const maxText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      maxText.setAttribute('x', '415');
+      maxText.setAttribute('y', '10');
+      maxText.setAttribute('class', 'wia-mkt-axis-label');
+      maxText.textContent = fmt(yMax);
+      
+      const minText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      minText.setAttribute('x', '415');
+      minText.setAttribute('y', '44');
+      minText.setAttribute('class', 'wia-mkt-axis-label');
+      minText.textContent = fmt(yMin);
+      
+      innerG.appendChild(maxText);
+      innerG.appendChild(minText);
+      
+      lastMktState = `${code}-${range}-${getNativeSvgFingerprint(svg)}`;
+    } catch (e) {
+      log('renderIntradayLine error:', e);
+    } finally {
+      renderingIntraday = false;
+    }
+  }
+
+  const debouncedRenderIntraday = debounce(renderIntradayLine, 100);
+
+  function findMarketGraph() {
+    const modal = document.querySelector('div[id^="headlessui-dialog-panel-"]');
+    if (!modal) return null;
+    
+    const titleEl = modal.querySelector('h2[id^="headlessui-dialog-title-"], div[id^="headlessui-dialog-title-"]');
+    if (!titleEl) return null;
+    
+    const titleText = titleEl.textContent.trim();
+    const isBuySell = titleText.includes('Buy order') || titleText.includes('Buy Order') || 
+                      titleText.includes('Kaufauftrag') || titleText.includes('Verkaufsangebot') || 
+                      titleText.includes('Sell order') || titleText.includes('Sell Order') ||
+                      titleText.includes('order') || titleText.includes('Order');
+    if (!isBuySell) return null;
+
+    const svg = modal.querySelector('svg[width="428"][height="60"]');
+    if (!svg) return null;
+    
+    return { modal, titleEl, svg };
+  }
+
+  function getModalResourceCode(modal) {
+    const img = modal.querySelector("img[src*='/images/items/']");
+    if (!img) return null;
+    
+    const src = img.getAttribute('src');
+    if (src) {
+      const match = src.match(/\/items\/([a-z0-9_-]+)\.(png|webp|gif|jpg)/i);
+      if (match && match[1]) {
+        const code = match[1].toLowerCase();
+        if (!EXCLUDED_ALTS.has(code)) return code;
+      }
+    }
+    
+    const alt = img.getAttribute('alt');
+    if (alt) {
+      const code = alt.trim().toLowerCase();
+      if (!EXCLUDED_ALTS.has(code)) return code;
+    }
+    
+    return null;
+  }
+
+  function initMarketGraph() {
+    if (marketGraphObserver) marketGraphObserver.disconnect();
+    
+    marketGraphObserver = new MutationObserver(() => {
+      if (!CONFIG.featMarketGraph) return;
+      
+      const found = findMarketGraph();
+      if (!found) {
+        lastMktState = null;
+        return;
+      }
+      
+      const { modal, svg } = found;
+      const code = getModalResourceCode(modal);
+      if (!code) {
+        lastMktState = null;
+        return;
+      }
+      
+      const range = GM_getValue(KEYS.marketGraphRange, '24h');
+      const stateKey = `${code}-${range}-${getNativeSvgFingerprint(svg)}`;
+      if (stateKey === lastMktState) return;
+      lastMktState = stateKey;
+      
+      debouncedRenderIntraday(code, range, svg, modal);
+    });
+    
+    marketGraphObserver.observe(document.body, { childList: true, subtree: true });
+  }
+
+  function teardownMarketGraph() {
+    if (marketGraphObserver) {
+      marketGraphObserver.disconnect();
+      marketGraphObserver = null;
+    }
+    lastMktState = null;
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
   // Crafting Advisor module
   // ───────────────────────────────────────────────────────────────────────────
   let lastCraftState = null;
@@ -5095,6 +5663,7 @@
     CONFIG.featBattleAdvisor = GM_getValue(KEYS.featBattleAdvisor, false);
     CONFIG.alliedCountryCodes = GM_getValue(KEYS.alliedCountryCodes, CONFIG.alliedCountryCodes);
     CONFIG.featPillReminder = GM_getValue(KEYS.featPillReminder, false);
+    CONFIG.featMarketGraph = GM_getValue(KEYS.featMarketGraph, false);
     CONFIG.pillBuffH = GM_getValue(KEYS.pillBuffH, CONFIG.pillBuffH);
     CONFIG.pillKnifeH = GM_getValue(KEYS.pillKnifeH, CONFIG.pillKnifeH);
     CONFIG.pillDebuffH = GM_getValue(KEYS.pillDebuffH, CONFIG.pillDebuffH);
@@ -5104,6 +5673,9 @@
     if (CONFIG.featNotes) initNotes();
     if (CONFIG.featBattleAdvisor && isBattlePage()) applyBattleAdvisory();
     if (CONFIG.featPillReminder) initPillReminder();
+    if (CONFIG.featMarketGraph) initMarketGraph();
+    tickPriceSampler();
+    setInterval(tickPriceSampler, 60000);
     injectGear();
     refreshMenuCommands();
 
