@@ -650,6 +650,9 @@ try {
 
   console.log('--- Testing Pill Reminder module ---');
   
+  const header = new MockElement('header');
+  documentBody.appendChild(header);
+
   const layoutUserMenu = new MockElement('div');
   layoutUserMenu.setAttribute('id', 'layoutUserMenu');
   const userProfileLink = new MockElement('a');
@@ -660,7 +663,7 @@ try {
   avatarImg.setAttribute('alt', 'avatar');
   userProfileLink.appendChild(avatarImg);
   layoutUserMenu.appendChild(userProfileLink);
-  documentBody.appendChild(layoutUserMenu);
+  header.appendChild(layoutUserMenu);
 
   const hpWrap = new MockElement('div');
   const hpTrack = new MockElement('div');
@@ -691,7 +694,7 @@ try {
   hpTextContainer.appendChild(hpRegenSpan);
   hpWrap.appendChild(hpTextContainer);
   
-  documentBody.appendChild(hpWrap);
+  header.appendChild(hpWrap);
 
   const hungerWrap = new MockElement('div');
   const hungerTrack = new MockElement('div');
@@ -722,9 +725,8 @@ try {
   hungerTextContainer.appendChild(hungerRegenSpan);
   hungerWrap.appendChild(hungerTextContainer);
   
-  documentBody.appendChild(hungerWrap);
+  header.appendChild(hungerWrap);
 
-  const header = new MockElement('header');
   const tickSpan = new MockElement('span');
   const tickChevronSvg = new MockElement('svg');
   const tickChevronPath = new MockElement('path');
@@ -735,7 +737,6 @@ try {
   tickTimeText.textContent = '53m38s';
   tickSpan.appendChild(tickTimeText);
   header.appendChild(tickSpan);
-  documentBody.appendChild(header);
 
   const parsedUserId = globalThis.getCurrentUserId();
   assert.strictEqual(parsedUserId, 'test-user-123', 'Should extract own user id as test-user-123');
@@ -867,14 +868,7 @@ try {
   hpText.textContent = '130/130';
   globalThis.injectPillBadge();
 
-  const takeNowBtn = pillBadge.querySelector('.wia-pill-take-btn');
-  assert.ok(takeNowBtn, 'Manual intake took-pill button should be present in hover detail panel');
-  
-  takeNowBtn.onclick({ preventDefault: () => {}, stopPropagation: () => {} });
-  const manualTakenAt = globalThis.GM_getValue('wia.pillTakenAt');
-  const manualState = globalThis.GM_getValue('wia.pillState');
-  assert.strictEqual(manualState, 'BUFF', 'Clicking manual intake should transition state back to BUFF');
-  assert.ok(Math.abs(Date.now() - manualTakenAt) < 1000, 'Manual intake timestamp should be set to near now');
+
 
   const scrapCard = new MockElement('div');
   const cocainCard = new MockElement('div');
@@ -884,6 +878,8 @@ try {
   documentBody.appendChild(scrapCard);
   documentBody.appendChild(cocainCard);
 
+  globalThis.GM_setValue('wia.pillTakenAt', Date.now());
+  globalThis.GM_setValue('wia.pillState', 'BUFF');
   globalThis.highlightCocaineItems();
   assert.strictEqual(cocainCard.classList.contains('wia-cocain-highlight'), false, 'Cocaine card should not have highlight in BUFF phase');
 
@@ -949,6 +945,25 @@ try {
   const hpMarkerNew = hpTrack.querySelector('.wia-hnh-floor-marker');
   assert.ok(hpMarkerNew, 'HP floor marker should be found after re-render');
   assert.ok(hpMarkerNew.classList.contains('wia-hnh-alert'), 'HP marker should have alert style when current is below floor');
+
+  // Test target pill in the past (e.g. pill taken 30 hours ago, cycle is 24 hours)
+  // This verifies clamp to Date.now() / gated visibility.
+  globalThis.GM_setValue('wia.pillTakenAt', now - 30 * 3600000);
+  hpText.textContent = '100/130';
+  globalThis.renderHnHBudget();
+  
+  // Since tPill clamps to now, msToPill is 0, so ticks = 0.
+  // floorVal should be status.hpMax (130). HP current is 100, which is below floor (130).
+  // HP spendable should be 0 free. HP reserve overlay should be 100%.
+  assert.strictEqual(hpBudgetVal.textContent, '⬇ 0 free', 'HP spendable should be 0 when raw pill time is in the past');
+  
+  const hpReservePast = hpTrack.querySelector('.wia-hnh-reserve-overlay');
+  assert.ok(hpReservePast, 'HP reserve overlay should still exist in gated/past phase');
+  assert.strictEqual(hpReservePast.style.width, '100%', 'HP reserve width should be 100% in gated/past phase');
+  
+  const hpMarkerPast = hpTrack.querySelector('.wia-hnh-floor-marker');
+  assert.ok(hpMarkerPast, 'HP floor marker should exist');
+  assert.ok(hpMarkerPast.classList.contains('wia-hnh-alert'), 'HP marker should have alert style in gated/past phase');
 
   globalThis.removeHnHBudget();
   console.log('H&H Budget Indicator tests passed successfully.');

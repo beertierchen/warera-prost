@@ -306,7 +306,6 @@
         settingsPillDebuffLabel: 'Total Debuff (hours)',
         settingsPillPrefFromLabel: 'Preferred Time From',
         settingsPillPrefToLabel: 'Preferred Time To',
-        pillTakeNowButton: 'Took Pill Now',
         pillTakeNowOverlay: 'TAKE NOW',
         pillTopUpOverlay: 'TOP UP FIRST',
         pillPreferredWindow: '{from} - {to}',
@@ -450,7 +449,6 @@
         settingsPillDebuffLabel: 'Debuff gesamt (Stunden)',
         settingsPillPrefFromLabel: 'Bevorzugtes Fenster ab',
         settingsPillPrefToLabel: 'Bevorzugtes Fenster bis',
-        pillTakeNowButton: 'Pille jetzt genommen',
         pillTakeNowOverlay: 'NEHMEN',
         pillTopUpOverlay: 'ERST FÜLLEN',
         pillPreferredWindow: '{from} - {to}',
@@ -2782,12 +2780,7 @@
       }
       .wia-pill-detail-item { margin-bottom: 6px; }
       .wia-pill-detail-item strong { color: #58a6ff; }
-      .wia-pill-take-btn {
-        width: 100%; background: #238636; border: 1px solid rgba(46, 160, 67, .8);
-        border-radius: 999px; color: #fff; font-size: 11px; font-weight: bold;
-        padding: 6px 8px; cursor: pointer; margin-top: 4px; text-align: center;
-      }
-      .wia-pill-take-btn:hover { background: #2ea043; }
+
       .wia-cocain-highlight {
         outline: 2px solid #238636 !important; outline-offset: -2px;
         animation: wia-pulse-border 1.5s infinite alternate; position: relative;
@@ -2814,12 +2807,12 @@
       /* ── H&H Budget overlays ── */
       .wia-hnh-reserve-overlay {
         position: absolute; top: 0; bottom: 0; left: 0;
-        background: rgba(13, 17, 23, 0.45); z-index: 4; pointer-events: none;
+        background: rgba(13, 17, 23, 0.55); z-index: 4; pointer-events: none;
       }
       .wia-hnh-free-overlay {
         position: absolute; top: 0; bottom: 0;
-        background: rgba(63, 185, 80, 0.22); z-index: 5; pointer-events: none;
-        box-shadow: inset 0 0 4px rgba(63, 185, 80, 0.4);
+        background: rgba(63, 185, 80, 0.30); z-index: 5; pointer-events: none;
+        box-shadow: inset 0 0 4px rgba(63, 185, 80, 0.5);
       }
       .wia-hnh-floor-marker {
         position: absolute; top: 0; bottom: 0; width: 1.5px;
@@ -3735,7 +3728,10 @@
     const pillTakenAt = GM_getValue(KEYS.pillTakenAt, 0);
     if (!pillTakenAt) return 0;
     const totalMs = (CONFIG.pillBuffH + CONFIG.pillDebuffH) * 3600000;
-    let target = pillTakenAt + totalMs;
+    const rawTarget = pillTakenAt + totalMs;
+
+    const now = Date.now();
+    let target = Math.max(now, rawTarget);
 
     if (CONFIG.pillPrefWindowFrom) {
       const parts = CONFIG.pillPrefWindowFrom.split(':');
@@ -3761,7 +3757,7 @@
     let commonParent = null;
     for (let i = 0; i < 5 && currentEl; i++) {
       if (currentEl.tagName === 'BODY' || currentEl.tagName === 'HTML') break;
-      const fill = currentEl.querySelector('div[style*="transform"]');
+      const fill = currentEl.querySelector('div[style*="scaleX("]');
       if (fill) {
         commonParent = currentEl;
         return { commonParent, fill, track: fill.parentElement };
@@ -3845,14 +3841,14 @@
       return;
     }
 
-    const now = Date.now();
     const tPill = getNextPillMoment();
-    if (!tPill || now >= tPill) {
+    if (!tPill) {
       removeHnHBudget();
       return;
     }
 
-    const msToPill = tPill - now;
+    const now = Date.now();
+    const msToPill = Math.max(0, tPill - now);
     const status = parseHealthAndHunger();
     if (!status.hpFound && !status.hungerFound) return;
 
@@ -3897,9 +3893,9 @@
         if (id) return id;
       }
     }
-    const headers = document.querySelectorAll('header, nav, [class*="header"], [class*="topbar"], [class*="top-bar"]');
-    for (const header of headers) {
-      const link = header.querySelector("a[href*='/user/']");
+    const strictContainers = document.querySelectorAll('[class*="user-menu"], [class*="profile-menu"], [class*="navbar-user"], [class*="user-profile"]');
+    for (const container of strictContainers) {
+      const link = container.querySelector("a[href*='/user/']");
       if (link) {
         const id = extractUserIdFromHref(link.getAttribute('href'));
         if (id) return id;
@@ -4078,12 +4074,38 @@
     }
 
     let nextTickMs = 3600000;
-    const searchContainers = [
-      document.getElementById('layoutUserMenu'),
-      document.getElementById('avatar'),
-      document.querySelector('header nav'),
-      document.querySelector('header')
-    ].filter(Boolean);
+    const searchContainers = [];
+    if (hpEl) {
+      let curr = hpEl;
+      for (let i = 0; i < 4 && curr; i++) {
+        if (curr.tagName === 'HEADER' || curr.tagName === 'NAV' || curr.id === 'layoutUserMenu') {
+          searchContainers.push(curr);
+          break;
+        }
+        searchContainers.push(curr);
+        curr = curr.parentElement;
+      }
+    }
+    if (hungerEl) {
+      let curr = hungerEl;
+      for (let i = 0; i < 4 && curr; i++) {
+        if (curr.tagName === 'HEADER' || curr.tagName === 'NAV' || curr.id === 'layoutUserMenu') {
+          searchContainers.push(curr);
+          break;
+        }
+        searchContainers.push(curr);
+        curr = curr.parentElement;
+      }
+    }
+    if (searchContainers.length === 0) {
+      const fallbackHeaders = [
+        document.getElementById('layoutUserMenu'),
+        document.getElementById('avatar'),
+        document.querySelector('header nav'),
+        document.querySelector('header')
+      ].filter(Boolean);
+      searchContainers.push(...fallbackHeaders);
+    }
 
     let svgs = [];
     if (searchContainers.length > 0) {
@@ -4409,21 +4431,9 @@
           ${nextStr}
           <div class="wia-pill-detail-item"><strong>${t('pillDetailPreferred')}:</strong> ${prefWindowStr}</div>
           ${gatingNote ? `<div class="wia-pill-detail-item" style="color: ${status.both100 ? '#58a6ff' : '#ff7b72'}; font-weight: bold;">${gatingNote}</div>` : ''}
-          <button type="button" class="wia-pill-take-btn">${t('pillTakeNowButton')}</button>
         </div>
       </div>
     `;
-
-    const btn = badge.querySelector('.wia-pill-take-btn');
-    if (btn) {
-      btn.onclick = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        GM_setValue(KEYS.pillTakenAt, Date.now());
-        GM_setValue(KEYS.pillState, 'BUFF');
-        tickPillReminder();
-      };
-    }
   }
 
   function removePillBadge() {
