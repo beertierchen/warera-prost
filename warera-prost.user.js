@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         PROST
+// @name         TEST PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.7.3
+// @version      0.7.4-unstable
 // @description  PROST — Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -334,6 +334,8 @@
         pillDetailGatingTopUp: 'Waiting for H&H: ~{time} ({pct}%, next update in {next})',
         pillSpendableFree: '⬇ {val} free',
         pillSpendableNone: '✕ 0 free',
+        pillHnHFullIn: 'H&H full in {duration}',
+        pillNextTickIn: 'Tick in {duration}',
         today: 'today',
         tomorrow: 'tomorrow',
         yesterday: 'yesterday',
@@ -502,6 +504,8 @@
         pillDetailGatingTopUp: 'Warten auf H&H: ~{time} ({pct}%, nächstes Update in {next})',
         pillSpendableFree: '⬇ {val} frei',
         pillSpendableNone: '✕ 0 frei',
+        pillHnHFullIn: 'H&H voll in {duration}',
+        pillNextTickIn: 'Tick in {duration}',
         today: 'heute',
         tomorrow: 'morgen',
         yesterday: 'gestern',
@@ -4439,6 +4443,34 @@
     return `${minutes}m ${secs}s`;
   }
 
+  function getBuffDebuffTimerStr(now) {
+    if (CONFIG.pillPrefWindowFrom) {
+      const windowStart = nextWindowStart(now);
+      const durationStr = formatDuration(windowStart - now);
+      return t('pillGateWindowWait', { time: CONFIG.pillPrefWindowFrom, duration: durationStr });
+    }
+
+    const status = parseHealthAndHunger();
+    if (!status.hpFound && !status.hungerFound) return '';
+
+    const hpNeeded = status.hpMax - status.hpCurrent;
+    const hungerNeeded = status.hungerMax - status.hungerCurrent;
+    let hpTicks = 0;
+    let hungerTicks = 0;
+    if (hpNeeded > 0 && status.hpRegen > 0) hpTicks = Math.ceil(hpNeeded / status.hpRegen);
+    if (hungerNeeded > 0 && status.hungerRegen > 0) hungerTicks = Math.ceil(hungerNeeded / status.hungerRegen);
+    const totalTicks = Math.max(hpTicks, hungerTicks);
+
+    if (totalTicks > 0) {
+      const hAndHFullETA = now + status.nextTickMs + (totalTicks - 1) * 3600000;
+      const durationStr = formatDuration(hAndHFullETA - now);
+      return t('pillHnHFullIn', { duration: durationStr });
+    } else {
+      const durationStr = formatDuration(status.nextTickMs);
+      return t('pillNextTickIn', { duration: durationStr });
+    }
+  }
+
   function getPillCycleInfo() {
     const now = Date.now();
     const pillTakenAt = GM_getValue(KEYS.pillTakenAt, 0);
@@ -4459,21 +4491,21 @@
     if (pillTakenAt > 0 && elapsed < buffMs) {
       phase = 'BUFF';
       phaseLabel = t('pillPhaseBuff');
-      timerStr = formatDuration(buffMs - elapsed);
+      timerStr = getBuffDebuffTimerStr(now);
       nextTransitionLabel = t('pillPhaseKnife');
       nextTransitionTime = formatAbsoluteTime(pillTakenAt + buffMs);
       badgeClass = 'wia-badge-buff';
     } else if (pillTakenAt > 0 && elapsed < buffMs + knifeMs) {
       phase = 'KNIFE';
       phaseLabel = t('pillPhaseKnife');
-      timerStr = formatDuration(buffMs + knifeMs - elapsed);
+      timerStr = getBuffDebuffTimerStr(now);
       nextTransitionLabel = t('pillPhaseRecover');
       nextTransitionTime = formatAbsoluteTime(pillTakenAt + buffMs + knifeMs);
       badgeClass = 'wia-badge-knife';
     } else if (pillTakenAt > 0 && elapsed < totalMs) {
       phase = 'RECOVER';
       phaseLabel = t('pillPhaseRecover');
-      timerStr = formatDuration(totalMs - elapsed);
+      timerStr = getBuffDebuffTimerStr(now);
       nextTransitionLabel = t('pillPhaseReady');
       nextTransitionTime = formatAbsoluteTime(pillTakenAt + totalMs);
       badgeClass = 'wia-badge-recover';

@@ -897,6 +897,43 @@ try {
   assert.strictEqual(cocainCard.classList.contains('wia-cocain-gated-highlight'), true, 'Cocaine card should have warning H&H highlight');
   assert.strictEqual(cocainCard.getAttribute('data-label'), 'H&H 77%', 'Highlight badge label should be H&H 77%');
 
+  // --- Test BUFF/DEBUFF phase timer strings ---
+  console.log('--- Testing Buff/Debuff Phase Timer Strings ---');
+  const oldNow = Date.now;
+  const mockTime = new Date(2026, 5, 11, 12, 0, 0, 0).getTime();
+  Date.now = () => mockTime;
+
+  // 1. With preferred window set
+  globalThis.CONFIG.pillPrefWindowFrom = '15:05';
+  globalThis.GM_setValue('wia.pillTakenAt', mockTime - 1 * 3600000); // 1 hour ago (in BUFF)
+  globalThis.GM_setValue('wia.pillState', 'BUFF');
+  globalThis.injectPillBadge();
+  const buffBadge = document.querySelector('#wia-pill-badge');
+  const buffTimer = buffBadge.querySelector('.wia-pill-timer');
+  assert.ok(buffTimer, 'Timer element should be present during BUFF');
+  assert.strictEqual(buffTimer.textContent, 'Window from 15:05 (in 3h 5m)', 'Should show preferred window countdown');
+
+  // 2. Without preferred window, H&H not full
+  globalThis.CONFIG.pillPrefWindowFrom = '';
+  hpText.textContent = '100/130'; // H&H not full
+  tickTimeText.textContent = '53m';
+  globalThis.injectPillBadge();
+  const buffTimerHnHNotFull = buffBadge.querySelector('.wia-pill-timer');
+  assert.strictEqual(buffTimerHnHNotFull.textContent, 'H&H full in 2h 53m', 'Should show H&H full ETA');
+
+  // 3. Without preferred window, H&H is full
+  hpText.textContent = '130/130'; // H&H is full
+  hungerText.textContent = '5/5';
+  tickTimeText.textContent = '10m';
+  globalThis.injectPillBadge();
+  const buffTimerHnHFull = buffBadge.querySelector('.wia-pill-timer');
+  assert.strictEqual(buffTimerHnHFull.textContent, 'Tick in 10m 0s', 'Should show next H&H tick countdown');
+
+  // Cleanup for other tests
+  Date.now = oldNow;
+  globalThis.CONFIG.pillPrefWindowFrom = '';
+  globalThis.GM_setValue('wia.pillState', 'none');
+
   // --- H&H Budget Regression Test ---
   console.log('--- Testing H&H Budget Indicator ---');
   
