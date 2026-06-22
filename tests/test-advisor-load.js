@@ -651,7 +651,7 @@ try {
   const hpWrap = new MockElement('div');
   const hpSvg = new MockElement('svg');
   const hpPath = new MockElement('path');
-  hpPath.setAttribute('d', 'M12... heart fingerprint');
+  hpPath.setAttribute('d', 'M12,21.35L10.55,20.03 heart fingerprint');
   hpSvg.appendChild(hpPath);
   hpWrap.appendChild(hpSvg);
   const hpText = new MockElement('span');
@@ -674,7 +674,7 @@ try {
   const hungerWrap = new MockElement('div');
   const hungerSvg = new MockElement('svg');
   const hungerPath = new MockElement('path');
-  hungerPath.setAttribute('d', 'M11... hunger fingerprint');
+  hungerPath.setAttribute('d', 'M11,9H9V2H7V9 hunger fingerprint');
   hungerSvg.appendChild(hungerPath);
   hungerWrap.appendChild(hungerSvg);
   const hungerText = new MockElement('span');
@@ -710,8 +710,6 @@ try {
   const parsedUserId = globalThis.getCurrentUserId();
   assert.strictEqual(parsedUserId, 'test-user-123', 'Should extract own user id as test-user-123');
 
-  globalThis.CONFIG.hpIconPath = 'M12';
-  globalThis.CONFIG.hungerIconPath = 'M11';
   globalThis.CONFIG.doubleChevronPath = 'M7.41,18.41';
   globalThis.CONFIG.featPillReminder = true;
   global.location.pathname = '/user/test-user-123';
@@ -724,6 +722,48 @@ try {
   assert.strictEqual(hhLess.both100, false, 'Should be false when health is less than 100%');
   
   hpText.textContent = '130/130';
+
+  // --- 4-Bar Regression Test ---
+  const statsSection = new MockElement('div', '_1dnmndyf0');
+  hpWrap.remove();
+  hungerWrap.remove();
+  statsSection.appendChild(hpWrap);
+  statsSection.appendChild(hungerWrap);
+
+  const energyWrap = new MockElement('div');
+  const energySvg = new MockElement('svg');
+  const energyPath = new MockElement('path');
+  energyPath.setAttribute('d', 'M11 15H6 lightning icon');
+  energySvg.appendChild(energyPath);
+  energyWrap.appendChild(energySvg);
+  const energyText = new MockElement('span');
+  energyText.textContent = '10/40';
+  energyWrap.appendChild(energyText);
+  statsSection.appendChild(energyWrap);
+
+  const moralWrap = new MockElement('div');
+  const moralSvg = new MockElement('svg');
+  const moralPath = new MockElement('path');
+  moralPath.setAttribute('d', 'M12,2A7,7 shield/moral icon');
+  moralSvg.appendChild(moralPath);
+  moralWrap.appendChild(moralSvg);
+  const moralText = new MockElement('span');
+  moralText.textContent = '6/30';
+  moralWrap.appendChild(moralText);
+  statsSection.appendChild(moralWrap);
+
+  documentBody.appendChild(statsSection);
+
+  const parsed4Bars = globalThis.parseHealthAndHunger();
+  assert.strictEqual(parsed4Bars.hpMax, 130, 'Should parse HP max as 130');
+  assert.strictEqual(parsed4Bars.hungerMax, 5, 'Should parse Hunger max as 5');
+  assert.strictEqual(parsed4Bars.hpCurrent, 130, 'Should parse HP current as 130');
+  assert.strictEqual(parsed4Bars.hungerCurrent, 5, 'Should parse Hunger current as 5');
+  assert.strictEqual(parsed4Bars.both100, true, 'Mock H&H indicators should be both 100% in 4-bar context');
+
+  statsSection.remove();
+  documentBody.appendChild(hpWrap);
+  documentBody.appendChild(hungerWrap);
 
   globalThis.GM_setValue('wia.pillTakenAt', 0);
   globalThis.GM_setValue('wia.pillState', 'none');

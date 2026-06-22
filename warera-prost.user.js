@@ -209,8 +209,8 @@
     pillDebuffH: 15.5,
     pillPrefWindowFrom: '19:00',
     pillPrefWindowTo: '20:00',
-    hpIconPath: 'M12',
-    hungerIconPath: 'M11',
+    hpIconPath: 'M12,21.35L10.55,20.03',
+    hungerIconPath: 'M11,9H9V2H7V9',
     doubleChevronPath: 'M7.41,18.41',
     pillBuffIconPath: 'M4.22,11.29L11.29,4.22',
     pillDebuffIconPath: 'M22.11 21.46L2.39 1.73',
@@ -309,7 +309,7 @@
         pillTakeNowButton: 'Took Pill Now',
         pillTakeNowOverlay: 'TAKE NOW',
         pillTopUpOverlay: 'TOP UP FIRST',
-        pillPreferredWindow: 'Preferred window: {from} - {to}',
+        pillPreferredWindow: '{from} - {to}',
         pillPhaseBuff: 'BUFF',
         pillPhaseKnife: 'DEBUFF (KNIFE)',
         pillPhaseRecover: 'DEBUFF (RECOVER)',
@@ -452,7 +452,7 @@
         pillTakeNowButton: 'Pille jetzt genommen',
         pillTakeNowOverlay: 'NEHMEN',
         pillTopUpOverlay: 'ERST FÜLLEN',
-        pillPreferredWindow: 'Zeitfenster: {from} - {to}',
+        pillPreferredWindow: '{from} - {to}',
         pillPhaseBuff: 'BUFF',
         pillPhaseKnife: 'DEBUFF (MESSER)',
         pillPhaseRecover: 'DEBUFF (RECOVERY)',
@@ -2725,34 +2725,53 @@
       }
       
       /* ── Pill Reminder module styles ── */
+      /* Mimic WareEra's native top-bar chips: pill shape, dark translucent
+         fill, hairline border, drop-shadowed glyph/text. Phase is carried by a
+         glowing status LED + border tint, NOT a saturated block fill — so the
+         badge reads as "another game indicator", not a foreign widget. */
       #wia-pill-badge {
         display: inline-flex; align-items: center; justify-content: center;
-        position: relative; margin: 0 10px; font: bold 11px system-ui, sans-serif;
-        border-radius: 4px; padding: 2px 6px; cursor: pointer; user-select: none;
-        z-index: 10000; height: 24px; line-height: 1;
+        position: relative; margin: 0 8px;
+        font: 600 13px/1 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        border-radius: 999px; padding: 5px 12px; cursor: pointer; user-select: none;
+        z-index: 10000; min-height: 28px; box-sizing: border-box;
+        color: #e8eef5;
+        background: rgba(13, 17, 23, 0.55);
+        border: 1px solid rgba(255, 255, 255, 0.10);
+        box-shadow: 0 1px 3px rgba(0, 0, 0, .4);
+        text-shadow: 0 1px 1px rgba(0, 0, 0, .6);
       }
-      .wia-badge-buff { background: #238636; color: #fff; }
-      .wia-badge-knife { background: #1f6feb; color: #fff; }
-      .wia-badge-recover { background: #d29922; color: #fff; }
-      .wia-badge-ready {
-        background: #238636; color: #fff;
+      .wia-badge-buff    { border-color: rgba(63, 185, 80, .55); }
+      .wia-badge-knife   { border-color: rgba(88, 166, 255, .55); }
+      .wia-badge-recover { border-color: rgba(210, 153, 34, .60); }
+      .wia-badge-gated   { border-color: rgba(139, 148, 158, .50); }
+      .wia-badge-ready   {
+        border-color: rgba(63, 185, 80, .70);
         animation: wia-pulse-bg 1.5s infinite alternate;
       }
-      .wia-badge-gated { background: #8b949e; color: #fff; }
       @keyframes wia-pulse-bg {
-        0% { box-shadow: 0 0 2px #238636; }
-        100% { box-shadow: 0 0 8px #238636; }
+        0%   { box-shadow: 0 1px 3px rgba(0,0,0,.4), 0 0 0 rgba(63,185,80,0); }
+        100% { box-shadow: 0 1px 3px rgba(0,0,0,.4), 0 0 9px rgba(63,185,80,.6); }
       }
-      .wia-pill-row { display: flex; align-items: center; gap: 4px; }
+      .wia-pill-row { display: flex; align-items: center; gap: 6px; }
       .wia-pill-status-dot {
-        width: 6px; height: 6px; border-radius: 50%; background: currentColor;
+        width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto;
+        background: #8b949e; box-shadow: 0 0 5px currentColor;
       }
+      .wia-badge-buff    .wia-pill-status-dot { background: #3fb950; box-shadow: 0 0 5px rgba(63,185,80,.9); }
+      .wia-badge-knife   .wia-pill-status-dot { background: #58a6ff; box-shadow: 0 0 5px rgba(88,166,255,.9); }
+      .wia-badge-recover .wia-pill-status-dot { background: #e3b341; box-shadow: 0 0 5px rgba(227,179,65,.9); }
+      .wia-badge-ready   .wia-pill-status-dot { background: #3fb950; box-shadow: 0 0 6px rgba(63,185,80,1); }
+      .wia-badge-gated   .wia-pill-status-dot { background: #8b949e; box-shadow: 0 0 4px rgba(139,148,158,.7); }
+      .wia-pill-phase-lbl { font-size: 11px; font-weight: 600; opacity: .82; letter-spacing: .2px; }
+      .wia-pill-timer { color: #fff; font-weight: 700; font-variant-numeric: tabular-nums; }
       .wia-pill-hover-details {
-        display: none; position: absolute; top: 100%; right: 0; margin-top: 6px;
-        width: 250px; background: #161b22; border: 1px solid #30363d;
-        border-radius: 6px; padding: 10px; box-shadow: 0 4px 12px rgba(0,0,0,.5);
+        display: none; position: absolute; top: 100%; right: 0; margin-top: 8px;
+        width: 250px; background: rgba(13, 17, 23, .96);
+        border: 1px solid rgba(255, 255, 255, .12);
+        border-radius: 10px; padding: 12px; box-shadow: 0 8px 24px rgba(0, 0, 0, .55);
         color: #c9d1d9; font-weight: normal; text-align: left; font-size: 11px;
-        z-index: 10001; line-height: 1.4;
+        text-shadow: none; z-index: 10001; line-height: 1.4;
       }
       #wia-pill-badge:hover .wia-pill-hover-details {
         display: block;
@@ -2760,9 +2779,9 @@
       .wia-pill-detail-item { margin-bottom: 6px; }
       .wia-pill-detail-item strong { color: #58a6ff; }
       .wia-pill-take-btn {
-        width: 100%; background: #238636; border: 1px solid #30363d;
-        border-radius: 4px; color: #fff; font-size: 11px; font-weight: bold;
-        padding: 4px 8px; cursor: pointer; margin-top: 4px; text-align: center;
+        width: 100%; background: #238636; border: 1px solid rgba(46, 160, 67, .8);
+        border-radius: 999px; color: #fff; font-size: 11px; font-weight: bold;
+        padding: 6px 8px; cursor: pointer; margin-top: 4px; text-align: center;
       }
       .wia-pill-take-btn:hover { background: #2ea043; }
       .wia-cocain-highlight {
@@ -3813,6 +3832,10 @@
           if (currentEl.tagName === 'BODY' || currentEl.tagName === 'HTML') {
             break;
           }
+          const slashCount = (currentEl.textContent.match(/\//g) || []).length;
+          if (slashCount > 1) {
+            break; // Stop climbing past the individual stat row container
+          }
           const svgs = currentEl.querySelectorAll('svg');
           for (const svg of svgs) {
             const path = svg.querySelector('path');
@@ -3850,11 +3873,6 @@
           }
           if (isHp || isHunger) break;
           currentEl = currentEl.parentElement;
-        }
-
-        if (!isHp && !isHunger) {
-          if (max >= 20) isHp = true;
-          else if (max <= 10) isHunger = true;
         }
 
         if (isHp) {
