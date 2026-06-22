@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         PROST
+// @name         TEST PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.7.2
+// @version      0.7.2-unstable
 // @description  PROST — Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -310,11 +310,11 @@
         pillTakeNowOverlay: 'TAKE NOW',
         pillTopUpOverlay: 'TOP UP FIRST',
         pillPreferredWindow: '{from} - {to}',
-        pillPhaseBuff: 'BUFF',
-        pillPhaseKnife: 'DEBUFF (KNIFE)',
-        pillPhaseRecover: 'DEBUFF (RECOVER)',
+        pillPhaseBuff: 'Active ·',
+        pillPhaseKnife: 'Knife ·',
+        pillPhaseRecover: 'Recover ·',
         pillPhaseReady: 'READY',
-        pillPhaseGated: 'WAITING (H&H)',
+        pillPhaseGated: 'Next ~',
         pillDetailNext: 'Next transition',
         pillDetailPreferred: 'Preferred window',
         pillDetailGatingReady: 'Ready to take pill!',
@@ -453,11 +453,11 @@
         pillTakeNowOverlay: 'NEHMEN',
         pillTopUpOverlay: 'ERST FÜLLEN',
         pillPreferredWindow: '{from} - {to}',
-        pillPhaseBuff: 'BUFF',
-        pillPhaseKnife: 'DEBUFF (MESSER)',
-        pillPhaseRecover: 'DEBUFF (RECOVERY)',
+        pillPhaseBuff: 'Aktiv ·',
+        pillPhaseKnife: 'Messer ·',
+        pillPhaseRecover: 'Regen ·',
         pillPhaseReady: 'BEREIT',
-        pillPhaseGated: 'WARTEN (H&H)',
+        pillPhaseGated: 'Nächste ~',
         pillDetailNext: 'Nächste Transition',
         pillDetailPreferred: 'Zeitfenster',
         pillDetailGatingReady: 'Bereit für die Pille!',
@@ -4116,6 +4116,7 @@
         badgeClass = 'wia-badge-ready';
         timerStr = '';
       } else {
+        const lowestPct = Math.round(Math.min(status.hpPercent, status.hungerPercent));
         phaseLabel = t('pillPhaseGated');
         badgeClass = 'wia-badge-gated';
         const hpNeeded = status.hpMax - status.hpCurrent;
@@ -4131,9 +4132,9 @@
         const totalTicks = Math.max(hpTicks, hungerTicks);
         if (totalTicks > 0) {
           const remainingTimeMs = status.nextTickMs + (totalTicks - 1) * 3600000;
-          timerStr = formatDuration(remainingTimeMs);
+          timerStr = `${formatDuration(remainingTimeMs)} (${lowestPct}%)`;
         } else {
-          timerStr = '';
+          timerStr = `(${lowestPct}%)`;
         }
       }
       nextTransitionLabel = '';
@@ -4217,9 +4218,10 @@
     badge.innerHTML = `
       <div class="wia-pill-badge-content">
         <div class="wia-pill-row">
+          <img src="/images/items/cocain.png?v=33" alt="💊" style="width: 14px; height: 14px; border-radius: 2px; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.5));" />
           <span class="wia-pill-status-dot"></span>
           <span class="wia-pill-phase-lbl">${info.phaseLabel}</span>
-          ${info.timerStr ? `<span class="wia-pill-timer" style="margin-left: 4px;">${info.timerStr}</span>` : ''}
+          ${info.timerStr ? `<span class="wia-pill-timer">${info.timerStr}</span>` : ''}
         </div>
         <div class="wia-pill-hover-details">
           ${nextStr}

@@ -819,11 +819,11 @@ try {
   assert.ok(pillBadge.classList.contains('wia-badge-gated'), 'Pill badge should be in wia-badge-gated class when health is below 100%');
   
   const labelEl = pillBadge.querySelector('.wia-pill-phase-lbl');
-  assert.strictEqual(labelEl.textContent, 'WAITING (H&H)', 'Gated label should display WAITING (H&H) instead of READY');
+  assert.strictEqual(labelEl.textContent, 'Next ~', 'Gated label should display Next ~ instead of READY');
 
   const timerEl = pillBadge.querySelector('.wia-pill-timer');
   assert.ok(timerEl, 'Gated badge should display H&H recovery remaining timer');
-  assert.strictEqual(timerEl.textContent, '2h 53m', 'Estimated remaining time to 100% H&H should be 2h 53m');
+  assert.strictEqual(timerEl.textContent, '2h 53m (77%)', 'Estimated remaining time to 100% H&H should be 2h 53m (77%)');
 
   const hoverDetails = pillBadge.querySelector('.wia-pill-hover-details').textContent;
   assert.ok(hoverDetails.includes('Waiting for H&H: ~2h 53m (77%, next update in 53m 38s)'), 'Hover details should contain the detailed recovery note');
@@ -832,7 +832,7 @@ try {
   tickTimeText.textContent = '48m';
   globalThis.injectPillBadge();
   const updatedTimerEl = pillBadge.querySelector('.wia-pill-timer');
-  assert.strictEqual(updatedTimerEl.textContent, '2h 48m', 'Should parse remaining time correctly even if the countdown timer only contains minutes (e.g. 48m)');
+  assert.strictEqual(updatedTimerEl.textContent, '2h 48m (77%)', 'Should parse remaining time correctly even if the countdown timer only contains minutes (e.g. 48m) with pct');
 
   hpText.textContent = '130/130';
   globalThis.injectPillBadge();
