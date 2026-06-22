@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         PROST
+// @name         TEST PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.7.2
+// @version      0.7.3-unstable
 // @description  PROST — Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -319,6 +319,7 @@
         pillDetailPreferred: 'Preferred window',
         pillDetailGatingReady: 'Ready to take pill!',
         pillDetailGatingTopUp: 'Waiting for H&H: ~{time} ({pct}%, next update in {next})',
+        pillSpendableFree: '⬇ {val} free',
         today: 'today',
         tomorrow: 'tomorrow',
         yesterday: 'yesterday',
@@ -462,6 +463,7 @@
         pillDetailPreferred: 'Zeitfenster',
         pillDetailGatingReady: 'Bereit für die Pille!',
         pillDetailGatingTopUp: 'Warten auf H&H: ~{time} ({pct}%, nächstes Update in {next})',
+        pillSpendableFree: '⬇ {val} frei',
         today: 'heute',
         tomorrow: 'morgen',
         yesterday: 'gestern',
@@ -1201,6 +1203,8 @@
     globalThis.injectPillBadge = injectPillBadge;
     globalThis.highlightCocaineItems = highlightCocaineItems;
     globalThis.teardownPillReminder = teardownPillReminder;
+    globalThis.renderHnHBudget = renderHnHBudget;
+    globalThis.removeHnHBudget = removeHnHBudget;
   }
 
   function getLocale() {
@@ -2807,6 +2811,25 @@
         padding: 1px 3px; border-radius: 2px; pointer-events: none; z-index: 10;
       }
 
+      /* ── H&H Budget overlays ── */
+      .wia-hnh-reserve-overlay {
+        position: absolute; top: 0; bottom: 0; left: 0;
+        background: rgba(13, 17, 23, 0.45); z-index: 4; pointer-events: none;
+      }
+      .wia-hnh-free-overlay {
+        position: absolute; top: 0; bottom: 0;
+        background: rgba(63, 185, 80, 0.22); z-index: 5; pointer-events: none;
+        box-shadow: inset 0 0 4px rgba(63, 185, 80, 0.4);
+      }
+      .wia-hnh-floor-marker {
+        position: absolute; top: 0; bottom: 0; width: 1.5px;
+        background: rgba(255, 255, 255, 0.6); z-index: 6; pointer-events: none;
+      }
+      .wia-hnh-floor-marker.wia-hnh-alert {
+        background: #ff7b72;
+        box-shadow: 0 0 4px #ff7b72;
+      }
+
       /* ── Notes module styles ── */
       .warera-note-icon {
         display: inline-flex; align-items: center; justify-content: center;
@@ -3693,6 +3716,7 @@
     noneReadCount = 0;
     removePillBadge();
     removeCocaineHighlights();
+    removeHnHBudget();
   }
 
   function handlePillDocumentClick() {
@@ -3704,6 +3728,158 @@
     updatePillState();
     injectPillBadge();
     highlightCocaineItems();
+    renderHnHBudget();
+  }
+
+  function getNextPillMoment() {
+    const pillTakenAt = GM_getValue(KEYS.pillTakenAt, 0);
+    if (!pillTakenAt) return 0;
+    const totalMs = (CONFIG.pillBuffH + CONFIG.pillDebuffH) * 3600000;
+    let target = pillTakenAt + totalMs;
+
+    if (CONFIG.pillPrefWindowFrom) {
+      const parts = CONFIG.pillPrefWindowFrom.split(':');
+      if (parts.length === 2) {
+        const hrs = parseInt(parts[0], 10);
+        const mins = parseInt(parts[1], 10);
+        
+        let d = new Date(target);
+        d.setHours(hrs, mins, 0, 0);
+        if (d.getTime() < target) {
+          d.setDate(d.getDate() + 1);
+          d.setHours(hrs, mins, 0, 0);
+        }
+        target = d.getTime();
+      }
+    }
+    return target;
+  }
+
+  function getBarElements(el) {
+    if (!el) return null;
+    let currentEl = el;
+    let commonParent = null;
+    for (let i = 0; i < 5 && currentEl; i++) {
+      if (currentEl.tagName === 'BODY' || currentEl.tagName === 'HTML') break;
+      const fill = currentEl.querySelector('div[style*="transform"]');
+      if (fill) {
+        commonParent = currentEl;
+        return { commonParent, fill, track: fill.parentElement };
+      }
+      currentEl = currentEl.parentElement;
+    }
+    return null;
+  }
+
+  function applyBarBudget(bar, readoutEl, current, max, floorVal, spendable) {
+    const { track } = bar;
+    if (!track) return;
+
+    track.style.position = 'relative';
+    track.style.overflow = 'hidden';
+
+    removeBarOverlays(track);
+
+    const floorPct = (floorVal / max) * 100;
+    const currentPct = (current / max) * 100;
+
+    // 1. Reserve Overlay
+    if (floorPct > 0) {
+      const reserve = document.createElement('div');
+      reserve.className = 'wia-hnh-reserve-overlay';
+      reserve.style.width = `${floorPct}%`;
+      track.appendChild(reserve);
+    }
+
+    // 2. Free Overlay
+    if (currentPct > floorPct) {
+      const free = document.createElement('div');
+      free.className = 'wia-hnh-free-overlay';
+      free.style.left = `${floorPct}%`;
+      free.style.width = `${currentPct - floorPct}%`;
+      track.appendChild(free);
+    }
+
+    // 3. Floor Marker Line
+    const marker = document.createElement('div');
+    marker.className = 'wia-hnh-floor-marker';
+    if (floorVal >= current) {
+      marker.classList.add('wia-hnh-alert');
+    }
+    marker.style.left = `${Math.min(99.5, floorPct)}%`;
+    track.appendChild(marker);
+
+    // 4. Text Readout Label
+    let label = readoutEl.parentElement.querySelector('.wia-hnh-budget-label');
+    if (!label) {
+      label = document.createElement('span');
+      label.className = 'wia-hnh-budget-label';
+      readoutEl.insertAdjacentElement('afterend', label);
+    }
+
+    const valText = spendable % 1 === 0 ? spendable : spendable.toFixed(1);
+    label.textContent = t('pillSpendableFree', { val: valText });
+    label.style.marginLeft = '6px';
+    label.style.fontSize = '90%';
+    label.style.fontWeight = 'bold';
+    label.style.verticalAlign = 'middle';
+    if (spendable === 0) {
+      label.style.color = '#ff7b72';
+    } else {
+      label.style.color = '#3fb950';
+    }
+  }
+
+  function removeBarOverlays(track) {
+    if (!track) return;
+    track.querySelectorAll('.wia-hnh-reserve-overlay, .wia-hnh-free-overlay, .wia-hnh-floor-marker').forEach(el => el.remove());
+  }
+
+  function removeHnHBudget() {
+    document.querySelectorAll('.wia-hnh-reserve-overlay, .wia-hnh-free-overlay, .wia-hnh-floor-marker, .wia-hnh-budget-label').forEach(el => el.remove());
+  }
+
+  function renderHnHBudget() {
+    if (!CONFIG.featPillReminder) {
+      removeHnHBudget();
+      return;
+    }
+
+    const now = Date.now();
+    const tPill = getNextPillMoment();
+    if (!tPill || now >= tPill) {
+      removeHnHBudget();
+      return;
+    }
+
+    const msToPill = tPill - now;
+    const status = parseHealthAndHunger();
+    if (!status.hpFound && !status.hungerFound) return;
+
+    let ticks = 0;
+    if (status.nextTickMs <= msToPill) {
+      ticks = 1 + Math.floor((msToPill - status.nextTickMs) / 3600000);
+    }
+
+    if (status.hpFound && status.hpEl) {
+      const bar = getBarElements(status.hpEl);
+      if (bar) {
+        const regenAvail = ticks * status.hpRegen;
+        const floorVal = Math.max(0, Math.min(status.hpMax, status.hpMax - regenAvail));
+        const spendable = Math.max(0, status.hpCurrent - floorVal);
+        applyBarBudget(bar, status.hpEl, status.hpCurrent, status.hpMax, floorVal, spendable);
+      }
+    }
+
+    if (status.hungerFound && status.hungerEl) {
+      const bar = getBarElements(status.hungerEl);
+      if (bar) {
+        const regenAvail = ticks * status.hungerRegen;
+        const floorVal = Math.max(0, Math.min(status.hungerMax, status.hungerMax - regenAvail));
+        const spendable = Math.max(0, status.hungerCurrent - floorVal);
+        applyBarBudget(bar, status.hungerEl, status.hungerCurrent, status.hungerMax, floorVal, spendable);
+      }
+    }
   }
 
   function extractUserIdFromHref(href) {
@@ -3791,6 +3967,8 @@
     let hungerCurrent = 4;
     let hungerMax = 4;
     let hungerRegen = 0.4;
+    let hpEl = null;
+    let hungerEl = null;
 
     const elements = document.querySelectorAll('span, div, p');
     for (const el of elements) {
@@ -3881,6 +4059,7 @@
             hpFound = true;
             hpCurrent = current;
             hpMax = max;
+            hpEl = el;
             if (detectedRegen !== null) hpRegen = detectedRegen;
             else hpRegen = Math.max(1, max * 0.1);
           }
@@ -3890,6 +4069,7 @@
             hungerFound = true;
             hungerCurrent = current;
             hungerMax = max;
+            hungerEl = el;
             if (detectedRegen !== null) hungerRegen = detectedRegen;
             else hungerRegen = Math.max(0.1, max * 0.1);
           }
@@ -3986,7 +4166,9 @@
       hungerCurrent,
       hungerMax,
       hungerRegen,
-      nextTickMs
+      nextTickMs,
+      hpEl,
+      hungerEl
     };
   }
 

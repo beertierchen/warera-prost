@@ -273,6 +273,20 @@ class MockElement {
     }
   }
 
+  insertAdjacentElement(position, element) {
+    if (position === 'afterend') {
+      if (this.parentElement) {
+        const idx = this.parentElement.children.indexOf(this);
+        if (idx !== -1) {
+          this.parentElement.children.splice(idx + 1, 0, element);
+          element.parentElement = this.parentElement;
+        } else {
+          this.parentElement.appendChild(element);
+        }
+      }
+    }
+  }
+
   get textContent() {
     if (this.children.length === 0) return this._textContent || '';
     return this.children.map(c => c.textContent).join(' ');
@@ -649,14 +663,21 @@ try {
   documentBody.appendChild(layoutUserMenu);
 
   const hpWrap = new MockElement('div');
+  const hpTrack = new MockElement('div');
+  const hpFill = new MockElement('div');
+  hpFill.setAttribute('style', 'transform-origin: left center; transform: scaleX(0.5);');
+  hpTrack.appendChild(hpFill);
+  hpWrap.appendChild(hpTrack);
+
+  const hpTextContainer = new MockElement('div');
   const hpSvg = new MockElement('svg');
   const hpPath = new MockElement('path');
   hpPath.setAttribute('d', 'M12,21.35L10.55,20.03 heart fingerprint');
   hpSvg.appendChild(hpPath);
-  hpWrap.appendChild(hpSvg);
+  hpTextContainer.appendChild(hpSvg);
   const hpText = new MockElement('span');
   hpText.textContent = '130/130';
-  hpWrap.appendChild(hpText);
+  hpTextContainer.appendChild(hpText);
   
   const hpRegenSpan = new MockElement('span');
   const hpChevronSvg = new MockElement('svg');
@@ -667,19 +688,27 @@ try {
   const hpRegenVal = new MockElement('span');
   hpRegenVal.textContent = '13';
   hpRegenSpan.appendChild(hpRegenVal);
-  hpWrap.appendChild(hpRegenSpan);
+  hpTextContainer.appendChild(hpRegenSpan);
+  hpWrap.appendChild(hpTextContainer);
   
   documentBody.appendChild(hpWrap);
 
   const hungerWrap = new MockElement('div');
+  const hungerTrack = new MockElement('div');
+  const hungerFill = new MockElement('div');
+  hungerFill.setAttribute('style', 'transform-origin: left center; transform: scaleX(0.2);');
+  hungerTrack.appendChild(hungerFill);
+  hungerWrap.appendChild(hungerTrack);
+
+  const hungerTextContainer = new MockElement('div');
   const hungerSvg = new MockElement('svg');
   const hungerPath = new MockElement('path');
   hungerPath.setAttribute('d', 'M11,9H9V2H7V9 hunger fingerprint');
   hungerSvg.appendChild(hungerPath);
-  hungerWrap.appendChild(hungerSvg);
+  hungerTextContainer.appendChild(hungerSvg);
   const hungerText = new MockElement('span');
   hungerText.textContent = '5/5';
-  hungerWrap.appendChild(hungerText);
+  hungerTextContainer.appendChild(hungerText);
   
   const hungerRegenSpan = new MockElement('span');
   const hungerChevronSvg = new MockElement('svg');
@@ -690,7 +719,8 @@ try {
   const hungerRegenVal = new MockElement('span');
   hungerRegenVal.textContent = '0.5';
   hungerRegenSpan.appendChild(hungerRegenVal);
-  hungerWrap.appendChild(hungerRegenSpan);
+  hungerTextContainer.appendChild(hungerRegenSpan);
+  hungerWrap.appendChild(hungerTextContainer);
   
   documentBody.appendChild(hungerWrap);
 
@@ -868,6 +898,60 @@ try {
   globalThis.highlightCocaineItems();
   assert.strictEqual(cocainCard.classList.contains('wia-cocain-gated-highlight'), true, 'Cocaine card should have warning H&H highlight');
   assert.strictEqual(cocainCard.getAttribute('data-label'), 'TOP UP FIRST', 'Highlight badge label should be TOP UP FIRST');
+
+  // --- H&H Budget Regression Test ---
+  console.log('--- Testing H&H Budget Indicator ---');
+  globalThis.CONFIG.pillPrefWindowFrom = ''; 
+  globalThis.CONFIG.pillPrefWindowTo = '';
+
+  const now = Date.now();
+  globalThis.GM_setValue('wia.pillTakenAt', now - 20 * 3600000);
+  globalThis.GM_setValue('wia.pillState', 'DEBUFF');
+
+  hpText.textContent = '130/130';
+  hungerText.textContent = '5/5';
+
+  globalThis.renderHnHBudget();
+
+  const hpBudgetVal = hpTextContainer.querySelector('.wia-hnh-budget-label');
+  assert.ok(hpBudgetVal, 'HP budget label should be appended');
+  assert.strictEqual(hpBudgetVal.textContent, '⬇ 39 free', 'HP spendable should be parsed as 39');
+  
+  const hpReserve = hpTrack.querySelector('.wia-hnh-reserve-overlay');
+  assert.ok(hpReserve, 'HP reserve overlay should be created');
+  assert.strictEqual(hpReserve.style.width, '70%', 'HP reserve width should be 70%');
+
+  const hpFree = hpTrack.querySelector('.wia-hnh-free-overlay');
+  assert.ok(hpFree, 'HP free overlay should be created');
+  assert.strictEqual(hpFree.style.left, '70%', 'HP free left should start at 70%');
+  assert.strictEqual(hpFree.style.width, '30%', 'HP free width should be 30%');
+
+  const hpMarker = hpTrack.querySelector('.wia-hnh-floor-marker');
+  assert.ok(hpMarker, 'HP floor marker should be created');
+  assert.strictEqual(hpMarker.style.left, '70%', 'HP floor marker left should be 70%');
+
+  const hungerBudgetVal = hungerTextContainer.querySelector('.wia-hnh-budget-label');
+  assert.ok(hungerBudgetVal, 'Hunger budget label should be appended');
+  assert.strictEqual(hungerBudgetVal.textContent, '⬇ 1.5 free', 'Hunger spendable should be parsed as 1.5');
+
+  const hungerReserve = hungerTrack.querySelector('.wia-hnh-reserve-overlay');
+  assert.ok(hungerReserve, 'Hunger reserve overlay should be created');
+  assert.strictEqual(hungerReserve.style.width, '70%', 'Hunger reserve width should be 70%');
+
+  const hungerFree = hungerTrack.querySelector('.wia-hnh-free-overlay');
+  assert.ok(hungerFree, 'Hunger free overlay should be created');
+  assert.strictEqual(hungerFree.style.left, '70%', 'Hunger free left should start at 70%');
+  assert.strictEqual(hungerFree.style.width, '30%', 'Hunger free width should be 30%');
+
+  hpText.textContent = '80/130';
+  globalThis.renderHnHBudget();
+  assert.strictEqual(hpBudgetVal.textContent, '⬇ 0 free', 'HP spendable should be 0 when below floor');
+  const hpMarkerNew = hpTrack.querySelector('.wia-hnh-floor-marker');
+  assert.ok(hpMarkerNew, 'HP floor marker should be found after re-render');
+  assert.ok(hpMarkerNew.classList.contains('wia-hnh-alert'), 'HP marker should have alert style when current is below floor');
+
+  globalThis.removeHnHBudget();
+  console.log('H&H Budget Indicator tests passed successfully.');
 
   layoutUserMenu.remove();
   hpWrap.remove();
