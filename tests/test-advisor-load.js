@@ -1020,6 +1020,92 @@ try {
 
   console.log('Pill Reminder module tests passed successfully.');
 
+  // --- Crafting Advisor Unit Tests ---
+  console.log('--- Testing Crafting Advisor ---');
+  
+  // 1. Test getTierItemCodes
+  const t1Codes = globalThis.getTierItemCodes(1);
+  assert.deepStrictEqual(t1Codes, ['knife', 'helmet1', 'chest1', 'boots1', 'gloves1', 'pants1'], 'T1 item codes should map correctly');
+  const t4Codes = globalThis.getTierItemCodes(4);
+  assert.deepStrictEqual(t4Codes, ['sniper', 'helmet4', 'chest4', 'boots4', 'gloves4', 'pants4'], 'T4 item codes should map correctly');
+
+  // 2. Test formatItemCode
+  globalThis.CONFIG.locale = 'de';
+  assert.strictEqual(globalThis.formatItemCode('knife'), 'Messer', 'German weapon formatting should work');
+  assert.strictEqual(globalThis.formatItemCode('helmet1'), 'T1 Helm', 'German armor formatting should work');
+  
+  globalThis.CONFIG.locale = 'en';
+  assert.strictEqual(globalThis.formatItemCode('knife'), 'Knife', 'English weapon formatting should work');
+  assert.strictEqual(globalThis.formatItemCode('helmet1'), 'T1 Helmet', 'English armor formatting should work');
+
+  // 3. Test parseCraftingState with mocked modal DOM
+  const modalDiv = new MockElement('div');
+  modalDiv.id = 'headlessui-dialog-panel-_r_45g9_';
+
+  // Mock Common Tier card selected
+  const commonCard = new MockElement('div', 'ahvacn2');
+  const commonSpan = new MockElement('span');
+  commonSpan.textContent = 'Common';
+  commonCard.appendChild(commonSpan);
+  const highlightOverlay = new MockElement('div', '_1dnmndy85w');
+  commonCard.appendChild(highlightOverlay);
+  modalDiv.appendChild(commonCard);
+
+  // Mock specific item selected (Helmet)
+  const itemGrid = new MockElement('div', '_1dnmndyjlu');
+  const helmetCell = new MockElement('div', 'ahvacn2');
+  const helmetImg = new MockElement('img');
+  helmetImg.setAttribute('alt', 'helmet1');
+  helmetCell.appendChild(helmetImg);
+  const itemHighlightOverlay = new MockElement('div', '_1dnmndy85w');
+  helmetCell.appendChild(itemHighlightOverlay);
+  itemGrid.appendChild(helmetCell);
+  modalDiv.appendChild(itemGrid);
+
+  // Mock Scraps & Steel quantities
+  const scrapsWrap = new MockElement('span');
+  const scrapsImg = new MockElement('img');
+  scrapsImg.setAttribute('alt', 'scraps');
+  scrapsWrap.appendChild(scrapsImg);
+  const scrapsInnerSpan = new MockElement('span');
+  scrapsInnerSpan.textContent = '/6';
+  scrapsWrap.appendChild(scrapsInnerSpan);
+  modalDiv.appendChild(scrapsWrap);
+
+  const steelWrap = new MockElement('span');
+  const steelImg = new MockElement('img');
+  steelImg.setAttribute('alt', 'steel');
+  steelWrap.appendChild(steelImg);
+  const steelInnerSpan = new MockElement('span');
+  steelInnerSpan.textContent = '/1';
+  steelWrap.appendChild(steelInnerSpan);
+  modalDiv.appendChild(steelWrap);
+
+  // Inject into document body
+  documentBody.appendChild(modalDiv);
+
+  const parsedCraft = globalThis.parseCraftingState(modalDiv);
+  assert.strictEqual(parsedCraft.tier, 1, 'Parsed tier should be 1 (Common)');
+  assert.strictEqual(parsedCraft.selectedItem, 'helmet1', 'Parsed selected item should be helmet1');
+  assert.strictEqual(parsedCraft.scrapsRequired, 6, 'Parsed scraps required should be 6');
+  assert.strictEqual(parsedCraft.steelRequired, 1, 'Parsed steel required should be 1');
+
+  // Test Random mode parsing
+  itemHighlightOverlay.remove();
+  const randomCell = new MockElement('div', 'ahvacn2');
+  const qMarkSpan = new MockElement('span');
+  qMarkSpan.textContent = '?';
+  randomCell.appendChild(qMarkSpan);
+  const randomHighlight = new MockElement('div', '_1dnmndy85w');
+  randomCell.appendChild(randomHighlight);
+  itemGrid.appendChild(randomCell);
+
+  const parsedRandom = globalThis.parseCraftingState(modalDiv);
+  assert.strictEqual(parsedRandom.selectedItem, 'random', 'Parsed selected item should be random when "?" is selected');
+
+  modalDiv.remove();
+  console.log('Crafting Advisor tests passed successfully.');
+
   console.log('Success! The script loaded and initialized without throwing any runtime errors.');
   process.exit(0);
 } catch (err) {

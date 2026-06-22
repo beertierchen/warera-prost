@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.7.4
+// @version      0.7.5
 // @description  PROST — Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -336,6 +336,14 @@
         pillSpendableNone: '✕ 0 free',
         pillHnHFullIn: 'H&H full in {duration}',
         pillNextTickIn: 'Tick in {duration}',
+        craftTitle: 'Crafting Advisor',
+        craftResourceCost: 'Resource cost: {val} Gold (Steel: {steelPrice}/u, Scraps: {scrapsPrice}/u)',
+        craftProfitRange: 'Profit range:',
+        craftProfitSpecific: 'Profit: {min} to {max}',
+        craftWorstItem: 'Worst option ({item}): {profit}',
+        craftBestItem: 'Best option ({item}): {profit}',
+        craftMarketRange: 'Market range: {min} to {max} Gold',
+        craftMissingPrices: '⚠️ Market prices for steel/scraps not found. Visit Market to update.',
         today: 'today',
         tomorrow: 'tomorrow',
         yesterday: 'yesterday',
@@ -506,6 +514,14 @@
         pillSpendableNone: '✕ 0 frei',
         pillHnHFullIn: 'H&H voll in {duration}',
         pillNextTickIn: 'Tick in {duration}',
+        craftTitle: 'Crafting-Berater',
+        craftResourceCost: 'Ressourcenkosten: {val} Gold (Stahl: {steelPrice}/Einh., Schrott: {scrapsPrice}/Einh.)',
+        craftProfitRange: 'Profit-Spanne:',
+        craftProfitSpecific: 'Profit: {min} bis {max}',
+        craftWorstItem: 'Schlechteste Option ({item}): {profit}',
+        craftBestItem: 'Beste Option ({item}): {profit}',
+        craftMarketRange: 'Marktspanne: {min} bis {max} Gold',
+        craftMissingPrices: '⚠️ Marktpreise für Stahl/Schrott nicht gefunden. Besuche den Markt zum Aktualisieren.',
         today: 'heute',
         tomorrow: 'morgen',
         yesterday: 'gestern',
@@ -1259,6 +1275,9 @@
     globalThis.removeHnHBudget = removeHnHBudget;
     globalThis.nextWindowStart = nextWindowStart;
     globalThis.isInsidePreferredWindow = isInsidePreferredWindow;
+    globalThis.getTierItemCodes = getTierItemCodes;
+    globalThis.formatItemCode = formatItemCode;
+    globalThis.parseCraftingState = parseCraftingState;
   }
 
   function getLocale() {
@@ -4744,6 +4763,339 @@
     });
   }
 
+  // ───────────────────────────────────────────────────────────────────────────
+  // Crafting Advisor module
+  // ───────────────────────────────────────────────────────────────────────────
+  let lastCraftState = null;
+
+  const tierWeapons = {
+    1: 'knife',
+    2: 'gun',
+    3: 'rifle',
+    4: 'sniper',
+    5: 'tank',
+    6: 'jet'
+  };
+
+  function getTierItemCodes(tier) {
+    const weapon = tierWeapons[tier];
+    return [
+      weapon,
+      `helmet${tier}`,
+      `chest${tier}`,
+      `boots${tier}`,
+      `gloves${tier}`,
+      `pants${tier}`
+    ];
+  }
+
+  function getCachedPrice(itemCode) {
+    const pc = GM_getValue(KEYS.priceCache, null);
+    if (pc && pc.data && pc.data[itemCode] != null) {
+      return pc.data[itemCode];
+    }
+    const scrapedStore = GM_getValue(KEYS.scrapedPrices, {}) || {};
+    if (scrapedStore[itemCode] != null) {
+      return scrapedStore[itemCode].price;
+    }
+    return null;
+  }
+
+  function getItemPriceRange(itemCode) {
+    let minPrice = null;
+    let maxPrice = null;
+
+    // 1. Check live offers cache
+    const oc = GM_getValue(KEYS.offersCache, {}) || {};
+    const itemOffers = oc[itemCode];
+    if (itemOffers && Array.isArray(itemOffers.data) && itemOffers.data.length > 0) {
+      const prices = itemOffers.data.map(o => o.price).filter(p => p != null && !isNaN(p));
+      if (prices.length > 0) {
+        minPrice = Math.min(...prices);
+        maxPrice = Math.max(...prices);
+      }
+    }
+
+    // 2. Check transaction history cache
+    const tc = GM_getValue(KEYS.transactionsCache, {}) || {};
+    const itemTxs = tc[itemCode];
+    if (itemTxs && Array.isArray(itemTxs.data) && itemTxs.data.length > 0) {
+      const prices = itemTxs.data.map(t => t.price).filter(p => p != null && !isNaN(p));
+      if (prices.length > 0) {
+        const txMin = Math.min(...prices);
+        const txMax = Math.max(...prices);
+        if (minPrice == null || txMin < minPrice) minPrice = txMin;
+        if (maxPrice == null || txMax > maxPrice) maxPrice = txMax;
+      }
+    }
+
+    // 3. Fallback to scraped floor price
+    if (minPrice == null) {
+      const floor = getCachedPrice(itemCode);
+      if (floor != null) {
+        minPrice = floor;
+        maxPrice = floor;
+      }
+    }
+
+    return { minPrice, maxPrice };
+  }
+
+  function formatItemCode(code) {
+    if (!code) return '';
+    const weapons = {
+      knife: { en: 'Knife', de: 'Messer' },
+      gun: { en: 'Pistol', de: 'Pistole' },
+      rifle: { en: 'Rifle', de: 'Gewehr' },
+      sniper: { en: 'Sniper', de: 'Scharfschützengewehr' },
+      tank: { en: 'Tank', de: 'Panzer' },
+      jet: { en: 'Jet', de: 'Kampfjet' }
+    };
+    if (weapons[code]) {
+      return weapons[code][CONFIG.locale] || weapons[code]['en'];
+    }
+
+    const match = code.match(/^([a-z]+)(\d)$/);
+    if (match) {
+      const slot = match[1];
+      const tier = match[2];
+      const slots = {
+        helmet: { en: 'Helmet', de: 'Helm' },
+        chest: { en: 'Chestplate', de: 'Brustplatte' },
+        boots: { en: 'Boots', de: 'Stiefel' },
+        gloves: { en: 'Gloves', de: 'Handschuhe' },
+        pants: { en: 'Pants', de: 'Hose' }
+      };
+      const slotName = slots[slot] ? (slots[slot][CONFIG.locale] || slots[slot]['en']) : slot;
+      return `T${tier} ${slotName}`;
+    }
+    return code;
+  }
+
+  function parseCraftingState(modal) {
+    // 1. Rarity
+    let selectedRarity = null;
+    const rarities = ['Mythic', 'Legendary', 'Epic', 'Rare', 'Uncommon', 'Common'];
+    const rarityToTier = {
+      'Common': 1,
+      'Uncommon': 2,
+      'Rare': 3,
+      'Epic': 4,
+      'Legendary': 5,
+      'Mythic': 6
+    };
+
+    for (const rarity of rarities) {
+      const spans = Array.from(modal.querySelectorAll('span'));
+      const raritySpan = spans.find(span => span.textContent.trim() === rarity);
+      if (raritySpan) {
+        const cardContainer = raritySpan.closest('.ahvacn2');
+        if (cardContainer && cardContainer.querySelector('._1dnmndy85w')) {
+          selectedRarity = rarity;
+          break;
+        }
+      }
+    }
+    const tier = rarityToTier[selectedRarity] || 1;
+
+    // 2. Selected Item
+    const activeElements = Array.from(modal.querySelectorAll('._1dnmndy85w'));
+    const activeItemHighlight = activeElements.find(el => {
+      const parentCard = el.closest('.ahvacn2');
+      if (parentCard) {
+        const text = parentCard.textContent.trim();
+        if (rarities.some(r => text.includes(r))) {
+          return false;
+        }
+      }
+      return true;
+    });
+
+    let selectedItem = 'random';
+    if (activeItemHighlight) {
+      const itemCell = activeItemHighlight.parentElement;
+      if (itemCell) {
+        const questionMarkSpan = Array.from(itemCell.querySelectorAll('span')).find(span => span.textContent.trim() === '?');
+        if (questionMarkSpan) {
+          selectedItem = 'random';
+        } else {
+          const img = itemCell.querySelector('img[alt]');
+          if (img) {
+            selectedItem = img.getAttribute('alt');
+          }
+        }
+      }
+    }
+
+    // 3. Resource Requirements
+    let scrapsRequired = 0;
+    const scrapsImg = modal.querySelector('img[alt="scraps"]');
+    if (scrapsImg) {
+      let container = scrapsImg.parentElement;
+      while (container && container !== modal) {
+        const slashSpan = Array.from(container.querySelectorAll('span')).find(span => span.textContent.trim().startsWith('/'));
+        if (slashSpan) {
+          scrapsRequired = parseInt(slashSpan.textContent.replace(/[^0-9]/g, ''), 10) || 0;
+          break;
+        }
+        container = container.parentElement;
+      }
+    }
+
+    let steelRequired = 0;
+    const steelImg = modal.querySelector('img[alt="steel"]');
+    if (steelImg) {
+      let container = steelImg.parentElement;
+      while (container && container !== modal) {
+        const slashSpan = Array.from(container.querySelectorAll('span')).find(span => span.textContent.trim().startsWith('/'));
+        if (slashSpan) {
+          steelRequired = parseInt(slashSpan.textContent.replace(/[^0-9]/g, ''), 10) || 0;
+          break;
+        }
+        container = container.parentElement;
+      }
+    }
+
+    return {
+      tier,
+      selectedItem,
+      scrapsRequired,
+      steelRequired
+    };
+  }
+
+  function checkAndRenderCraftingAdvisor() {
+    const modal = document.querySelector('div[id^="headlessui-dialog-panel-"]');
+    if (!modal) {
+      lastCraftState = null;
+      return;
+    }
+    const titleEl = modal.querySelector('div[id^="headlessui-dialog-title-"]');
+    if (!titleEl || titleEl.textContent.trim() !== 'Craft Items') {
+      lastCraftState = null;
+      return;
+    }
+
+    const state = parseCraftingState(modal);
+    if (!state) return;
+
+    const stateKey = `${state.tier}-${state.selectedItem}-${state.scrapsRequired}-${state.steelRequired}`;
+    if (stateKey === lastCraftState) return;
+    lastCraftState = stateKey;
+
+    renderCraftingAdvisor(modal, state);
+  }
+
+  function renderCraftingAdvisor(modal, state) {
+    const closeBtn = Array.from(modal.querySelectorAll('button')).find(btn => btn.textContent.trim() === 'Close' || btn.textContent.trim() === 'Schließen');
+    if (!closeBtn) return;
+    const buttonRow = closeBtn.closest('div[class*="_1dnmndy1q8"]') || closeBtn.parentElement;
+    if (!buttonRow) return;
+
+    let panel = modal.querySelector('.wia-craft-advisor-panel');
+    if (!panel) {
+      panel = document.createElement('div');
+      panel.className = 'wia-craft-advisor-panel';
+      panel.style.margin = '10px 16px';
+      panel.style.padding = '10px';
+      panel.style.borderRadius = '6px';
+      panel.style.border = '1px solid rgba(255,255,255,0.08)';
+      panel.style.backgroundColor = 'rgba(255,255,255,0.02)';
+      panel.style.fontSize = '12px';
+      panel.style.lineHeight = '1.5';
+      buttonRow.parentElement.insertBefore(panel, buttonRow);
+    }
+
+    const scrapsPrice = getCachedPrice('scraps');
+    const steelPrice = getCachedPrice('steel');
+
+    if (scrapsPrice == null || steelPrice == null) {
+      panel.innerHTML = `<div style="color: #ff7b72; font-weight: bold;">${t('craftMissingPrices')}</div>`;
+      return;
+    }
+
+    // Steel cost is doubled for specific item crafts
+    const isSpecific = state.selectedItem !== 'random';
+    const actualSteelReq = isSpecific ? (2 * state.steelRequired) : state.steelRequired;
+    const resourceCost = (actualSteelReq * steelPrice) + (state.scrapsRequired * scrapsPrice);
+
+    let html = `
+      <div style="font-weight: bold; color: #58a6ff; margin-bottom: 6px; display: flex; align-items: center; gap: 4px;">
+        🔨 ${t('craftTitle')}
+      </div>
+      <div style="color: #c9d1d9; margin-bottom: 6px;">
+        ${t('craftResourceCost', { 
+          val: fmt(resourceCost), 
+          steelPrice: fmt(steelPrice), 
+          scrapsPrice: fmt(scrapsPrice) 
+        })}
+      </div>
+    `;
+
+    if (!isSpecific) {
+      // Random mode: find min/max profit range among green equipment items of this tier
+      const itemCodes = getTierItemCodes(state.tier);
+      const itemsInfo = itemCodes.map(code => {
+        const range = getItemPriceRange(code);
+        return { code, range };
+      }).filter(item => item.range.minPrice != null);
+
+      if (itemsInfo.length > 0) {
+        // Sort items by floor price to find best and worst
+        itemsInfo.sort((a, b) => a.range.minPrice - b.range.minPrice);
+        const worst = itemsInfo[0];
+        const best = itemsInfo[itemsInfo.length - 1];
+
+        const worstProfit = worst.range.minPrice - resourceCost;
+        const bestProfit = best.range.minPrice - resourceCost;
+
+        const worstColor = worstProfit >= 0 ? '#3fb950' : '#ff7b72';
+        const bestColor = bestProfit >= 0 ? '#3fb950' : '#ff7b72';
+
+        html += `
+          <div style="margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.06);">
+            <div style="color: #8b949e; margin-bottom: 2px;">${t('craftProfitRange')}:</div>
+            <div style="margin-bottom: 2px;">
+              • ${t('craftWorstItem', { item: formatItemCode(worst.code), profit: `<span style="color: ${worstColor}; font-weight: bold;">${worstProfit >= 0 ? '+' : ''}${fmt(worstProfit)} Gold</span>` })}
+            </div>
+            <div>
+              • ${t('craftBestItem', { item: formatItemCode(best.code), profit: `<span style="color: ${bestColor}; font-weight: bold;">${bestProfit >= 0 ? '+' : ''}${fmt(bestProfit)} Gold</span>` })}
+            </div>
+          </div>
+        `;
+      } else {
+        html += `<div style="color: #8b949e; font-style: italic;">No market prices found for Tier ${state.tier} items.</div>`;
+      }
+    } else {
+      // Specific mode
+      const range = getItemPriceRange(state.selectedItem);
+      if (range.minPrice != null && range.maxPrice != null) {
+        const minProfit = range.minPrice - resourceCost;
+        const maxProfit = range.maxPrice - resourceCost;
+        const minColor = minProfit >= 0 ? '#3fb950' : '#ff7b72';
+        const maxColor = maxProfit >= 0 ? '#3fb950' : '#ff7b72';
+
+        html += `
+          <div style="margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.06);">
+            <div style="margin-bottom: 2px;">
+              • ${t('craftMarketRange', { min: fmt(range.minPrice), max: fmt(range.maxPrice) })}
+            </div>
+            <div>
+              • ${t('craftProfitSpecific', { 
+                min: `<span style="color: ${minColor}; font-weight: bold;">${minProfit >= 0 ? '+' : ''}${fmt(minProfit)}</span>`,
+                max: `<span style="color: ${maxColor}; font-weight: bold;">${maxProfit >= 0 ? '+' : ''}${fmt(maxProfit)}</span>`
+              })} Gold
+            </div>
+          </div>
+        `;
+      } else {
+        html += `<div style="color: #8b949e; font-style: italic;">No market price range found for ${formatItemCode(state.selectedItem)}.</div>`;
+      }
+    }
+
+    panel.innerHTML = html;
+  }
+
   function start() {
     CONFIG.locale = GM_getValue(KEYS.locale, CONFIG.locale || 'de') || 'de';
     if (typeof window !== 'undefined') {
@@ -4797,6 +5149,9 @@
 
     // Fallback interval check
     setInterval(handleRouteChange, 2000);
+
+    // Crafting Advisor poll interval
+    setInterval(checkAndRenderCraftingAdvisor, 300);
   }
 
   start();

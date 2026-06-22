@@ -1,5 +1,23 @@
 # CHANGELOG
 
+## 2026-06-22 | Crafting-Profitabilitäts-Rechner (v0.7.5)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `tests/test-advisor-load.js`
+
+**Änderungen (Deutsch):**
+- **Crafting-Profitabilitäts-Rechner (Crafting Advisor)**: Ein neuer Info-Bereich wurde in das "Gegenstände herstellen" (Craft Items) Modal integriert, der direkt die Profitabilität anzeigt.
+- **Ressourcenkosten-Berechnung**: Berechnet automatisch die Gesamtkosten an benötigtem Stahl und Schrott auf Basis der aktuellen Marktpreise.
+- **Zufallscrafting-Modus (Random)**: Zeigt die mögliche Profit-Spanne (Gewinn/Verlust) im Vergleich zum schlechtesten und besten grünen Item des ausgewählten Tiers auf dem Markt an.
+- **Gezieltes Crafting (Specific)**: Berücksichtigt den doppelten Stahlbedarf und vergleicht die Herstellungskosten direkt mit den minimalen/maximalen Angebotspreisen des spezifisch gewählten Items auf dem Markt.
+- **Nahtloses Design**: Der Advisor-Bereich fügt sich farblich und stilistisch perfekt als dezente Box über den Schaltflächen des Original-Spielmenüs ein und aktualisiert sich dynamisch bei jeder Auswahländerung.
+
+**Changes (English):**
+- **Crafting Profitability Calculator (Crafting Advisor)**: Injected a new status panel directly into the "Craft Items" modal to display instant profitability feedback.
+- **Resource Cost Calculation**: Automatically calculates the total cost of required steel and scraps based on current market floors.
+- **Random Crafting Mode (Random)**: Compares resource inputs against the worst and best green items of the selected tier on the market to display the profit/loss range.
+- **Specific Crafting Mode (Specific)**: Factors in the double steel requirement and compares costs directly against the min/max active market listings of the chosen item.
+- **Seamless Integration**: Styled as a matching native dark overlay placed just above the close/craft buttons, dynamically updating whenever the selected tier or target item changes.
+
 ## 2026-06-22 | Sinnvollerer Pill-Timer während Buff/Debuff-Phase (v0.7.4)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `tests/test-advisor-load.js`
