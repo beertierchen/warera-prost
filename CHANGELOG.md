@@ -1,5 +1,23 @@
 # CHANGELOG
 
+## 2026-06-22 | Sinnvollerer Pill-Timer während Buff/Debuff-Phase (v0.7.4)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `tests/test-advisor-load.js`
+
+**Änderungen (Deutsch):**
+- **Kein Pillen-Countdown mitten im Zyklus**: Während der aktiven Buff- oder Debuff-Phase (wenn eine neue Pille ohnehin noch Stunden entfernt ist) wird der reguläre Pillen-Countdown ausgeblendet, da dieser dort nicht hilfreich ist.
+- **Kontextabhängige Statusanzeigen**: Statt des Pillen-Timers wird nun während dieser Phasen angezeigt:
+  - Wenn ein Wunschzeitfenster eingestellt ist: Ein Countdown bis zum nächsten bevorzugten Pillenfenster (z. B. `Fenster ab 15:00 (in 3h)`).
+  - Wenn kein Wunschzeitfenster eingestellt ist: Ein Countdown bis zur vollständigen H&H-Regeneration (z. B. `H&H voll in 2h`) bzw. die verbleibende Zeit bis zum nächsten Regenerationsticker (z. B. `Tick in 10m`), falls H&H bereits bei 100% liegt.
+- **Unverändertes Gating**: Nähert man sich dem eigentlichen Bereit-Status (außerhalb von Buff/Debuff), verhält sich der Pillen-Countdown wie gewohnt.
+
+**Changes (English):**
+- **No pill countdown mid-cycle**: The regular pill countdown is hidden during active buff or debuff phases when the next pill is still far away and the timer is not actionable.
+- **Contextual Status Displays**: During active buff/debuff phases, the countdown display changes dynamically:
+  - With a preferred window set: Counts down to the next preferred window start (e.g. `Window from 15:00 (in 3h)`).
+  - Without a preferred window: Counts down to 100% Health & Hunger recovery (e.g. `H&H full in 2h`) or shows the next regeneration tick countdown (e.g. `Tick in 10m`) if H&H is already full.
+- **Unchanged Gating**: The countdown returns to the standard behavior (time to next pill) once you leave the buff/debuff phases and approach the ready/gated state.
+
 ## 2026-06-22 | Pill-Reminder Gating & H&H-Budget-Verbesserungen (v0.7.3)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `tests/test-advisor-load.js`
