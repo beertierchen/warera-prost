@@ -19,3 +19,6 @@ npm-debug.log*
 .claude-octopus/
 .claude/
 .serena/
+
+# Local planning docs (working aids, never part of the repo)
+plans/
