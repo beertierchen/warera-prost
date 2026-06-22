@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.7.1
+// @version      0.7.2
 // @description  PROST — Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -203,6 +203,17 @@
     },
 
     showScrapFlip: false,
+    featPillReminder: false,
+    pillBuffH: 8,
+    pillKnifeH: 6,
+    pillDebuffH: 15.5,
+    pillPrefWindowFrom: '19:00',
+    pillPrefWindowTo: '20:00',
+    hpIconPath: 'M12',
+    hungerIconPath: 'M11',
+    doubleChevronPath: 'M7.41,18.41',
+    pillBuffIconPath: 'M4.22,11.29L11.29,4.22',
+    pillDebuffIconPath: 'M22.11 21.46L2.39 1.73',
 
     debug: false,
 
@@ -288,6 +299,29 @@
         settingsScrapFlipHint: 'Highlights profitable salvage items on the market (buying and dismantling them for profit).',
         scrapFlipTooltip: 'Buy {buy} → scrap {yield}×{unit} net {net} = +{profit} profit',
         hintToggleLabel: 'Explanation',
+        settingsFeatPillCheckbox: 'Pill Reminder (configurable pill-timing overlay) 💊',
+        settingsFeatPillHint: 'Shows a top-bar status and countdown timer for the pill cycle, highlights ready pills, and checks health/hunger levels.',
+        settingsPillBuffLabel: 'Buff Duration (hours)',
+        settingsPillKnifeLabel: 'Knife Duration (hours)',
+        settingsPillDebuffLabel: 'Total Debuff (hours)',
+        settingsPillPrefFromLabel: 'Preferred Time From',
+        settingsPillPrefToLabel: 'Preferred Time To',
+        pillTakeNowButton: 'Took Pill Now',
+        pillTakeNowOverlay: 'TAKE NOW',
+        pillTopUpOverlay: 'TOP UP FIRST',
+        pillPreferredWindow: 'Preferred window: {from} - {to}',
+        pillPhaseBuff: 'BUFF',
+        pillPhaseKnife: 'DEBUFF (KNIFE)',
+        pillPhaseRecover: 'DEBUFF (RECOVER)',
+        pillPhaseReady: 'READY',
+        pillPhaseGated: 'WAITING (H&H)',
+        pillDetailNext: 'Next transition',
+        pillDetailPreferred: 'Preferred window',
+        pillDetailGatingReady: 'Ready to take pill!',
+        pillDetailGatingTopUp: 'Waiting for H&H: ~{time} ({pct}%, next update in {next})',
+        today: 'today',
+        tomorrow: 'tomorrow',
+        yesterday: 'yesterday',
         settingsSave: 'Save',
         settingsClear: 'Clear Cache',
         settingsClose: 'Close',
@@ -408,6 +442,29 @@
         settingsScrapFlipHint: 'Markiert profitable Gegenstände auf dem Markt, die für Gewinn gekauft und in Schrott zerlegt werden können.',
         scrapFlipTooltip: 'Kauf {buy} → Scrap {yield}×{unit} netto {net} = +{profit} Gewinn',
         hintToggleLabel: 'Erklärung',
+        settingsFeatPillCheckbox: 'Pill-Reminder (konfigurierbares Pillen-Timing Overlay) 💊',
+        settingsFeatPillHint: 'Zeigt einen Status und Countdown in der Menüleiste, markiert nimmbereite Pillen und prüft HP/Hunger-Werte.',
+        settingsPillBuffLabel: 'Buff-Dauer (Stunden)',
+        settingsPillKnifeLabel: 'Messer-Dauer (Stunden)',
+        settingsPillDebuffLabel: 'Debuff gesamt (Stunden)',
+        settingsPillPrefFromLabel: 'Bevorzugtes Fenster ab',
+        settingsPillPrefToLabel: 'Bevorzugtes Fenster bis',
+        pillTakeNowButton: 'Pille jetzt genommen',
+        pillTakeNowOverlay: 'NEHMEN',
+        pillTopUpOverlay: 'ERST FÜLLEN',
+        pillPreferredWindow: 'Zeitfenster: {from} - {to}',
+        pillPhaseBuff: 'BUFF',
+        pillPhaseKnife: 'DEBUFF (MESSER)',
+        pillPhaseRecover: 'DEBUFF (RECOVERY)',
+        pillPhaseReady: 'BEREIT',
+        pillPhaseGated: 'WARTEN (H&H)',
+        pillDetailNext: 'Nächste Transition',
+        pillDetailPreferred: 'Zeitfenster',
+        pillDetailGatingReady: 'Bereit für die Pille!',
+        pillDetailGatingTopUp: 'Warten auf H&H: ~{time} ({pct}%, nächstes Update in {next})',
+        today: 'heute',
+        tomorrow: 'morgen',
+        yesterday: 'gestern',
         settingsSave: 'Speichern',
         settingsClear: 'Cache leeren',
         settingsClose: 'Schließen',
@@ -474,6 +531,14 @@
     featNotes: NS + 'featNotes',
     featBattleAdvisor: NS + 'featBattle',
     alliedCountryCodes: NS + 'alliedCodes',
+    featPillReminder: NS + 'featPill',
+    pillTakenAt: NS + 'pillTakenAt',
+    pillState: NS + 'pillState',
+    pillBuffH: NS + 'pillBuffH',
+    pillKnifeH: NS + 'pillKnifeH',
+    pillDebuffH: NS + 'pillDebuffH',
+    pillPrefWindowFrom: NS + 'pillPrefFrom',
+    pillPrefWindowTo: NS + 'pillPrefTo',
   };
   let menuSettingsId = null;
   let menuClearId = null;
@@ -1119,6 +1184,7 @@
     globalThis.itemCodeFromUrl = itemCodeFromUrl;
     globalThis.isMarketGridPage = isMarketGridPage;
     globalThis.isMarketDetailPage = isMarketDetailPage;
+    globalThis.CONFIG = CONFIG;
     // Export internal functions for unit tests
     globalThis.parseStats = parseStats;
     globalThis.getItemState = getItemState;
@@ -1129,6 +1195,12 @@
     globalThis.battleFlagCode = battleFlagCode;
     globalThis.injectCompactOrders = injectCompactOrders;
     globalThis.renderSettingsModal = renderSettingsModal;
+    globalThis.getCurrentUserId = getCurrentUserId;
+    globalThis.parseHealthAndHunger = parseHealthAndHunger;
+    globalThis.updatePillState = updatePillState;
+    globalThis.injectPillBadge = injectPillBadge;
+    globalThis.highlightCocaineItems = highlightCocaineItems;
+    globalThis.teardownPillReminder = teardownPillReminder;
   }
 
   function getLocale() {
@@ -2477,6 +2549,10 @@
             resumeObserver();
           });
       }
+      
+      if (CONFIG.featPillReminder) {
+        highlightCocaineItems();
+      }
 
     } catch (e) {
       log('scan error:', e);
@@ -2646,6 +2722,70 @@
       }
       .wia-flip-tile {
         box-shadow: inset 0 0 0 2px #3fb950 !important;
+      }
+      
+      /* ── Pill Reminder module styles ── */
+      #wia-pill-badge {
+        display: inline-flex; align-items: center; justify-content: center;
+        position: relative; margin: 0 10px; font: bold 11px system-ui, sans-serif;
+        border-radius: 4px; padding: 2px 6px; cursor: pointer; user-select: none;
+        z-index: 10000; height: 24px; line-height: 1;
+      }
+      .wia-badge-buff { background: #238636; color: #fff; }
+      .wia-badge-knife { background: #1f6feb; color: #fff; }
+      .wia-badge-recover { background: #d29922; color: #fff; }
+      .wia-badge-ready {
+        background: #238636; color: #fff;
+        animation: wia-pulse-bg 1.5s infinite alternate;
+      }
+      .wia-badge-gated { background: #8b949e; color: #fff; }
+      @keyframes wia-pulse-bg {
+        0% { box-shadow: 0 0 2px #238636; }
+        100% { box-shadow: 0 0 8px #238636; }
+      }
+      .wia-pill-row { display: flex; align-items: center; gap: 4px; }
+      .wia-pill-status-dot {
+        width: 6px; height: 6px; border-radius: 50%; background: currentColor;
+      }
+      .wia-pill-hover-details {
+        display: none; position: absolute; top: 100%; right: 0; margin-top: 6px;
+        width: 250px; background: #161b22; border: 1px solid #30363d;
+        border-radius: 6px; padding: 10px; box-shadow: 0 4px 12px rgba(0,0,0,.5);
+        color: #c9d1d9; font-weight: normal; text-align: left; font-size: 11px;
+        z-index: 10001; line-height: 1.4;
+      }
+      #wia-pill-badge:hover .wia-pill-hover-details {
+        display: block;
+      }
+      .wia-pill-detail-item { margin-bottom: 6px; }
+      .wia-pill-detail-item strong { color: #58a6ff; }
+      .wia-pill-take-btn {
+        width: 100%; background: #238636; border: 1px solid #30363d;
+        border-radius: 4px; color: #fff; font-size: 11px; font-weight: bold;
+        padding: 4px 8px; cursor: pointer; margin-top: 4px; text-align: center;
+      }
+      .wia-pill-take-btn:hover { background: #2ea043; }
+      .wia-cocain-highlight {
+        outline: 2px solid #238636 !important; outline-offset: -2px;
+        animation: wia-pulse-border 1.5s infinite alternate; position: relative;
+      }
+      .wia-cocain-gated-highlight {
+        outline: 2px solid #d29922 !important; outline-offset: -2px;
+        position: relative;
+      }
+      @keyframes wia-pulse-border {
+        0% { outline-color: #238636; }
+        100% { outline-color: #2ea043; }
+      }
+      .wia-cocain-highlight::after {
+        content: attr(data-label); position: absolute; top: 2px; right: 2px;
+        background: #238636; color: #fff; font-size: 8px; font-weight: bold;
+        padding: 1px 3px; border-radius: 2px; pointer-events: none; z-index: 10;
+      }
+      .wia-cocain-gated-highlight::after {
+        content: attr(data-label); position: absolute; top: 2px; right: 2px;
+        background: #d29922; color: #fff; font-size: 8px; font-weight: bold;
+        padding: 1px 3px; border-radius: 2px; pointer-events: none; z-index: 10;
       }
 
       /* ── Notes module styles ── */
@@ -2832,6 +2972,12 @@
     const prevFeatNotes = bg.querySelector('.wia-feat-notes')?.checked ?? CONFIG.featNotes;
     const prevFeatBattle = bg.querySelector('.wia-feat-battle')?.checked ?? CONFIG.featBattleAdvisor;
     const prevAlliedCodes = bg.querySelector('.wia-allied-codes')?.value ?? CONFIG.alliedCountryCodes.join(',');
+    const prevFeatPill = bg.querySelector('.wia-feat-pill')?.checked ?? CONFIG.featPillReminder;
+    const prevPillBuff = bg.querySelector('.wia-pill-buff')?.value ?? CONFIG.pillBuffH;
+    const prevPillKnife = bg.querySelector('.wia-pill-knife')?.value ?? CONFIG.pillKnifeH;
+    const prevPillDebuff = bg.querySelector('.wia-pill-debuff')?.value ?? CONFIG.pillDebuffH;
+    const prevPillPrefFrom = bg.querySelector('.wia-pill-pref-from')?.value ?? CONFIG.pillPrefWindowFrom;
+    const prevPillPrefTo = bg.querySelector('.wia-pill-pref-to')?.value ?? CONFIG.pillPrefWindowTo;
 
     bg.innerHTML = `
       <div class="wia-modal">
@@ -2888,6 +3034,40 @@
             <input type="text" class="wia-allied-codes" placeholder="${t('settingsAlliedCodesPlaceholder')}" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;" value="${prevAlliedCodes}" />
           </div>
         </div>
+        <div class="wia-feat-row" style="margin-top: 6px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <input type="checkbox" class="wia-feat-pill" style="width: auto;" ${prevFeatPill ? 'checked' : ''} />
+            <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatPillCheckbox')}</label>
+            <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
+          </div>
+          <div class="wia-hint" hidden>${t('settingsFeatPillHint')}</div>
+          <div class="wia-pill-settings-row" style="margin-top: 6px; margin-left: 24px; ${prevFeatPill ? '' : 'display: none;'}">
+            <div style="display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 6px;">
+              <div style="flex: 1; min-width: 80px;">
+                <label style="font-size: 11px; color: #8b949e; display: block; margin: 0 0 2px;">${t('settingsPillBuffLabel')}</label>
+                <input type="number" step="0.1" class="wia-pill-buff" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;" value="${prevPillBuff}" />
+              </div>
+              <div style="flex: 1; min-width: 80px;">
+                <label style="font-size: 11px; color: #8b949e; display: block; margin: 0 0 2px;">${t('settingsPillKnifeLabel')}</label>
+                <input type="number" step="0.1" class="wia-pill-knife" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;" value="${prevPillKnife}" />
+              </div>
+              <div style="flex: 1; min-width: 80px;">
+                <label style="font-size: 11px; color: #8b949e; display: block; margin: 0 0 2px;">${t('settingsPillDebuffLabel')}</label>
+                <input type="number" step="0.1" class="wia-pill-debuff" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;" value="${prevPillDebuff}" />
+              </div>
+            </div>
+            <div style="display: flex; gap: 12px;">
+              <div style="flex: 1;">
+                <label style="font-size: 11px; color: #8b949e; display: block; margin: 0 0 2px;">${t('settingsPillPrefFromLabel')}</label>
+                <input type="text" class="wia-pill-pref-from" placeholder="19:00" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;" value="${prevPillPrefFrom}" />
+              </div>
+              <div style="flex: 1;">
+                <label style="font-size: 11px; color: #8b949e; display: block; margin: 0 0 2px;">${t('settingsPillPrefToLabel')}</label>
+                <input type="text" class="wia-pill-pref-to" placeholder="20:00" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;" value="${prevPillPrefTo}" />
+              </div>
+            </div>
+          </div>
+        </div>
         <button type="button" class="wia-help-toggle" aria-expanded="false">${t('settingsHelpSummary')}</button>
         <aside class="wia-help-panel" hidden>
           <div class="wia-help-content">${t('settingsHelpContent')}</div>
@@ -2942,6 +3122,14 @@
       };
     }
 
+    const featPillCheckbox = modal.querySelector('.wia-feat-pill');
+    const pillSettingsRow = modal.querySelector('.wia-pill-settings-row');
+    if (featPillCheckbox && pillSettingsRow) {
+      featPillCheckbox.onchange = () => {
+        pillSettingsRow.style.display = featPillCheckbox.checked ? 'block' : 'none';
+      };
+    }
+
     modal.addEventListener('click', (e) => {
       const hintBtn = e.target.closest('.wia-hint-toggle');
       if (hintBtn) {
@@ -2991,6 +3179,32 @@
       CONFIG.featBattleAdvisor = featBattle;
       CONFIG.alliedCountryCodes = alliedCodes;
       if (featBattle && isBattlePage()) { applyBattleAdvisory(); } else { teardownBattleAdvisory(); }
+
+      const featPill = bg.querySelector('.wia-feat-pill').checked;
+      GM_setValue(KEYS.featPillReminder, featPill);
+      CONFIG.featPillReminder = featPill;
+
+      const buffVal = parseFloat(bg.querySelector('.wia-pill-buff').value) || 8;
+      GM_setValue(KEYS.pillBuffH, buffVal);
+      CONFIG.pillBuffH = buffVal;
+
+      const knifeVal = parseFloat(bg.querySelector('.wia-pill-knife').value) || 6;
+      GM_setValue(KEYS.pillKnifeH, knifeVal);
+      CONFIG.pillKnifeH = knifeVal;
+
+      const debuffVal = parseFloat(bg.querySelector('.wia-pill-debuff').value) || 15.5;
+      GM_setValue(KEYS.pillDebuffH, debuffVal);
+      CONFIG.pillDebuffH = debuffVal;
+
+      const prefFrom = bg.querySelector('.wia-pill-pref-from').value.trim() || '19:00';
+      GM_setValue(KEYS.pillPrefWindowFrom, prefFrom);
+      CONFIG.pillPrefWindowFrom = prefFrom;
+
+      const prefTo = bg.querySelector('.wia-pill-pref-to').value.trim() || '20:00';
+      GM_setValue(KEYS.pillPrefWindowTo, prefTo);
+      CONFIG.pillPrefWindowTo = prefTo;
+
+      if (featPill) { initPillReminder(); } else { teardownPillReminder(); }
 
       if (tokenChanged) {
         clearCache();
@@ -3126,6 +3340,10 @@
     } else {
       teardownBattleAdvisory();
       observer.disconnect();
+    }
+    
+    if (CONFIG.featPillReminder) {
+      setTimeout(tickPillReminder, 50);
     }
   }
 
@@ -3428,6 +3646,630 @@
     refreshNoteIcons(notesActiveId);
   }
 
+  // ───────────────────────────────────────────────────────────────────────────
+  // Pill Reminder module
+  // ───────────────────────────────────────────────────────────────────────────
+  let pillInterval = null;
+  let pillObserved = false;
+  let noneReadCount = 0;
+
+  function initPillReminder() {
+    if (pillInterval) clearInterval(pillInterval);
+    pillInterval = setInterval(tickPillReminder, 10000);
+    tickPillReminder();
+
+    if (!pillObserved) {
+      document.addEventListener('click', handlePillDocumentClick);
+      pillObserved = true;
+    }
+  }
+
+  function teardownPillReminder() {
+    if (pillInterval) {
+      clearInterval(pillInterval);
+      pillInterval = null;
+    }
+    document.removeEventListener('click', handlePillDocumentClick);
+    pillObserved = false;
+    noneReadCount = 0;
+    removePillBadge();
+    removeCocaineHighlights();
+  }
+
+  function handlePillDocumentClick() {
+    setTimeout(highlightCocaineItems, 50);
+  }
+
+  function tickPillReminder() {
+    if (!CONFIG.featPillReminder) return;
+    updatePillState();
+    injectPillBadge();
+    highlightCocaineItems();
+  }
+
+  function extractUserIdFromHref(href) {
+    if (!href) return null;
+    const m = href.match(/\/user\/([^/]+)/);
+    return m ? decodeURIComponent(m[1]) : null;
+  }
+
+  function getCurrentUserId() {
+    const userMenu = document.getElementById('layoutUserMenu');
+    if (userMenu) {
+      const link = userMenu.querySelector("a[href*='/user/']");
+      if (link) {
+        const id = extractUserIdFromHref(link.getAttribute('href'));
+        if (id) return id;
+      }
+    }
+    const headers = document.querySelectorAll('header, nav, [class*="header"], [class*="topbar"], [class*="top-bar"]');
+    for (const header of headers) {
+      const link = header.querySelector("a[href*='/user/']");
+      if (link) {
+        const id = extractUserIdFromHref(link.getAttribute('href'));
+        if (id) return id;
+      }
+    }
+    return null;
+  }
+
+  function matchPath(d, targetPath) {
+    if (!d || !targetPath) return false;
+    const cleanD = d.replace(/[\s,]+/g, '');
+    const cleanTarget = targetPath.replace(/[\s,]+/g, '');
+    return cleanD.includes(cleanTarget);
+  }
+
+  function scanOwnPillState() {
+    const ownId = getCurrentUserId();
+    if (!ownId) return null;
+
+    const ownLinks = Array.from(document.querySelectorAll("a[href*='/user/']"))
+      .filter(link => extractUserIdFromHref(link.getAttribute('href')) === ownId);
+
+    let foundState = null;
+
+    for (const link of ownLinks) {
+      let el = link;
+      for (let i = 0; i < 3 && el; i++) {
+        const svgs = el.querySelectorAll('svg');
+        for (const svg of svgs) {
+          const path = svg.querySelector('path');
+          if (path) {
+            const d = path.getAttribute('d') || '';
+            if (matchPath(d, CONFIG.pillBuffIconPath)) {
+              foundState = 'BUFF';
+              return foundState;
+            } else if (matchPath(d, CONFIG.pillDebuffIconPath)) {
+              foundState = 'DEBUFF';
+            }
+          }
+        }
+        el = el.parentElement;
+      }
+    }
+
+    if (foundState === null) {
+      const path = location.pathname;
+      const isProfile = path === `/user/${ownId}` || path === `/user/${encodeURIComponent(ownId)}`;
+      if (isProfile && ownLinks.length > 0) {
+        foundState = 'none';
+      }
+    }
+
+    return foundState;
+  }
+
+  function parseHealthAndHunger() {
+    let hpPercent = 100;
+    let hungerPercent = 100;
+    let hpFound = false;
+    let hungerFound = false;
+
+    let hpCurrent = 100;
+    let hpMax = 100;
+    let hpRegen = 10;
+    let hungerCurrent = 4;
+    let hungerMax = 4;
+    let hungerRegen = 0.4;
+
+    const elements = document.querySelectorAll('span, div, p');
+    for (const el of elements) {
+      const text = el.textContent.trim();
+      let current = null;
+      let max = null;
+
+      // Format A: "130/130"
+      const mSingle = text.match(/^(\d+(?:\.\d+)?)\s*\/\s*(\d+)$/);
+      if (mSingle) {
+        current = parseFloat(mSingle[1]);
+        max = parseFloat(mSingle[2]);
+      } else {
+        // Format B: "/130" (split spans)
+        const mSplit = text.match(/^\/\s*(\d+)$/);
+        if (mSplit) {
+          max = parseFloat(mSplit[1]);
+          const prev = el.previousElementSibling;
+          if (prev) {
+            const prevText = prev.textContent.trim();
+            const mPrev = prevText.match(/^(\d+(?:\.\d+)?)$/);
+            if (mPrev) {
+              current = parseFloat(mPrev[1]);
+            }
+          }
+        }
+      }
+
+      if (current !== null && max !== null && max > 0) {
+        const pct = (current / max) * 100;
+        let currentEl = el;
+        let isHp = false;
+        let isHunger = false;
+        let isHpIconDetected = false;
+        let isHungerIconDetected = false;
+        let detectedRegen = null;
+
+        for (let i = 0; i < 3 && currentEl; i++) {
+          if (currentEl.tagName === 'BODY' || currentEl.tagName === 'HTML') {
+            break;
+          }
+          const svgs = currentEl.querySelectorAll('svg');
+          for (const svg of svgs) {
+            const path = svg.querySelector('path');
+            if (path) {
+              const d = path.getAttribute('d') || '';
+              if (matchPath(d, CONFIG.hpIconPath)) {
+                isHp = true;
+                isHpIconDetected = true;
+              } else if (matchPath(d, CONFIG.hungerIconPath)) {
+                isHunger = true;
+                isHungerIconDetected = true;
+              } else if (matchPath(d, CONFIG.doubleChevronPath)) {
+                const parentSpan = svg.closest('span');
+                if (parentSpan) {
+                  const regenText = parentSpan.textContent.trim();
+                  const mRegen = regenText.match(/(\d+(?:\.\d+)?)/);
+                  if (mRegen) {
+                    detectedRegen = parseFloat(mRegen[1]);
+                  }
+                }
+              }
+            }
+          }
+          const imgs = currentEl.querySelectorAll('img');
+          for (const img of imgs) {
+            const src = img.getAttribute('src') || '';
+            if (src.includes('heart') || src.includes('hp')) {
+              isHp = true;
+              isHpIconDetected = true;
+            }
+            if (src.includes('hunger') || src.includes('food') || src.includes('fork')) {
+              isHunger = true;
+              isHungerIconDetected = true;
+            }
+          }
+          if (isHp || isHunger) break;
+          currentEl = currentEl.parentElement;
+        }
+
+        if (!isHp && !isHunger) {
+          if (max >= 20) isHp = true;
+          else if (max <= 10) isHunger = true;
+        }
+
+        if (isHp) {
+          if (isHpIconDetected || !hpFound) {
+            hpPercent = pct;
+            hpFound = true;
+            hpCurrent = current;
+            hpMax = max;
+            if (detectedRegen !== null) hpRegen = detectedRegen;
+            else hpRegen = Math.max(1, max * 0.1);
+          }
+        } else if (isHunger) {
+          if (isHungerIconDetected || !hungerFound) {
+            hungerPercent = pct;
+            hungerFound = true;
+            hungerCurrent = current;
+            hungerMax = max;
+            if (detectedRegen !== null) hungerRegen = detectedRegen;
+            else hungerRegen = Math.max(0.1, max * 0.1);
+          }
+        }
+      }
+    }
+
+    let nextTickMs = 3600000;
+    const searchContainers = [
+      document.getElementById('layoutUserMenu'),
+      document.getElementById('avatar'),
+      document.querySelector('header nav'),
+      document.querySelector('header')
+    ].filter(Boolean);
+
+    let svgs = [];
+    if (searchContainers.length > 0) {
+      const seen = new Set();
+      searchContainers.forEach(container => {
+        container.querySelectorAll('svg').forEach(svg => {
+          if (!seen.has(svg)) {
+            seen.add(svg);
+            svgs.push(svg);
+          }
+        });
+      });
+    } else {
+      svgs = Array.from(document.querySelectorAll('svg'));
+    }
+    for (const svg of svgs) {
+      const path = svg.querySelector('path');
+      if (path) {
+        const d = path.getAttribute('d') || '';
+        if (matchPath(d, CONFIG.doubleChevronPath)) {
+          let parent = svg.parentElement;
+          let matched = false;
+          let depth = 0;
+          while (parent && parent.tagName !== 'BODY' && parent.tagName !== 'HTML' && depth < 3) {
+            let text = parent.textContent.trim();
+            // Exclude the pill badge text to prevent feedback loops
+            const badgeEl = parent.querySelector('#wia-pill-badge');
+            if (badgeEl) {
+              const badgeText = badgeEl.textContent.trim();
+              if (badgeText && text.includes(badgeText)) {
+                text = text.replace(badgeText, '').trim();
+              }
+            }
+            let m = text.match(/\b(?:(\d+)h\s*)?(?:(\d+)m\s*)?(\d+)s\b/i);
+            let hrs = 0, mins = 0, secs = 0;
+            let matchedUnit = false;
+            
+            if (m) {
+              hrs = parseInt(m[1] || '0', 10);
+              mins = parseInt(m[2] || '0', 10);
+              secs = parseInt(m[3] || '0', 10);
+              matchedUnit = true;
+            } else {
+              m = text.match(/\b(?:(\d+)h\s*)?(\d+)m\b/i);
+              if (m) {
+                hrs = parseInt(m[1] || '0', 10);
+                mins = parseInt(m[2] || '0', 10);
+                matchedUnit = true;
+              } else {
+                m = text.match(/\b(\d+)h\b/i);
+                if (m) {
+                  hrs = parseInt(m[1] || '0', 10);
+                  matchedUnit = true;
+                }
+              }
+            }
+
+            if (matchedUnit) {
+              nextTickMs = (hrs * 3600 + mins * 60 + secs) * 1000;
+              matched = true;
+              break;
+            }
+            parent = parent.parentElement;
+            depth++;
+          }
+          if (matched) break;
+        }
+      }
+    }
+
+    return {
+      hpPercent,
+      hungerPercent,
+      hpFound,
+      hungerFound,
+      both100: hpPercent >= 99.9 && hungerPercent >= 99.9,
+      hpCurrent,
+      hpMax,
+      hpRegen,
+      hungerCurrent,
+      hungerMax,
+      hungerRegen,
+      nextTickMs
+    };
+  }
+
+  function updatePillState() {
+    const detectedState = scanOwnPillState();
+    if (!detectedState) return;
+
+    const savedState = GM_getValue(KEYS.pillState, 'none');
+    const now = Date.now();
+    let pillTakenAt = GM_getValue(KEYS.pillTakenAt, 0);
+
+    const buffMs = CONFIG.pillBuffH * 3600000;
+    const debuffMs = CONFIG.pillDebuffH * 3600000;
+
+    if (detectedState === 'BUFF') {
+      noneReadCount = 0;
+      if (savedState !== 'BUFF') {
+        pillTakenAt = now;
+        GM_setValue(KEYS.pillTakenAt, pillTakenAt);
+        GM_setValue(KEYS.pillState, 'BUFF');
+      }
+    } else if (detectedState === 'DEBUFF') {
+      noneReadCount = 0;
+      if (savedState === 'BUFF') {
+        pillTakenAt = now - buffMs;
+        GM_setValue(KEYS.pillTakenAt, pillTakenAt);
+        GM_setValue(KEYS.pillState, 'DEBUFF');
+      } else if (savedState === 'none') {
+        const elapsed = now - pillTakenAt;
+        if (elapsed < buffMs || elapsed >= buffMs + debuffMs) {
+          pillTakenAt = now - buffMs;
+          GM_setValue(KEYS.pillTakenAt, pillTakenAt);
+        }
+        GM_setValue(KEYS.pillState, 'DEBUFF');
+      }
+    } else if (detectedState === 'none') {
+      if (savedState === 'DEBUFF' || savedState === 'BUFF') {
+        noneReadCount++;
+        if (noneReadCount >= 3) {
+          pillTakenAt = now - (buffMs + debuffMs);
+          GM_setValue(KEYS.pillTakenAt, pillTakenAt);
+          GM_setValue(KEYS.pillState, 'none');
+          noneReadCount = 0;
+        }
+      } else {
+        noneReadCount = 0;
+      }
+    }
+  }
+
+  function formatAbsoluteTime(ts) {
+    const d = new Date(ts);
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const timeStr = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
+    const dDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const nowDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const diffDays = Math.round((dDate - nowDate) / 86400000);
+
+    if (diffDays === 0) {
+      return `${t('today')}, ${timeStr}`;
+    } else if (diffDays === 1) {
+      return `${t('tomorrow')}, ${timeStr}`;
+    } else if (diffDays === -1) {
+      return `${t('yesterday')}, ${timeStr}`;
+    }
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${timeStr}`;
+  }
+
+  function formatDuration(ms) {
+    if (ms < 0) ms = 0;
+    const totalSecs = Math.floor(ms / 1000);
+    const hours = Math.floor(totalSecs / 3600);
+    const minutes = Math.floor((totalSecs % 3600) / 60);
+    const secs = totalSecs % 60;
+    
+    if (hours > 0) {
+      return `${hours}h ${minutes}m`;
+    }
+    return `${minutes}m ${secs}s`;
+  }
+
+  function getPillCycleInfo() {
+    const now = Date.now();
+    const pillTakenAt = GM_getValue(KEYS.pillTakenAt, 0);
+    const elapsed = now - pillTakenAt;
+
+    const buffMs = CONFIG.pillBuffH * 3600000;
+    const knifeMs = CONFIG.pillKnifeH * 3600000;
+    const debuffMs = CONFIG.pillDebuffH * 3600000;
+    const totalMs = buffMs + debuffMs;
+
+    let phase = 'none';
+    let phaseLabel = '';
+    let timerStr = '';
+    let nextTransitionLabel = '';
+    let nextTransitionTime = '';
+    let badgeClass = '';
+
+    if (elapsed < buffMs) {
+      phase = 'BUFF';
+      phaseLabel = t('pillPhaseBuff');
+      timerStr = formatDuration(buffMs - elapsed);
+      nextTransitionLabel = t('pillPhaseKnife');
+      nextTransitionTime = formatAbsoluteTime(pillTakenAt + buffMs);
+      badgeClass = 'wia-badge-buff';
+    } else if (elapsed < buffMs + knifeMs) {
+      phase = 'KNIFE';
+      phaseLabel = t('pillPhaseKnife');
+      timerStr = formatDuration(buffMs + knifeMs - elapsed);
+      nextTransitionLabel = t('pillPhaseRecover');
+      nextTransitionTime = formatAbsoluteTime(pillTakenAt + buffMs + knifeMs);
+      badgeClass = 'wia-badge-knife';
+    } else if (elapsed < totalMs) {
+      phase = 'RECOVER';
+      phaseLabel = t('pillPhaseRecover');
+      timerStr = formatDuration(totalMs - elapsed);
+      nextTransitionLabel = t('pillPhaseReady');
+      nextTransitionTime = formatAbsoluteTime(pillTakenAt + totalMs);
+      badgeClass = 'wia-badge-recover';
+    } else {
+      phase = 'READY';
+      const status = parseHealthAndHunger();
+      if (status.both100) {
+        phaseLabel = t('pillPhaseReady');
+        badgeClass = 'wia-badge-ready';
+        timerStr = '';
+      } else {
+        phaseLabel = t('pillPhaseGated');
+        badgeClass = 'wia-badge-gated';
+        const hpNeeded = status.hpMax - status.hpCurrent;
+        const hungerNeeded = status.hungerMax - status.hungerCurrent;
+        let hpTicks = 0;
+        let hungerTicks = 0;
+        if (hpNeeded > 0 && status.hpRegen > 0) {
+          hpTicks = Math.ceil(hpNeeded / status.hpRegen);
+        }
+        if (hungerNeeded > 0 && status.hungerRegen > 0) {
+          hungerTicks = Math.ceil(hungerNeeded / status.hungerRegen);
+        }
+        const totalTicks = Math.max(hpTicks, hungerTicks);
+        if (totalTicks > 0) {
+          const remainingTimeMs = status.nextTickMs + (totalTicks - 1) * 3600000;
+          timerStr = formatDuration(remainingTimeMs);
+        } else {
+          timerStr = '';
+        }
+      }
+      nextTransitionLabel = '';
+      nextTransitionTime = '';
+    }
+
+    return {
+      phase,
+      phaseLabel,
+      timerStr,
+      nextTransitionLabel,
+      nextTransitionTime,
+      badgeClass,
+      elapsed,
+      totalMs,
+      pillTakenAt
+    };
+  }
+
+  function injectPillBadge() {
+    if (!CONFIG.featPillReminder) {
+      removePillBadge();
+      return;
+    }
+
+    const anchor = document.getElementById('layoutUserMenu') || 
+                   document.getElementById('avatar') || 
+                   document.querySelector('header nav') || 
+                   document.querySelector('header');
+    if (!anchor) return;
+
+    let badge = document.getElementById('wia-pill-badge');
+    if (!badge) {
+      badge = document.createElement('div');
+      badge.id = 'wia-pill-badge';
+      anchor.appendChild(badge);
+    }
+
+    renderPillBadge(badge);
+  }
+
+  function renderPillBadge(badge) {
+    const info = getPillCycleInfo();
+    const status = parseHealthAndHunger();
+
+    badge.className = '';
+    badge.classList.add(info.badgeClass);
+
+    let gatingNote = '';
+    if (info.phase === 'READY') {
+      if (status.both100) {
+        gatingNote = t('pillDetailGatingReady');
+      } else {
+        const lowestPct = Math.round(Math.min(status.hpPercent, status.hungerPercent));
+        const hpNeeded = status.hpMax - status.hpCurrent;
+        const hungerNeeded = status.hungerMax - status.hungerCurrent;
+        let hpTicks = 0;
+        let hungerTicks = 0;
+        if (hpNeeded > 0 && status.hpRegen > 0) {
+          hpTicks = Math.ceil(hpNeeded / status.hpRegen);
+        }
+        if (hungerNeeded > 0 && status.hungerRegen > 0) {
+          hungerTicks = Math.ceil(hungerNeeded / status.hungerRegen);
+        }
+        const totalTicks = Math.max(hpTicks, hungerTicks);
+        let timeStr = '';
+        if (totalTicks > 0) {
+          timeStr = formatDuration(status.nextTickMs + (totalTicks - 1) * 3600000);
+        }
+        const nextStr = formatDuration(status.nextTickMs);
+        gatingNote = t('pillDetailGatingTopUp', { pct: lowestPct, time: timeStr, next: nextStr });
+      }
+    }
+
+    const nextStr = info.nextTransitionLabel 
+      ? `<div class="wia-pill-detail-item"><strong>${t('pillDetailNext')}:</strong> ${info.nextTransitionLabel} (${info.nextTransitionTime})</div>`
+      : '';
+
+    const prefWindowStr = t('pillPreferredWindow', { from: CONFIG.pillPrefWindowFrom, to: CONFIG.pillPrefWindowTo });
+
+    badge.innerHTML = `
+      <div class="wia-pill-badge-content">
+        <div class="wia-pill-row">
+          <span class="wia-pill-status-dot"></span>
+          <span class="wia-pill-phase-lbl">${info.phaseLabel}</span>
+          ${info.timerStr ? `<span class="wia-pill-timer" style="margin-left: 4px;">${info.timerStr}</span>` : ''}
+        </div>
+        <div class="wia-pill-hover-details">
+          ${nextStr}
+          <div class="wia-pill-detail-item"><strong>${t('pillDetailPreferred')}:</strong> ${prefWindowStr}</div>
+          ${gatingNote ? `<div class="wia-pill-detail-item" style="color: ${status.both100 ? '#58a6ff' : '#ff7b72'}; font-weight: bold;">${gatingNote}</div>` : ''}
+          <button type="button" class="wia-pill-take-btn">${t('pillTakeNowButton')}</button>
+        </div>
+      </div>
+    `;
+
+    const btn = badge.querySelector('.wia-pill-take-btn');
+    if (btn) {
+      btn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        GM_setValue(KEYS.pillTakenAt, Date.now());
+        GM_setValue(KEYS.pillState, 'BUFF');
+        tickPillReminder();
+      };
+    }
+  }
+
+  function removePillBadge() {
+    const badge = document.getElementById('wia-pill-badge');
+    if (badge) badge.remove();
+  }
+
+  function highlightCocaineItems() {
+    if (!CONFIG.featPillReminder) {
+      removeCocaineHighlights();
+      return;
+    }
+
+    const info = getPillCycleInfo();
+    const isReady = info.phase === 'READY';
+
+    const cocainImgs = document.querySelectorAll("img[alt='cocain']");
+    cocainImgs.forEach(img => {
+      const card = climbToCard(img) || img.parentElement;
+      if (!card) return;
+
+      card.classList.remove('wia-cocain-highlight', 'wia-cocain-gated-highlight');
+      card.removeAttribute('data-label');
+
+      if (isReady) {
+        const status = parseHealthAndHunger();
+        if (status.both100) {
+          card.classList.add('wia-cocain-highlight');
+          card.setAttribute('data-label', t('pillTakeNowOverlay'));
+        } else {
+          card.classList.add('wia-cocain-gated-highlight');
+          card.setAttribute('data-label', t('pillTopUpOverlay'));
+        }
+      }
+    });
+  }
+
+  function removeCocaineHighlights() {
+    const cocainImgs = document.querySelectorAll("img[alt='cocain']");
+    cocainImgs.forEach(img => {
+      const card = climbToCard(img) || img.parentElement;
+      if (card) {
+        card.classList.remove('wia-cocain-highlight', 'wia-cocain-gated-highlight');
+        card.removeAttribute('data-label');
+      }
+    });
+  }
+
   function refreshNoteIcons(userId) {
     document.querySelectorAll(NOTES_LINK_SEL).forEach(link => {
       if (!(link instanceof HTMLAnchorElement) || extractNoteUserId(link) !== userId) return;
@@ -3451,9 +4293,16 @@
     CONFIG.featNotes = GM_getValue(KEYS.featNotes, false);
     CONFIG.featBattleAdvisor = GM_getValue(KEYS.featBattleAdvisor, false);
     CONFIG.alliedCountryCodes = GM_getValue(KEYS.alliedCountryCodes, CONFIG.alliedCountryCodes);
+    CONFIG.featPillReminder = GM_getValue(KEYS.featPillReminder, false);
+    CONFIG.pillBuffH = GM_getValue(KEYS.pillBuffH, CONFIG.pillBuffH);
+    CONFIG.pillKnifeH = GM_getValue(KEYS.pillKnifeH, CONFIG.pillKnifeH);
+    CONFIG.pillDebuffH = GM_getValue(KEYS.pillDebuffH, CONFIG.pillDebuffH);
+    CONFIG.pillPrefWindowFrom = GM_getValue(KEYS.pillPrefWindowFrom, CONFIG.pillPrefWindowFrom);
+    CONFIG.pillPrefWindowTo = GM_getValue(KEYS.pillPrefWindowTo, CONFIG.pillPrefWindowTo);
     injectStyles();
     if (CONFIG.featNotes) initNotes();
     if (CONFIG.featBattleAdvisor && isBattlePage()) applyBattleAdvisory();
+    if (CONFIG.featPillReminder) initPillReminder();
     injectGear();
     refreshMenuCommands();
 

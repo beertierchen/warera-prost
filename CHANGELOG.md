@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## 2026-06-22 | Korrekturen Pill-Reminder & Timer (v0.7.2)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `tests/test-advisor-load.js`
+
+**Änderungen (Deutsch):**
+- **Fehler mit kontinuierlich steigendem Update-Timer behoben**: Die Suche nach dem Countdown-Timer wurde auf die Header-/User-Menü-Elemente beschränkt und die Suchtiefe limitiert. Zudem wird der Text des Pill-Reminder-Badges selbst von der Suche ausgeschlossen, um zirkuläre Feedback-Schleifen zu verhindern.
+- **Sicherer User-ID-Scrape**: Die Erkennung der eigenen Benutzer-ID scannt nicht mehr global die Seite nach Avataren, sondern beschränkt sich auf das Kopfzeilen-Menü. Dies verhindert, dass auf Ranglisten- oder Mitgliederseiten fremde Spieler fälschlicherweise als "ich" erkannt werden.
+- **Robuster Pill-Status-Reset**: Um Fehlmessungen beim Seitenwechsel (transiente Ladephasen des Profils) zu vermeiden, wird der Pill-Status erst nach 3 aufeinanderfolgenden fehlenden Anzeigen (ca. 30 Sekunden) auf "Bereit" (none) zurückgesetzt.
+
+**Changes (English):**
+- **Fixed continuously increasing update timer**: Restricted the countdown timer search to header/user menu elements and limited the traversal depth. The Pill Reminder badge text is also excluded from search to prevent circular feedback loops.
+- **Safer own User ID scraping**: Own user ID detection no longer globally scans the page for avatar links, preventing other players in ranking lists or member tables from being misidentified as "self".
+- **Robust Pill status reset**: To avoid resetting the status on transient page transitions (loading profile states), the pill reminder now requires 3 consecutive empty readings (approx. 30 seconds) before resetting back to "Ready" (none).
+
 ## 2026-06-21 | Aufgeräumte Einstellungen & Rechtes Cheatsheet-Flyout (v0.7.1)
 
 **Geänderte Dateien:** `warera-prost.user.js`

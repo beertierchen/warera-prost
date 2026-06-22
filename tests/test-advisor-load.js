@@ -9,8 +9,9 @@ let code = fs.readFileSync(scriptPath, 'utf8');
 
 // Mock Tampermonkey / Browser environment
 global.GM_addStyle = () => {};
-global.GM_getValue = (key, def) => def;
-global.GM_setValue = () => {};
+const mockStorage = { 'wia.locale': 'en' };
+global.GM_getValue = (key, def) => (key in mockStorage ? mockStorage[key] : def);
+global.GM_setValue = (key, val) => { mockStorage[key] = val; };
 global.GM_registerMenuCommand = () => {};
 
 // Mock Element class
@@ -91,6 +92,9 @@ class MockElement {
       }
     }
   }
+
+  get id() { return this.getAttribute('id'); }
+  set id(val) { this.setAttribute('id', val); }
 
   get src() { return this.getAttribute('src'); }
   set src(val) { this.setAttribute('src', val); }
@@ -220,19 +224,19 @@ class MockElement {
       return this.classList.contains(rest.slice(1));
     }
     if (rest.startsWith('[')) {
-      const matchStart = rest.match(/\[([^=^]+)\^="([^"]+)"\]/);
+      const matchStart = rest.match(/\[([^=^]+)\^=['"]([^'"]+)['"]\]/);
       if (matchStart) {
         return this.getAttribute(matchStart[1]).startsWith(matchStart[2]);
       }
-      const matchContain = rest.match(/\[([^=*]+)\*="([^"]+)"\]/);
+      const matchContain = rest.match(/\[([^=*]+)\*=['"]([^'"]+)['"]\]/);
       if (matchContain) {
         return this.getAttribute(matchContain[1]).includes(matchContain[2]);
       }
-      const matchEnd = rest.match(/\[([^=$]+)\$="([^"]+)"\]/);
+      const matchEnd = rest.match(/\[([^=$]+)\$=['"]([^'"]+)['"]\]/);
       if (matchEnd) {
         return this.getAttribute(matchEnd[1]).endsWith(matchEnd[2]);
       }
-      const matchEq = rest.match(/\[([^=]+)="([^"]+)"\]/);
+      const matchEq = rest.match(/\[([^=]+)=['"]([^'"]+)['"]\]/);
       if (matchEq) {
         return this.getAttribute(matchEq[1]) === matchEq[2];
       }
@@ -289,8 +293,11 @@ global.window = {
   },
   setTimeout: (fn, delay) => setTimeout(fn, delay)
 };
+global.getComputedStyle = global.window.getComputedStyle;
 const documentBody = new MockElement('body');
 global.document = {
+  addEventListener: () => {},
+  removeEventListener: () => {},
   createElement: (tag) => new MockElement(tag),
   body: documentBody,
   querySelectorAll: (selector) => documentBody.querySelectorAll(selector),
@@ -306,6 +313,15 @@ global.document = {
       return results.length ? results[0] : null;
     }
     return documentBody.querySelector(selector);
+  },
+  getElementById: (id) => {
+    const results = [];
+    const walk = (el) => {
+      if (el.getAttribute('id') === id) results.push(el);
+      el.children.forEach(walk);
+    };
+    walk(documentBody);
+    return results.length ? results[0] : null;
   }
 };
 global.history = {
@@ -577,12 +593,14 @@ try {
   assert.ok(modalEl, 'Settings modal should be rendered');
 
   const hintBtns = bg.querySelectorAll('.wia-hint-toggle');
-  assert.strictEqual(hintBtns.length, 4, 'Should have exactly 4 hint toggle buttons (Notes, Battle, Live Offers, Scrap Flip)');
+  assert.strictEqual(hintBtns.length, 5, 'Should have exactly 5 hint toggle buttons (Notes, Battle, Live Offers, Scrap Flip, Pill Reminder)');
 
   const liveOffersCheckbox = bg.querySelector('.wia-live-offers');
   const scrapFlipCheckbox = bg.querySelector('.wia-scrap-flip');
+  const featPillCheckbox = bg.querySelector('.wia-feat-pill');
   assert.ok(liveOffersCheckbox, 'Live offers checkbox should be present');
   assert.ok(scrapFlipCheckbox, 'Scrap flip checkbox should be present');
+  assert.ok(featPillCheckbox, 'Pill reminder checkbox should be present');
 
   const highCritCheckbox = bg.querySelector('.wia-high-crit');
   assert.strictEqual(highCritCheckbox, null, 'High crit checkbox should be removed');
@@ -615,6 +633,210 @@ try {
   assert.strictEqual(alliedCodesRow.style.display, 'block', 'Allied codes row should be visible when battle advisor is checked');
 
   console.log('Settings cheatsheet and hints UI tests passed successfully.');
+
+  console.log('--- Testing Pill Reminder module ---');
+  
+  const layoutUserMenu = new MockElement('div');
+  layoutUserMenu.setAttribute('id', 'layoutUserMenu');
+  const userProfileLink = new MockElement('a');
+  userProfileLink.setAttribute('href', '/user/test-user-123');
+  
+  const avatarImg = new MockElement('img');
+  avatarImg.setAttribute('src', '/images/avatars/avatar1.png');
+  avatarImg.setAttribute('alt', 'avatar');
+  userProfileLink.appendChild(avatarImg);
+  layoutUserMenu.appendChild(userProfileLink);
+  documentBody.appendChild(layoutUserMenu);
+
+  const hpWrap = new MockElement('div');
+  const hpSvg = new MockElement('svg');
+  const hpPath = new MockElement('path');
+  hpPath.setAttribute('d', 'M12... heart fingerprint');
+  hpSvg.appendChild(hpPath);
+  hpWrap.appendChild(hpSvg);
+  const hpText = new MockElement('span');
+  hpText.textContent = '130/130';
+  hpWrap.appendChild(hpText);
+  
+  const hpRegenSpan = new MockElement('span');
+  const hpChevronSvg = new MockElement('svg');
+  const hpChevronPath = new MockElement('path');
+  hpChevronPath.setAttribute('d', 'M7.41,18.41 double chevron up fingerprint');
+  hpChevronSvg.appendChild(hpChevronPath);
+  hpRegenSpan.appendChild(hpChevronSvg);
+  const hpRegenVal = new MockElement('span');
+  hpRegenVal.textContent = '13';
+  hpRegenSpan.appendChild(hpRegenVal);
+  hpWrap.appendChild(hpRegenSpan);
+  
+  documentBody.appendChild(hpWrap);
+
+  const hungerWrap = new MockElement('div');
+  const hungerSvg = new MockElement('svg');
+  const hungerPath = new MockElement('path');
+  hungerPath.setAttribute('d', 'M11... hunger fingerprint');
+  hungerSvg.appendChild(hungerPath);
+  hungerWrap.appendChild(hungerSvg);
+  const hungerText = new MockElement('span');
+  hungerText.textContent = '5/5';
+  hungerWrap.appendChild(hungerText);
+  
+  const hungerRegenSpan = new MockElement('span');
+  const hungerChevronSvg = new MockElement('svg');
+  const hungerChevronPath = new MockElement('path');
+  hungerChevronPath.setAttribute('d', 'M7.41,18.41 double chevron up fingerprint');
+  hungerChevronSvg.appendChild(hungerChevronPath);
+  hungerRegenSpan.appendChild(hungerChevronSvg);
+  const hungerRegenVal = new MockElement('span');
+  hungerRegenVal.textContent = '0.5';
+  hungerRegenSpan.appendChild(hungerRegenVal);
+  hungerWrap.appendChild(hungerRegenSpan);
+  
+  documentBody.appendChild(hungerWrap);
+
+  const header = new MockElement('header');
+  const tickSpan = new MockElement('span');
+  const tickChevronSvg = new MockElement('svg');
+  const tickChevronPath = new MockElement('path');
+  tickChevronPath.setAttribute('d', 'M7.41,18.41 double chevron up fingerprint');
+  tickChevronSvg.appendChild(tickChevronPath);
+  tickSpan.appendChild(tickChevronSvg);
+  const tickTimeText = new MockElement('span');
+  tickTimeText.textContent = '53m38s';
+  tickSpan.appendChild(tickTimeText);
+  header.appendChild(tickSpan);
+  documentBody.appendChild(header);
+
+  const parsedUserId = globalThis.getCurrentUserId();
+  assert.strictEqual(parsedUserId, 'test-user-123', 'Should extract own user id as test-user-123');
+
+  globalThis.CONFIG.hpIconPath = 'M12';
+  globalThis.CONFIG.hungerIconPath = 'M11';
+  globalThis.CONFIG.doubleChevronPath = 'M7.41,18.41';
+  globalThis.CONFIG.featPillReminder = true;
+  global.location.pathname = '/user/test-user-123';
+
+  const hh = globalThis.parseHealthAndHunger();
+  assert.strictEqual(hh.both100, true, 'Mock H&H indicators should both be parsed as 100%');
+
+  hpText.textContent = '100/130';
+  const hhLess = globalThis.parseHealthAndHunger();
+  assert.strictEqual(hhLess.both100, false, 'Should be false when health is less than 100%');
+  
+  hpText.textContent = '130/130';
+
+  globalThis.GM_setValue('wia.pillTakenAt', 0);
+  globalThis.GM_setValue('wia.pillState', 'none');
+
+  const buffSvg = new MockElement('svg');
+  const buffPath = new MockElement('path');
+  buffPath.setAttribute('d', 'M4.22,11.29L11.29,4.22 pill buff icon');
+  buffSvg.appendChild(buffPath);
+  userProfileLink.appendChild(buffSvg);
+
+  globalThis.updatePillState();
+  const buffTakenAt = globalThis.GM_getValue('wia.pillTakenAt');
+  const buffState = globalThis.GM_getValue('wia.pillState');
+  assert.strictEqual(buffState, 'BUFF', 'Pill state should update to BUFF');
+  assert.ok(Math.abs(Date.now() - buffTakenAt) < 1000, 'Taken-at timestamp should be pinned to near now');
+
+  buffSvg.remove();
+  const debuffSvg = new MockElement('svg');
+  const debuffPath = new MockElement('path');
+  debuffPath.setAttribute('d', 'M22.11 21.46L2.39 1.73 pill debuff icon');
+  debuffSvg.appendChild(debuffPath);
+  userProfileLink.appendChild(debuffSvg);
+
+  globalThis.updatePillState();
+  const debuffTakenAt = globalThis.GM_getValue('wia.pillTakenAt');
+  const debuffState = globalThis.GM_getValue('wia.pillState');
+  assert.strictEqual(debuffState, 'DEBUFF', 'Pill state should transition to DEBUFF');
+  const expectedPillTaken = Date.now() - (globalThis.CONFIG.pillBuffH * 3600000);
+  assert.ok(Math.abs(debuffTakenAt - expectedPillTaken) < 1000, 'Taken-at timestamp should adjust back by buff duration (8 hours)');
+
+  debuffSvg.remove();
+  // Call updatePillState() twice, should remain DEBUFF
+  globalThis.updatePillState();
+  assert.strictEqual(globalThis.GM_getValue('wia.pillState'), 'DEBUFF', 'Pill state should remain DEBUFF after 1 none detection');
+  globalThis.updatePillState();
+  assert.strictEqual(globalThis.GM_getValue('wia.pillState'), 'DEBUFF', 'Pill state should remain DEBUFF after 2 none detections');
+
+  // Third consecutive detection triggers transition
+  globalThis.updatePillState();
+  const noneTakenAt = globalThis.GM_getValue('wia.pillTakenAt');
+  const noneState = globalThis.GM_getValue('wia.pillState');
+  assert.strictEqual(noneState, 'none', 'Pill state should transition to none after 3 consecutive none detections');
+  const expectedReadyTaken = Date.now() - ((globalThis.CONFIG.pillBuffH + globalThis.CONFIG.pillDebuffH) * 3600000);
+  assert.ok(Math.abs(noneTakenAt - expectedReadyTaken) < 1000, 'Taken-at timestamp should adjust back by buff+debuff duration (23.5 hours)');
+
+  globalThis.injectPillBadge();
+  const pillBadge = document.querySelector('#wia-pill-badge');
+  assert.ok(pillBadge, 'Pill badge should be injected in the layout menu');
+  assert.ok(pillBadge.classList.contains('wia-badge-ready'), 'Pill badge should indicate READY phase');
+
+  hpText.textContent = '100/130';
+  globalThis.injectPillBadge();
+  assert.ok(pillBadge.classList.contains('wia-badge-gated'), 'Pill badge should be in wia-badge-gated class when health is below 100%');
+  
+  const labelEl = pillBadge.querySelector('.wia-pill-phase-lbl');
+  assert.strictEqual(labelEl.textContent, 'WAITING (H&H)', 'Gated label should display WAITING (H&H) instead of READY');
+
+  const timerEl = pillBadge.querySelector('.wia-pill-timer');
+  assert.ok(timerEl, 'Gated badge should display H&H recovery remaining timer');
+  assert.strictEqual(timerEl.textContent, '2h 53m', 'Estimated remaining time to 100% H&H should be 2h 53m');
+
+  const hoverDetails = pillBadge.querySelector('.wia-pill-hover-details').textContent;
+  assert.ok(hoverDetails.includes('Waiting for H&H: ~2h 53m (77%, next update in 53m 38s)'), 'Hover details should contain the detailed recovery note');
+
+  // Test minutes-only format countdown parsing (e.g. "48m" instead of "53m38s")
+  tickTimeText.textContent = '48m';
+  globalThis.injectPillBadge();
+  const updatedTimerEl = pillBadge.querySelector('.wia-pill-timer');
+  assert.strictEqual(updatedTimerEl.textContent, '2h 48m', 'Should parse remaining time correctly even if the countdown timer only contains minutes (e.g. 48m)');
+
+  hpText.textContent = '130/130';
+  globalThis.injectPillBadge();
+
+  const takeNowBtn = pillBadge.querySelector('.wia-pill-take-btn');
+  assert.ok(takeNowBtn, 'Manual intake took-pill button should be present in hover detail panel');
+  
+  takeNowBtn.onclick({ preventDefault: () => {}, stopPropagation: () => {} });
+  const manualTakenAt = globalThis.GM_getValue('wia.pillTakenAt');
+  const manualState = globalThis.GM_getValue('wia.pillState');
+  assert.strictEqual(manualState, 'BUFF', 'Clicking manual intake should transition state back to BUFF');
+  assert.ok(Math.abs(Date.now() - manualTakenAt) < 1000, 'Manual intake timestamp should be set to near now');
+
+  const scrapCard = new MockElement('div');
+  const cocainCard = new MockElement('div');
+  const cocainImg = new MockElement('img');
+  cocainImg.setAttribute('alt', 'cocain');
+  cocainCard.appendChild(cocainImg);
+  documentBody.appendChild(scrapCard);
+  documentBody.appendChild(cocainCard);
+
+  globalThis.highlightCocaineItems();
+  assert.strictEqual(cocainCard.classList.contains('wia-cocain-highlight'), false, 'Cocaine card should not have highlight in BUFF phase');
+
+  globalThis.GM_setValue('wia.pillTakenAt', Date.now() - 25 * 3600000);
+  globalThis.GM_setValue('wia.pillState', 'none');
+  
+  globalThis.highlightCocaineItems();
+  assert.strictEqual(cocainCard.classList.contains('wia-cocain-highlight'), true, 'Cocaine card should have READY highlight outline');
+  assert.strictEqual(cocainCard.getAttribute('data-label'), 'TAKE NOW', 'Highlight badge label should be TAKE NOW');
+
+  hpText.textContent = '100/130';
+  globalThis.highlightCocaineItems();
+  assert.strictEqual(cocainCard.classList.contains('wia-cocain-gated-highlight'), true, 'Cocaine card should have warning H&H highlight');
+  assert.strictEqual(cocainCard.getAttribute('data-label'), 'TOP UP FIRST', 'Highlight badge label should be TOP UP FIRST');
+
+  layoutUserMenu.remove();
+  hpWrap.remove();
+  hungerWrap.remove();
+  scrapCard.remove();
+  cocainCard.remove();
+  globalThis.teardownPillReminder();
+
+  console.log('Pill Reminder module tests passed successfully.');
 
   console.log('Success! The script loaded and initialized without throwing any runtime errors.');
   process.exit(0);
