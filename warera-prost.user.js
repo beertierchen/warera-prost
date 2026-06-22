@@ -3920,8 +3920,11 @@
     const { track, fill } = bar;
     if (!track) return;
 
-    track.style.position = 'relative';
-    track.style.overflow = 'hidden';
+    // The native track is already position:absolute + overflow:hidden (a proper
+    // containing block) — only add positioning if it's somehow static. Never
+    // override its absolute layout: forcing relative pops it into normal flow
+    // and doubles the bar row's height.
+    if (getComputedStyle(track).position === 'static') track.style.position = 'relative';
 
     removeBarOverlays(track);
 
