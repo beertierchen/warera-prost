@@ -1,18 +1,22 @@
 # CHANGELOG
 
-## 2026-06-22 | Korrekturen Pill-Reminder & Timer (v0.7.2)
+## 2026-06-22 | Korrekturen Pill-Reminder & Neue UX (v0.7.2)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `tests/test-advisor-load.js`
 
 **Änderungen (Deutsch):**
-- **Fehler mit kontinuierlich steigendem Update-Timer behoben**: Die Suche nach dem Countdown-Timer wurde auf die Header-/User-Menü-Elemente beschränkt und die Suchtiefe limitiert. Zudem wird der Text des Pill-Reminder-Badges selbst von der Suche ausgeschlossen, um zirkuläre Feedback-Schleifen zu verhindern.
+- **Nativer Look & Kokain-Icon**: Die Pill-Anzeige in der Menüleiste führt nun das echte In-Game-Pillensymbol. Das Styling wurde an die anderen System-Chips der Menüleiste angepasst.
+- **Klarere Bezeichnungen**: Cryptische Anzeigen wie "WARTEN (H&H)" wurden durch eindeutige Statusbezeichnungen ersetzt ("Aktiv", "Messer", "Regen", "BEREIT" und "Nächste ~ [Zeit]"). Die aktuelle H&H-Menge wird direkt im Timer-Chip angezeigt (z. B. `(77%)`).
+- **Fehler mit kontinuierlich steigendem Update-Timer behoben**: Die Suche nach dem Countdown-Timer wurde auf die Header-Elemente beschränkt und die Suchtiefe limitiert. Zudem wird der Text des Badges selbst ignoriert, um Feedback-Schleifen zu verhindern.
 - **Sicherer User-ID-Scrape**: Die Erkennung der eigenen Benutzer-ID scannt nicht mehr global die Seite nach Avataren, sondern beschränkt sich auf das Kopfzeilen-Menü. Dies verhindert, dass auf Ranglisten- oder Mitgliederseiten fremde Spieler fälschlicherweise als "ich" erkannt werden.
-- **Robuster Pill-Status-Reset**: Um Fehlmessungen beim Seitenwechsel (transiente Ladephasen des Profils) zu vermeiden, wird der Pill-Status erst nach 3 aufeinanderfolgenden fehlenden Anzeigen (ca. 30 Sekunden) auf "Bereit" (none) zurückgesetzt.
+- **Robuster Pill-Status-Reset**: Um Fehlmessungen beim Seitenwechsel zu vermeiden, wird der Pill-Status erst nach 3 aufeinanderfolgenden fehlenden Anzeigen (ca. 30 Sekunden) auf "Bereit" (none) zurückgesetzt.
 
 **Changes (English):**
+- **Native Look & Cocaine Icon**: The topbar pill badge now displays the actual in-game cocaine image icon. The overall chip styling is adapted to match native topbar items.
+- **Clearer Labels**: Replaced cryptic tags like "WAITING (H&H)" with clear, pill-focused statuses ("Active", "Knife", "Recover", "READY", and "Next ~ [time]"). The lowest H&H recovery percentage is shown directly inside the timer chip (e.g. `(77%)`).
 - **Fixed continuously increasing update timer**: Restricted the countdown timer search to header/user menu elements and limited the traversal depth. The Pill Reminder badge text is also excluded from search to prevent circular feedback loops.
 - **Safer own User ID scraping**: Own user ID detection no longer globally scans the page for avatar links, preventing other players in ranking lists or member tables from being misidentified as "self".
-- **Robust Pill status reset**: To avoid resetting the status on transient page transitions (loading profile states), the pill reminder now requires 3 consecutive empty readings (approx. 30 seconds) before resetting back to "Ready" (none).
+- **Robust Pill status reset**: To avoid resetting the status on transient page transitions, the pill reminder now requires 3 consecutive empty readings (approx. 30 seconds) before resetting back to "Ready" (none).
 
 ## 2026-06-21 | Aufgeräumte Einstellungen & Rechtes Cheatsheet-Flyout (v0.7.1)
 
