@@ -1,5 +1,25 @@
 # CHANGELOG
 
+## 2026-06-22 | Pill-Reminder Gating & H&H-Budget-Verbesserungen (v0.7.3)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `tests/test-advisor-load.js`
+
+**Änderungen (Deutsch):**
+- **Präzises Gating & Tooltip**: Der Pill-Timer zählt jetzt zuverlässig auf den spätesten Zeitpunkt der drei Bedingungen herunter (H&H voll, Debuff-Ende, Wunschfenster-Start). Ein neuer Tooltip schlüsselt die einzelnen Gates detailliert auf.
+- **Entkoppeltes H&H-Budget**: Das H&H-Budget läuft nun unabhängig vom Pill-Status rein über das konfigurierte Wunschfenster. So wird das Budget auch ohne Pillen-Anker berechnet und gerendert.
+- **Native Kokain-Badges**: Blockierende Overlays auf Kokain-Items im Inventar und im Konsum-Popup wurden durch ein kleines, dezentes Badge im nativen In-Game-Design ersetzt, das den genauen H&H-Wert oder die Freigabe nennt.
+- **Bessere Balken-Integration & Kerbe**: Die H&H-Budget-Balken overlayen keine separaten Blöcke mehr, sondern zeichnen den freien Bereich als helle In-Hue-Farbfläche direkt über die Standardbalken und markieren das Limit mit einer dünnen Grenzkerbe.
+- **Live-Updates**: Durch einen Observer werden Änderungen der H&H-Werte (z. B. nach Angriffen oder Konsum) sofort in Echtzeit im Budget widergespiegelt.
+- **Prozent-Präfix & Buff-Filter**: Der Budget-Text zeigt nun stets den aktuellen Füllstand des Balkens als Prozent-Präfix an (z. B. `90% · ⬇ 12 frei`). Während der aktiven Buff-Phase werden alle Budget-Overlays ausgeblendet und es wird nur noch der aktuelle Prozentwert angezeigt.
+
+**Changes (English):**
+- **Precise Gating & Tooltip**: The pill timer now counts down to the latest of the three conditions (H&H full, debuff ends, preferred window start). A detailed tooltip breakdown lists the status of each gate.
+- **Decoupled H&H Budget**: The Health & Hunger budget is decoupled from the active pill state and operates purely on the preferred window, ensuring it is drawn even without a pill anchor.
+- **Native Cocaine Badges**: Replaced bulky blockers on cocaine items with small, native-styled badges in both inventory cards and consume popovers, clearly stating the blocker or readiness (e.g. `H&H 80%` or `Pille OK`).
+- **Better Bar Integration & Notch**: The budget overlays are now styled as subtle in-hue highlights on the native bar fills with a clean 1-2px floor marker line (notch), removing generic dark block overlays.
+- **Live Updates**: A debounced mutation observer updates the H&H budget in real time immediately after any changes to health or hunger.
+- **Percentage Prefix & Buff Filtering**: Budget labels are now prefixed with the current fill percentage (e.g., `90% · ⬇ 12 free`). During the active `BUFF` phase, all budget overlays/notches are hidden and only the clean percentage is shown.
+
 ## 2026-06-22 | Korrekturen Pill-Reminder & Neue UX (v0.7.2)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `tests/test-advisor-load.js`
