@@ -301,6 +301,7 @@
         hintToggleLabel: 'Explanation',
         settingsFeatPillCheckbox: 'Pill Reminder (configurable pill-timing overlay) 💊',
         settingsFeatPillHint: 'Shows a top-bar status and countdown timer for the pill cycle, highlights ready pills, and checks health/hunger levels.',
+        settingsPillSettingsLabel: 'Pill timing options',
         settingsPillBuffLabel: 'Buff Duration (hours)',
         settingsPillKnifeLabel: 'Knife Duration (hours)',
         settingsPillDebuffLabel: 'Total Debuff (hours)',
@@ -315,6 +316,10 @@
         pillPhaseReady: 'READY',
         pillPhaseGated: 'Pill in',
         pillGatingHeader: 'Pill gates',
+        pillHeadlineWindow: 'from {time}',
+        pillHeadlineWindowTimer: '(in {duration})',
+        pillHeadlineHnH: 'H&H full',
+        pillHeadlineHnHTimer: 'in {duration}',
         pillGateHnHWait: 'H&H full in ~{time} ({pct}%)',
         pillGateHnHReady: '✓ H&H 100%',
         pillGateDebuffWait: 'Debuff ends in ~{time}',
@@ -453,6 +458,7 @@
         hintToggleLabel: 'Erklärung',
         settingsFeatPillCheckbox: 'Pill-Reminder (konfigurierbares Pillen-Timing Overlay) 💊',
         settingsFeatPillHint: 'Zeigt einen Status und Countdown in der Menüleiste, markiert nimmbereite Pillen und prüft HP/Hunger-Werte.',
+        settingsPillSettingsLabel: 'Optionen für Pillen-Timing',
         settingsPillBuffLabel: 'Buff-Dauer (Stunden)',
         settingsPillKnifeLabel: 'Messer-Dauer (Stunden)',
         settingsPillDebuffLabel: 'Debuff gesamt (Stunden)',
@@ -467,6 +473,10 @@
         pillPhaseReady: 'BEREIT',
         pillPhaseGated: 'Pille in',
         pillGatingHeader: 'Pillen-Bedingungen',
+        pillHeadlineWindow: 'ab {time}',
+        pillHeadlineWindowTimer: '(in {duration})',
+        pillHeadlineHnH: 'H&H voll',
+        pillHeadlineHnHTimer: 'in {duration}',
         pillGateHnHWait: 'H&H voll in ~{time} ({pct}%)',
         pillGateHnHReady: '✓ H&H 100%',
         pillGateDebuffWait: 'Debuff weg in ~{time}',
@@ -2825,17 +2835,13 @@
       }
 
       /* ── H&H Budget overlays ── */
-      .wia-hnh-reserve-overlay {
-        position: absolute; top: 0; bottom: 0; left: 0;
-        background: rgba(13, 17, 23, 0.55); z-index: 4; pointer-events: none;
-      }
       .wia-hnh-free-overlay {
         position: absolute; top: 0; bottom: 0;
-        background: rgba(63, 185, 80, 0.30); z-index: 5; pointer-events: none;
-        box-shadow: inset 0 0 4px rgba(63, 185, 80, 0.5);
+        background: rgba(255, 255, 255, 0.20); z-index: 5; pointer-events: none;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), inset 0 -1px 0 rgba(255, 255, 255, 0.3);
       }
       .wia-hnh-floor-marker {
-        position: absolute; top: 0; bottom: 0; width: 1.5px;
+        position: absolute; top: 0; bottom: 0; width: 1px;
         background: rgba(255, 255, 255, 0.6); z-index: 6; pointer-events: none;
       }
       .wia-hnh-floor-marker.wia-hnh-alert {
@@ -3084,10 +3090,12 @@
             <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
           </div>
           <div class="wia-hint" hidden>${t('settingsFeatBattleHint')}</div>
-          <div class="wia-allied-codes-row" style="margin-top: 4px; margin-left: 24px; ${prevFeatBattle ? '' : 'display: none;'}">
-            <label style="font-size: 11px; color: #8b949e; display: block; margin-bottom: 2px;">${t('settingsAlliedCodesLabel')}</label>
-            <input type="text" class="wia-allied-codes" placeholder="${t('settingsAlliedCodesPlaceholder')}" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;" value="${prevAlliedCodes}" />
-          </div>
+          <details class="wia-allied-codes-row" style="margin-top: 4px; margin-left: 24px;" ${prevFeatBattle ? 'open' : ''}>
+            <summary style="font-size: 11px; color: #8b949e; cursor: pointer; user-select: none; font-weight: bold; outline: none; margin-bottom: 4px;">
+              ${t('settingsAlliedCodesLabel')}
+            </summary>
+            <input type="text" class="wia-allied-codes" placeholder="${t('settingsAlliedCodesPlaceholder')}" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px; margin-top: 2px;" value="${prevAlliedCodes}" />
+          </details>
         </div>
         <div class="wia-feat-row" style="margin-top: 6px;">
           <div style="display: flex; align-items: center; gap: 8px;">
@@ -3096,8 +3104,11 @@
             <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
           </div>
           <div class="wia-hint" hidden>${t('settingsFeatPillHint')}</div>
-          <div class="wia-pill-settings-row" style="margin-top: 6px; margin-left: 24px; ${prevFeatPill ? '' : 'display: none;'}">
-            <div style="display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 6px;">
+          <details class="wia-pill-settings-row" style="margin-top: 6px; margin-left: 24px;" ${prevFeatPill ? 'open' : ''}>
+            <summary style="font-size: 11px; color: #8b949e; cursor: pointer; user-select: none; font-weight: bold; outline: none; margin-bottom: 6px;">
+              ${t('settingsPillSettingsLabel')}
+            </summary>
+            <div style="display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 6px; margin-top: 4px;">
               <div style="flex: 1; min-width: 80px;">
                 <label style="font-size: 11px; color: #8b949e; display: block; margin: 0 0 2px;">${t('settingsPillBuffLabel')}</label>
                 <input type="number" step="0.1" class="wia-pill-buff" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;" value="${prevPillBuff}" />
@@ -3121,7 +3132,7 @@
                 <input type="text" class="wia-pill-pref-to" placeholder="20:00" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;" value="${prevPillPrefTo}" />
               </div>
             </div>
-          </div>
+          </details>
         </div>
         <button type="button" class="wia-help-toggle" aria-expanded="false">${t('settingsHelpSummary')}</button>
         <aside class="wia-help-panel" hidden>
@@ -3173,7 +3184,11 @@
     const alliedCodesRow = modal.querySelector('.wia-allied-codes-row');
     if (featBattleCheckbox && alliedCodesRow) {
       featBattleCheckbox.onchange = () => {
-        alliedCodesRow.style.display = featBattleCheckbox.checked ? 'block' : 'none';
+        if (featBattleCheckbox.checked) {
+          alliedCodesRow.setAttribute('open', '');
+        } else {
+          alliedCodesRow.removeAttribute('open');
+        }
       };
     }
 
@@ -3181,7 +3196,11 @@
     const pillSettingsRow = modal.querySelector('.wia-pill-settings-row');
     if (featPillCheckbox && pillSettingsRow) {
       featPillCheckbox.onchange = () => {
-        pillSettingsRow.style.display = featPillCheckbox.checked ? 'block' : 'none';
+        if (featPillCheckbox.checked) {
+          pillSettingsRow.setAttribute('open', '');
+        } else {
+          pillSettingsRow.removeAttribute('open');
+        }
       };
     }
 
@@ -3854,15 +3873,7 @@
     const floorPct = (floorVal / max) * 100;
     const currentPct = (current / max) * 100;
 
-    // 1. Reserve Overlay
-    if (floorPct > 0) {
-      const reserve = document.createElement('div');
-      reserve.className = 'wia-hnh-reserve-overlay';
-      reserve.style.width = `${floorPct}%`;
-      track.appendChild(reserve);
-    }
-
-    // 2. Free Overlay
+    // 1. Free Overlay
     if (currentPct > floorPct) {
       const free = document.createElement('div');
       free.className = 'wia-hnh-free-overlay';
@@ -3871,29 +3882,30 @@
       track.appendChild(free);
     }
 
-    // 3. Floor Marker Line
+    // 2. Floor Marker Line
     const marker = document.createElement('div');
     marker.className = 'wia-hnh-floor-marker';
     if (floorVal >= current) {
       marker.classList.add('wia-hnh-alert');
     }
-    marker.style.left = `${Math.min(99.5, floorPct)}%`;
+    marker.style.left = `${Math.min(99.5, currentPct, floorPct)}%`;
     track.appendChild(marker);
 
-    // 4. Text Readout Label
+    // 3. Text Readout Label
     let label = readoutEl.parentElement.querySelector('.wia-hnh-budget-label');
     if (!label) {
       label = document.createElement('span');
       label.className = 'wia-hnh-budget-label';
-      readoutEl.insertAdjacentElement('afterend', label);
+      readoutEl.parentElement.appendChild(label);
     }
 
     const valText = spendable % 1 === 0 ? spendable : spendable.toFixed(1);
     label.textContent = t('pillSpendableFree', { val: valText });
     label.style.marginLeft = '6px';
-    label.style.fontSize = '90%';
+    label.style.fontSize = '80%';
     label.style.fontWeight = 'bold';
     label.style.verticalAlign = 'middle';
+    label.style.opacity = '0.8';
     if (spendable === 0) {
       label.style.color = '#ff7b72';
     } else {
@@ -4366,26 +4378,21 @@
     let nextTransitionTime = '';
     let badgeClass = '';
 
-    if (pillTakenAt === 0) {
-      phase = 'none';
-      phaseLabel = t('pillGateNoAnchor');
-      timerStr = '';
-      badgeClass = 'wia-badge-gated';
-    } else if (elapsed < buffMs) {
+    if (pillTakenAt > 0 && elapsed < buffMs) {
       phase = 'BUFF';
       phaseLabel = t('pillPhaseBuff');
       timerStr = formatDuration(buffMs - elapsed);
       nextTransitionLabel = t('pillPhaseKnife');
       nextTransitionTime = formatAbsoluteTime(pillTakenAt + buffMs);
       badgeClass = 'wia-badge-buff';
-    } else if (elapsed < buffMs + knifeMs) {
+    } else if (pillTakenAt > 0 && elapsed < buffMs + knifeMs) {
       phase = 'KNIFE';
       phaseLabel = t('pillPhaseKnife');
       timerStr = formatDuration(buffMs + knifeMs - elapsed);
       nextTransitionLabel = t('pillPhaseRecover');
       nextTransitionTime = formatAbsoluteTime(pillTakenAt + buffMs + knifeMs);
       badgeClass = 'wia-badge-knife';
-    } else if (elapsed < totalMs) {
+    } else if (pillTakenAt > 0 && elapsed < totalMs) {
       phase = 'RECOVER';
       phaseLabel = t('pillPhaseRecover');
       timerStr = formatDuration(totalMs - elapsed);
@@ -4402,7 +4409,7 @@
       if (hungerNeeded > 0 && status.hungerRegen > 0) hungerTicks = Math.ceil(hungerNeeded / status.hungerRegen);
       const totalTicks = Math.max(hpTicks, hungerTicks);
       
-      const debuffEnd = pillTakenAt + totalMs;
+      const debuffEnd = pillTakenAt > 0 ? (pillTakenAt + totalMs) : 0;
       const hAndHFullETA = totalTicks > 0
         ? now + status.nextTickMs + (totalTicks - 1) * 3600000
         : now;
@@ -4417,10 +4424,19 @@
         timerStr = '';
       } else {
         phase = 'GATED';
-        phaseLabel = t('pillPhaseGated');
         badgeClass = 'wia-badge-gated';
         const lowestPct = Math.round(Math.min(status.hpPercent, status.hungerPercent));
-        timerStr = `${formatDuration(nextPill - now)} (${lowestPct}%)`;
+
+        if (windowStart === nextPill && CONFIG.pillPrefWindowFrom) {
+          phaseLabel = t('pillHeadlineWindow', { time: CONFIG.pillPrefWindowFrom });
+          timerStr = t('pillHeadlineWindowTimer', { duration: formatDuration(windowStart - now) });
+        } else if (hAndHFullETA === nextPill && totalTicks > 0) {
+          phaseLabel = t('pillHeadlineHnH');
+          timerStr = t('pillHeadlineHnHTimer', { duration: formatDuration(hAndHFullETA - now) });
+        } else {
+          phaseLabel = t('pillPhaseGated');
+          timerStr = `${formatDuration(nextPill - now)} (${lowestPct}%)`;
+        }
       }
       nextTransitionLabel = '';
       nextTransitionTime = '';
@@ -4563,23 +4579,10 @@
     const status = parseHealthAndHunger();
     const now = Date.now();
 
-    const pillTakenAt = GM_getValue(KEYS.pillTakenAt, 0);
     const isHnHReady = status.both100;
     const isWindowReady = CONFIG.pillPrefWindowFrom ? isInsidePreferredWindow(now) : true;
-
-    let isReady = false;
-    let isGated = false;
-
-    if (pillTakenAt > 0) {
-      isReady = info.phase === 'READY';
-      isGated = info.phase === 'GATED';
-    } else {
-      if (isHnHReady && isWindowReady) {
-        isReady = true;
-      } else {
-        isGated = true;
-      }
-    }
+    const isReady = info.phase === 'READY';
+    const isGated = info.phase === 'GATED';
 
     const cocainImgs = document.querySelectorAll("img[alt='cocain']");
     cocainImgs.forEach(img => {

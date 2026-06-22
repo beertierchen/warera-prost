@@ -639,12 +639,12 @@ try {
   // Toggle the battle checkbox to unchecked and trigger change
   featBattleCheckbox.checked = false;
   if (featBattleCheckbox.onchange) featBattleCheckbox.onchange();
-  assert.strictEqual(alliedCodesRow.style.display, 'none', 'Allied codes row should be hidden when battle advisor is unchecked');
+  assert.strictEqual(alliedCodesRow.attributes.has('open'), false, 'Allied codes row should be closed when battle advisor is unchecked');
 
   // Toggle it back to checked
   featBattleCheckbox.checked = true;
   if (featBattleCheckbox.onchange) featBattleCheckbox.onchange();
-  assert.strictEqual(alliedCodesRow.style.display, 'block', 'Allied codes row should be visible when battle advisor is checked');
+  assert.strictEqual(alliedCodesRow.attributes.has('open'), true, 'Allied codes row should be open when battle advisor is checked');
 
   console.log('Settings cheatsheet and hints UI tests passed successfully.');
 
@@ -851,11 +851,11 @@ try {
   assert.ok(pillBadge.classList.contains('wia-badge-gated'), 'Pill badge should be in wia-badge-gated class when health is below 100%');
   
   const labelEl = pillBadge.querySelector('.wia-pill-phase-lbl');
-  assert.strictEqual(labelEl.textContent, 'Pill in', 'Gated label should display Pill in instead of READY');
+  assert.strictEqual(labelEl.textContent, 'H&H full', 'Gated label should display H&H full');
 
   const timerEl = pillBadge.querySelector('.wia-pill-timer');
   assert.ok(timerEl, 'Gated badge should display H&H recovery remaining timer');
-  assert.strictEqual(timerEl.textContent, '2h 53m (77%)', 'Estimated remaining time to 100% H&H should be 2h 53m (77%)');
+  assert.strictEqual(timerEl.textContent, 'in 2h 53m', 'Estimated remaining time to 100% H&H should be in 2h 53m');
 
   const hoverDetails = pillBadge.querySelector('.wia-pill-hover-details').textContent;
   assert.ok(hoverDetails.includes('H&H full in ~2h 53m (77%)'), 'Hover details should contain H&H gate status');
@@ -865,7 +865,7 @@ try {
   tickTimeText.textContent = '48m';
   globalThis.injectPillBadge();
   const updatedTimerEl = pillBadge.querySelector('.wia-pill-timer');
-  assert.strictEqual(updatedTimerEl.textContent, '2h 48m (77%)', 'Should parse remaining time correctly even if the countdown timer only contains minutes (e.g. 48m) with pct');
+  assert.strictEqual(updatedTimerEl.textContent, 'in 2h 48m', 'Should parse remaining time correctly even if the countdown timer only contains minutes (e.g. 48m)');
 
   hpText.textContent = '130/130';
   globalThis.injectPillBadge();
@@ -920,10 +920,6 @@ try {
   assert.ok(hpBudgetVal, 'HP budget label should be appended');
   assert.strictEqual(hpBudgetVal.textContent, '⬇ 39 free', 'HP spendable should be parsed as 39');
   
-  const hpReserve = hpTrack.querySelector('.wia-hnh-reserve-overlay');
-  assert.ok(hpReserve, 'HP reserve overlay should be created');
-  assert.strictEqual(hpReserve.style.width, '70%', 'HP reserve width should be 70%');
-
   const hpFree = hpTrack.querySelector('.wia-hnh-free-overlay');
   assert.ok(hpFree, 'HP free overlay should be created');
   assert.strictEqual(hpFree.style.left, '70%', 'HP free left should start at 70%');
@@ -936,10 +932,6 @@ try {
   const hungerBudgetVal = hungerTextContainer.querySelector('.wia-hnh-budget-label');
   assert.ok(hungerBudgetVal, 'Hunger budget label should be appended');
   assert.strictEqual(hungerBudgetVal.textContent, '⬇ 1.5 free', 'Hunger spendable should be parsed as 1.5');
-
-  const hungerReserve = hungerTrack.querySelector('.wia-hnh-reserve-overlay');
-  assert.ok(hungerReserve, 'Hunger reserve overlay should be created');
-  assert.strictEqual(hungerReserve.style.width, '70%', 'Hunger reserve width should be 70%');
 
   const hungerFree = hungerTrack.querySelector('.wia-hnh-free-overlay');
   assert.ok(hungerFree, 'Hunger free overlay should be created');
