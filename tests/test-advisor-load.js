@@ -940,7 +940,7 @@ try {
 
   hpText.textContent = '80/130';
   globalThis.renderHnHBudget();
-  assert.strictEqual(hpBudgetVal.textContent, '⬇ 0 free', 'HP spendable should be 0 when below floor');
+  assert.strictEqual(hpBudgetVal.textContent, '✕ 0 free', 'HP zero-budget should show stop glyph, not a down arrow');
   const hpMarkerNew = hpTrack.querySelector('.wia-hnh-floor-marker');
   assert.ok(hpMarkerNew, 'HP floor marker should be found after re-render');
   assert.ok(hpMarkerNew.classList.contains('wia-hnh-alert'), 'HP marker should have alert style when current is below floor');

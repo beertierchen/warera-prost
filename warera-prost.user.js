@@ -333,6 +333,7 @@
         pillDetailGatingReady: 'Ready to take pill!',
         pillDetailGatingTopUp: 'Waiting for H&H: ~{time} ({pct}%, next update in {next})',
         pillSpendableFree: '⬇ {val} free',
+        pillSpendableNone: '✕ 0 free',
         today: 'today',
         tomorrow: 'tomorrow',
         yesterday: 'yesterday',
@@ -358,6 +359,16 @@
             <strong>Settings:</strong>
             <ul>
               <li><strong>API Token</strong>: Required to fetch fresh market values (equipment and scrap).</li>
+            </ul>
+            <strong>Pill timer 💊:</strong>
+            <ul>
+              <li>Counts down to your next pill — the latest of: <em>H&amp;H full</em>, <em>debuff ended</em>, and your <em>preferred window</em> start.</li>
+              <li>Buff/debuff is detected from the pill icon on your own profile. "no pill anchor" just means none has been detected yet.</li>
+            </ul>
+            <strong>H&amp;H budget bars:</strong>
+            <ul>
+              <li>The notch on your Health &amp; Hunger bar is the <em>floor</em>: spend down to it and natural regen still refills you to 100% by pill time.</li>
+              <li>The bright segment above the floor is <em>free to spend</em> (attack / get eaten). <em>✕ 0 free</em> = don't spend, you need it all to refill in time.</li>
             </ul>`,
         settingsPriceFormat: 'Price format: [Scrap Value]/[Market Price]',
         menuSettings: 'Inventory Advisor — Settings',
@@ -490,6 +501,7 @@
         pillDetailGatingReady: 'Bereit für die Pille!',
         pillDetailGatingTopUp: 'Warten auf H&H: ~{time} ({pct}%, nächstes Update in {next})',
         pillSpendableFree: '⬇ {val} frei',
+        pillSpendableNone: '✕ 0 frei',
         today: 'heute',
         tomorrow: 'morgen',
         yesterday: 'gestern',
@@ -515,6 +527,16 @@
             <strong>Einstellungen:</strong>
             <ul>
               <li><strong>API-Token</strong>: Erforderlich für den Abruf aktueller Marktpreise (Ausrüstung und Schrott).</li>
+            </ul>
+            <strong>Pillentimer 💊:</strong>
+            <ul>
+              <li>Zählt zur nächsten Pille runter — das Späteste aus: <em>H&amp;H voll</em>, <em>Debuff vorbei</em> und Beginn deines <em>Wunschfensters</em>.</li>
+              <li>Buff/Debuff wird am Pillen-Icon auf deinem eigenen Profil erkannt. „kein Pillen-Anker" heißt nur: noch keiner erkannt.</li>
+            </ul>
+            <strong>H&amp;H-Budget-Balken:</strong>
+            <ul>
+              <li>Die Kerbe im Leben-/Hunger-Balken ist der <em>Floor</em>: bis dahin runterspielen, dann füllt dich die Regeneration bis zur Pillenzeit wieder auf 100%.</li>
+              <li>Der helle Abschnitt über dem Floor ist <em>frei verspielbar</em> (attacken / gegessen werden). <em>✕ 0 frei</em> = nicht anfassen, du brauchst alles zum Auffüllen.</li>
             </ul>`,
         settingsPriceFormat: 'Preisformat: [Schrottwert]/[Marktpreis]',
         menuSettings: 'Inventory Advisor — Einstellungen',
@@ -3725,6 +3747,9 @@
   // ───────────────────────────────────────────────────────────────────────────
   let pillInterval = null;
   let pillObserved = false;
+  let pillBarObserver = null;
+  let pillUpdateTimer = null;
+  const PILL_OBS_OPTS = { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['style'] };
   let noneReadCount = 0;
 
   function initPillReminder() {
@@ -3736,6 +3761,34 @@
       document.addEventListener('click', handlePillDocumentClick);
       pillObserved = true;
     }
+    observePillBars();
+  }
+
+  // Live-update the badge + budget when H&H changes (eat/attack), instead of
+  // waiting for the 10s tick or a page change. Watches the top-bar bars; our own
+  // writes are excluded by disconnecting around the render (+ takeRecords).
+  function observePillBars() {
+    const menu = document.getElementById('layoutUserMenu');
+    if (!menu) return;
+    if (!pillBarObserver) {
+      pillBarObserver = new MutationObserver(() => {
+        if (pillUpdateTimer) return;
+        pillUpdateTimer = setTimeout(() => {
+          pillUpdateTimer = null;
+          if (!CONFIG.featPillReminder) return;
+          pillBarObserver.disconnect();
+          try {
+            injectPillBadge();
+            renderHnHBudget();
+          } finally {
+            pillBarObserver.takeRecords();
+            const m = document.getElementById('layoutUserMenu');
+            if (m) pillBarObserver.observe(m, PILL_OBS_OPTS);
+          }
+        }, 250);
+      });
+    }
+    pillBarObserver.observe(menu, PILL_OBS_OPTS);
   }
 
   function teardownPillReminder() {
@@ -3745,6 +3798,8 @@
     }
     document.removeEventListener('click', handlePillDocumentClick);
     pillObserved = false;
+    if (pillBarObserver) { pillBarObserver.disconnect(); }
+    if (pillUpdateTimer) { clearTimeout(pillUpdateTimer); pillUpdateTimer = null; }
     noneReadCount = 0;
     removePillBadge();
     removeCocaineHighlights();
@@ -3862,7 +3917,7 @@
   }
 
   function applyBarBudget(bar, readoutEl, current, max, floorVal, spendable) {
-    const { track } = bar;
+    const { track, fill } = bar;
     if (!track) return;
 
     track.style.position = 'relative';
@@ -3873,12 +3928,18 @@
     const floorPct = (floorVal / max) * 100;
     const currentPct = (current / max) * 100;
 
+    // Align overlays to the native fill's box (not the taller track) so they
+    // sit exactly on the colored bar instead of riding high / getting clipped.
+    const barTop = fill ? `${fill.offsetTop}px` : '0';
+    const barH = fill ? `${fill.offsetHeight}px` : '';
+
     // 1. Free Overlay
     if (currentPct > floorPct) {
       const free = document.createElement('div');
       free.className = 'wia-hnh-free-overlay';
       free.style.left = `${floorPct}%`;
       free.style.width = `${currentPct - floorPct}%`;
+      if (fill) { free.style.top = barTop; free.style.bottom = 'auto'; free.style.height = barH; }
       track.appendChild(free);
     }
 
@@ -3889,6 +3950,7 @@
       marker.classList.add('wia-hnh-alert');
     }
     marker.style.left = `${Math.min(99.5, currentPct, floorPct)}%`;
+    if (fill) { marker.style.top = barTop; marker.style.bottom = 'auto'; marker.style.height = barH; }
     track.appendChild(marker);
 
     // 3. Text Readout Label
@@ -3899,16 +3961,17 @@
       readoutEl.parentElement.appendChild(label);
     }
 
-    const valText = spendable % 1 === 0 ? spendable : spendable.toFixed(1);
-    label.textContent = t('pillSpendableFree', { val: valText });
     label.style.marginLeft = '6px';
     label.style.fontSize = '80%';
     label.style.fontWeight = 'bold';
     label.style.verticalAlign = 'middle';
     label.style.opacity = '0.8';
     if (spendable === 0) {
+      label.textContent = t('pillSpendableNone');
       label.style.color = '#ff7b72';
     } else {
+      const valText = spendable % 1 === 0 ? spendable : spendable.toFixed(1);
+      label.textContent = t('pillSpendableFree', { val: valText });
       label.style.color = '#3fb950';
     }
   }
