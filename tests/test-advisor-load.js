@@ -840,6 +840,7 @@ try {
   const expectedReadyTaken = Date.now() - ((globalThis.CONFIG.pillBuffH + globalThis.CONFIG.pillDebuffH) * 3600000);
   assert.ok(Math.abs(noneTakenAt - expectedReadyTaken) < 1000, 'Taken-at timestamp should adjust back by buff+debuff duration (23.5 hours)');
 
+  globalThis.CONFIG.pillPrefWindowFrom = '';
   globalThis.injectPillBadge();
   const pillBadge = document.querySelector('#wia-pill-badge');
   assert.ok(pillBadge, 'Pill badge should be injected in the layout menu');
@@ -850,14 +851,15 @@ try {
   assert.ok(pillBadge.classList.contains('wia-badge-gated'), 'Pill badge should be in wia-badge-gated class when health is below 100%');
   
   const labelEl = pillBadge.querySelector('.wia-pill-phase-lbl');
-  assert.strictEqual(labelEl.textContent, 'Next ~', 'Gated label should display Next ~ instead of READY');
+  assert.strictEqual(labelEl.textContent, 'Pill in', 'Gated label should display Pill in instead of READY');
 
   const timerEl = pillBadge.querySelector('.wia-pill-timer');
   assert.ok(timerEl, 'Gated badge should display H&H recovery remaining timer');
   assert.strictEqual(timerEl.textContent, '2h 53m (77%)', 'Estimated remaining time to 100% H&H should be 2h 53m (77%)');
 
   const hoverDetails = pillBadge.querySelector('.wia-pill-hover-details').textContent;
-  assert.ok(hoverDetails.includes('Waiting for H&H: ~2h 53m (77%, next update in 53m 38s)'), 'Hover details should contain the detailed recovery note');
+  assert.ok(hoverDetails.includes('H&H full in ~2h 53m (77%)'), 'Hover details should contain H&H gate status');
+  assert.ok(hoverDetails.includes('✓ Debuff ends'), 'Hover details should contain debuff gate status');
 
   // Test minutes-only format countdown parsing (e.g. "48m" instead of "53m38s")
   tickTimeText.textContent = '48m';
@@ -888,16 +890,21 @@ try {
   
   globalThis.highlightCocaineItems();
   assert.strictEqual(cocainCard.classList.contains('wia-cocain-highlight'), true, 'Cocaine card should have READY highlight outline');
-  assert.strictEqual(cocainCard.getAttribute('data-label'), 'TAKE NOW', 'Highlight badge label should be TAKE NOW');
+  assert.strictEqual(cocainCard.getAttribute('data-label'), 'now', 'Highlight badge label should be now');
 
   hpText.textContent = '100/130';
   globalThis.highlightCocaineItems();
   assert.strictEqual(cocainCard.classList.contains('wia-cocain-gated-highlight'), true, 'Cocaine card should have warning H&H highlight');
-  assert.strictEqual(cocainCard.getAttribute('data-label'), 'TOP UP FIRST', 'Highlight badge label should be TOP UP FIRST');
+  assert.strictEqual(cocainCard.getAttribute('data-label'), 'H&H 77%', 'Highlight badge label should be H&H 77%');
 
   // --- H&H Budget Regression Test ---
   console.log('--- Testing H&H Budget Indicator ---');
-  globalThis.CONFIG.pillPrefWindowFrom = ''; 
+  
+  const originalNow = Date.now;
+  const mockNowDate = new Date(2026, 5, 11, 12, 0, 0, 0); // June 11, 2026 12:00 local time
+  Date.now = () => mockNowDate.getTime();
+
+  globalThis.CONFIG.pillPrefWindowFrom = '15:05'; 
   globalThis.CONFIG.pillPrefWindowTo = '';
 
   const now = Date.now();
@@ -946,26 +953,18 @@ try {
   assert.ok(hpMarkerNew, 'HP floor marker should be found after re-render');
   assert.ok(hpMarkerNew.classList.contains('wia-hnh-alert'), 'HP marker should have alert style when current is below floor');
 
-  // Test target pill in the past (e.g. pill taken 30 hours ago, cycle is 24 hours)
-  // This verifies clamp to Date.now() / gated visibility.
-  globalThis.GM_setValue('wia.pillTakenAt', now - 30 * 3600000);
-  hpText.textContent = '100/130';
+  // Test no window configured -> should remove overlays / bail (Issue 1)
+  globalThis.CONFIG.pillPrefWindowFrom = '';
   globalThis.renderHnHBudget();
-  
-  // Since tPill clamps to now, msToPill is 0, so ticks = 0.
-  // floorVal should be status.hpMax (130). HP current is 100, which is below floor (130).
-  // HP spendable should be 0 free. HP reserve overlay should be 100%.
-  assert.strictEqual(hpBudgetVal.textContent, '⬇ 0 free', 'HP spendable should be 0 when raw pill time is in the past');
-  
-  const hpReservePast = hpTrack.querySelector('.wia-hnh-reserve-overlay');
-  assert.ok(hpReservePast, 'HP reserve overlay should still exist in gated/past phase');
-  assert.strictEqual(hpReservePast.style.width, '100%', 'HP reserve width should be 100% in gated/past phase');
-  
-  const hpMarkerPast = hpTrack.querySelector('.wia-hnh-floor-marker');
-  assert.ok(hpMarkerPast, 'HP floor marker should exist');
-  assert.ok(hpMarkerPast.classList.contains('wia-hnh-alert'), 'HP marker should have alert style in gated/past phase');
+  const hpBudgetValEmpty = hpTextContainer.querySelector('.wia-hnh-budget-label');
+  assert.strictEqual(hpBudgetValEmpty, null, 'HP budget label should be removed when no window is configured');
+
+  // Restore preferred window for subsequent cleanup testing
+  globalThis.CONFIG.pillPrefWindowFrom = '15:05';
+  globalThis.renderHnHBudget();
 
   globalThis.removeHnHBudget();
+  Date.now = originalNow;
   console.log('H&H Budget Indicator tests passed successfully.');
 
   layoutUserMenu.remove();

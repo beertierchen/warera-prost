@@ -313,7 +313,16 @@
         pillPhaseKnife: 'Knife ·',
         pillPhaseRecover: 'Recover ·',
         pillPhaseReady: 'READY',
-        pillPhaseGated: 'Next ~',
+        pillPhaseGated: 'Pill in',
+        pillGatingHeader: 'Pill gates',
+        pillGateHnHWait: 'H&H full in ~{time} ({pct}%)',
+        pillGateHnHReady: '✓ H&H 100%',
+        pillGateDebuffWait: 'Debuff ends in ~{time}',
+        pillGateDebuffReady: '✓ Debuff ends',
+        pillGateNoAnchor: 'no pill anchor',
+        pillGateWindowWait: 'Window from {time} (in {duration})',
+        pillGateWindowReady: '✓ Window from {time}',
+        pillOverlayReady: 'now',
         pillDetailNext: 'Next transition',
         pillDetailPreferred: 'Preferred window',
         pillDetailGatingReady: 'Ready to take pill!',
@@ -456,7 +465,16 @@
         pillPhaseKnife: 'Messer ·',
         pillPhaseRecover: 'Regen ·',
         pillPhaseReady: 'BEREIT',
-        pillPhaseGated: 'Nächste ~',
+        pillPhaseGated: 'Pille in',
+        pillGatingHeader: 'Pillen-Bedingungen',
+        pillGateHnHWait: 'H&H voll in ~{time} ({pct}%)',
+        pillGateHnHReady: '✓ H&H 100%',
+        pillGateDebuffWait: 'Debuff weg in ~{time}',
+        pillGateDebuffReady: '✓ kein Debuff',
+        pillGateNoAnchor: 'kein Pillen-Anker',
+        pillGateWindowWait: 'Fenster ab {time} (in {duration})',
+        pillGateWindowReady: '✓ Fenster ab {time}',
+        pillOverlayReady: 'jetzt',
         pillDetailNext: 'Nächste Transition',
         pillDetailPreferred: 'Zeitfenster',
         pillDetailGatingReady: 'Bereit für die Pille!',
@@ -1203,6 +1221,8 @@
     globalThis.teardownPillReminder = teardownPillReminder;
     globalThis.renderHnHBudget = renderHnHBudget;
     globalThis.removeHnHBudget = removeHnHBudget;
+    globalThis.nextWindowStart = nextWindowStart;
+    globalThis.isInsidePreferredWindow = isInsidePreferredWindow;
   }
 
   function getLocale() {
@@ -3724,6 +3744,61 @@
     renderHnHBudget();
   }
 
+  function isInsidePreferredWindow(now) {
+    if (!CONFIG.pillPrefWindowFrom) return true;
+    const partsFrom = CONFIG.pillPrefWindowFrom.split(':');
+    if (partsFrom.length !== 2) return true;
+    const fromHrs = parseInt(partsFrom[0], 10);
+    const fromMins = parseInt(partsFrom[1], 10);
+
+    let dFrom = new Date(now);
+    dFrom.setHours(fromHrs, fromMins, 0, 0);
+
+    let dTo = null;
+    if (CONFIG.pillPrefWindowTo) {
+      const partsTo = CONFIG.pillPrefWindowTo.split(':');
+      if (partsTo.length === 2) {
+        const toHrs = parseInt(partsTo[0], 10);
+        const toMins = parseInt(partsTo[1], 10);
+        dTo = new Date(now);
+        dTo.setHours(toHrs, toMins, 0, 0);
+        if (dTo.getTime() < dFrom.getTime()) {
+          if (now < dTo.getTime()) {
+            dFrom.setDate(dFrom.getDate() - 1);
+            dFrom.setHours(fromHrs, fromMins, 0, 0);
+          } else {
+            dTo.setDate(dTo.getDate() + 1);
+            dTo.setHours(toHrs, toMins, 0, 0);
+          }
+        }
+      }
+    }
+
+    if (dTo) {
+      return now >= dFrom.getTime() && now <= dTo.getTime();
+    } else {
+      return now >= dFrom.getTime() && now < dFrom.getTime() + 7200000;
+    }
+  }
+
+  function nextWindowStart(now) {
+    if (!CONFIG.pillPrefWindowFrom) return 0;
+    if (isInsidePreferredWindow(now)) return now;
+
+    const parts = CONFIG.pillPrefWindowFrom.split(':');
+    if (parts.length !== 2) return now;
+    const hrs = parseInt(parts[0], 10);
+    const mins = parseInt(parts[1], 10);
+    
+    let d = new Date(now);
+    d.setHours(hrs, mins, 0, 0);
+    if (d.getTime() < now) {
+      d.setDate(d.getDate() + 1);
+      d.setHours(hrs, mins, 0, 0);
+    }
+    return d.getTime();
+  }
+
   function getNextPillMoment() {
     const pillTakenAt = GM_getValue(KEYS.pillTakenAt, 0);
     if (!pillTakenAt) return 0;
@@ -3841,20 +3916,20 @@
       return;
     }
 
-    const tPill = getNextPillMoment();
-    if (!tPill) {
+    const now = Date.now();
+    const tWindow = nextWindowStart(now);
+    if (!tWindow) {
       removeHnHBudget();
       return;
     }
 
-    const now = Date.now();
-    const msToPill = Math.max(0, tPill - now);
+    const msToWindow = Math.max(0, tWindow - now);
     const status = parseHealthAndHunger();
     if (!status.hpFound && !status.hungerFound) return;
 
     let ticks = 0;
-    if (status.nextTickMs <= msToPill) {
-      ticks = 1 + Math.floor((msToPill - status.nextTickMs) / 3600000);
+    if (status.nextTickMs <= msToWindow) {
+      ticks = 1 + Math.floor((msToWindow - status.nextTickMs) / 3600000);
     }
 
     if (status.hpFound && status.hpEl) {
@@ -4291,7 +4366,12 @@
     let nextTransitionTime = '';
     let badgeClass = '';
 
-    if (elapsed < buffMs) {
+    if (pillTakenAt === 0) {
+      phase = 'none';
+      phaseLabel = t('pillGateNoAnchor');
+      timerStr = '';
+      badgeClass = 'wia-badge-gated';
+    } else if (elapsed < buffMs) {
       phase = 'BUFF';
       phaseLabel = t('pillPhaseBuff');
       timerStr = formatDuration(buffMs - elapsed);
@@ -4313,33 +4393,34 @@
       nextTransitionTime = formatAbsoluteTime(pillTakenAt + totalMs);
       badgeClass = 'wia-badge-recover';
     } else {
-      phase = 'READY';
       const status = parseHealthAndHunger();
-      if (status.both100) {
+      const hpNeeded = status.hpMax - status.hpCurrent;
+      const hungerNeeded = status.hungerMax - status.hungerCurrent;
+      let hpTicks = 0;
+      let hungerTicks = 0;
+      if (hpNeeded > 0 && status.hpRegen > 0) hpTicks = Math.ceil(hpNeeded / status.hpRegen);
+      if (hungerNeeded > 0 && status.hungerRegen > 0) hungerTicks = Math.ceil(hungerNeeded / status.hungerRegen);
+      const totalTicks = Math.max(hpTicks, hungerTicks);
+      
+      const debuffEnd = pillTakenAt + totalMs;
+      const hAndHFullETA = totalTicks > 0
+        ? now + status.nextTickMs + (totalTicks - 1) * 3600000
+        : now;
+      const windowStart = nextWindowStart(now);
+
+      const nextPill = Math.max(debuffEnd, hAndHFullETA, windowStart);
+
+      if (nextPill <= now) {
+        phase = 'READY';
         phaseLabel = t('pillPhaseReady');
         badgeClass = 'wia-badge-ready';
         timerStr = '';
       } else {
-        const lowestPct = Math.round(Math.min(status.hpPercent, status.hungerPercent));
+        phase = 'GATED';
         phaseLabel = t('pillPhaseGated');
         badgeClass = 'wia-badge-gated';
-        const hpNeeded = status.hpMax - status.hpCurrent;
-        const hungerNeeded = status.hungerMax - status.hungerCurrent;
-        let hpTicks = 0;
-        let hungerTicks = 0;
-        if (hpNeeded > 0 && status.hpRegen > 0) {
-          hpTicks = Math.ceil(hpNeeded / status.hpRegen);
-        }
-        if (hungerNeeded > 0 && status.hungerRegen > 0) {
-          hungerTicks = Math.ceil(hungerNeeded / status.hungerRegen);
-        }
-        const totalTicks = Math.max(hpTicks, hungerTicks);
-        if (totalTicks > 0) {
-          const remainingTimeMs = status.nextTickMs + (totalTicks - 1) * 3600000;
-          timerStr = `${formatDuration(remainingTimeMs)} (${lowestPct}%)`;
-        } else {
-          timerStr = `(${lowestPct}%)`;
-        }
+        const lowestPct = Math.round(Math.min(status.hpPercent, status.hungerPercent));
+        timerStr = `${formatDuration(nextPill - now)} (${lowestPct}%)`;
       }
       nextTransitionLabel = '';
       nextTransitionTime = '';
@@ -4383,33 +4464,54 @@
   function renderPillBadge(badge) {
     const info = getPillCycleInfo();
     const status = parseHealthAndHunger();
+    const now = Date.now();
 
     badge.className = '';
     badge.classList.add(info.badgeClass);
 
-    let gatingNote = '';
-    if (info.phase === 'READY') {
-      if (status.both100) {
-        gatingNote = t('pillDetailGatingReady');
+    const lowestPct = Math.round(Math.min(status.hpPercent, status.hungerPercent));
+    const hpNeeded = status.hpMax - status.hpCurrent;
+    const hungerNeeded = status.hungerMax - status.hungerCurrent;
+    let hpTicks = 0;
+    let hungerTicks = 0;
+    if (hpNeeded > 0 && status.hpRegen > 0) hpTicks = Math.ceil(hpNeeded / status.hpRegen);
+    if (hungerNeeded > 0 && status.hungerRegen > 0) hungerTicks = Math.ceil(hungerNeeded / status.hungerRegen);
+    const totalTicks = Math.max(hpTicks, hungerTicks);
+    
+    // 1. H&H Gate
+    let hnhGatingStr = '';
+    if (totalTicks > 0) {
+      const hAndHFullETA = now + status.nextTickMs + (totalTicks - 1) * 3600000;
+      const hhDurationStr = formatDuration(hAndHFullETA - now);
+      hnhGatingStr = t('pillGateHnHWait', { time: hhDurationStr, pct: lowestPct });
+    } else {
+      hnhGatingStr = t('pillGateHnHReady');
+    }
+
+    // 2. Debuff Gate
+    let debuffGatingStr = '';
+    const totalMs = (CONFIG.pillBuffH + CONFIG.pillDebuffH) * 3600000;
+    if (info.pillTakenAt > 0) {
+      const debuffEnd = info.pillTakenAt + totalMs;
+      if (now < debuffEnd) {
+        const debuffDurationStr = formatDuration(debuffEnd - now);
+        debuffGatingStr = t('pillGateDebuffWait', { time: debuffDurationStr });
       } else {
-        const lowestPct = Math.round(Math.min(status.hpPercent, status.hungerPercent));
-        const hpNeeded = status.hpMax - status.hpCurrent;
-        const hungerNeeded = status.hungerMax - status.hungerCurrent;
-        let hpTicks = 0;
-        let hungerTicks = 0;
-        if (hpNeeded > 0 && status.hpRegen > 0) {
-          hpTicks = Math.ceil(hpNeeded / status.hpRegen);
-        }
-        if (hungerNeeded > 0 && status.hungerRegen > 0) {
-          hungerTicks = Math.ceil(hungerNeeded / status.hungerRegen);
-        }
-        const totalTicks = Math.max(hpTicks, hungerTicks);
-        let timeStr = '';
-        if (totalTicks > 0) {
-          timeStr = formatDuration(status.nextTickMs + (totalTicks - 1) * 3600000);
-        }
-        const nextStr = formatDuration(status.nextTickMs);
-        gatingNote = t('pillDetailGatingTopUp', { pct: lowestPct, time: timeStr, next: nextStr });
+        debuffGatingStr = t('pillGateDebuffReady');
+      }
+    } else {
+      debuffGatingStr = t('pillGateNoAnchor');
+    }
+
+    // 3. Window Gate
+    let windowGatingStr = '';
+    if (CONFIG.pillPrefWindowFrom) {
+      if (isInsidePreferredWindow(now)) {
+        windowGatingStr = t('pillGateWindowReady', { time: CONFIG.pillPrefWindowFrom });
+      } else {
+        const windowStart = nextWindowStart(now);
+        const durationStr = formatDuration(windowStart - now);
+        windowGatingStr = t('pillGateWindowWait', { time: CONFIG.pillPrefWindowFrom, duration: durationStr });
       }
     }
 
@@ -4418,6 +4520,11 @@
       : '';
 
     const prefWindowStr = t('pillPreferredWindow', { from: CONFIG.pillPrefWindowFrom, to: CONFIG.pillPrefWindowTo });
+    const gatingHeaderStr = t('pillGatingHeader');
+
+    const isHnHReady = totalTicks === 0;
+    const isDebuffReady = info.pillTakenAt > 0 ? (now >= info.pillTakenAt + totalMs) : false;
+    const isWindowReady = CONFIG.pillPrefWindowFrom ? isInsidePreferredWindow(now) : true;
 
     badge.innerHTML = `
       <div class="wia-pill-badge-content">
@@ -4430,7 +4537,12 @@
         <div class="wia-pill-hover-details">
           ${nextStr}
           <div class="wia-pill-detail-item"><strong>${t('pillDetailPreferred')}:</strong> ${prefWindowStr}</div>
-          ${gatingNote ? `<div class="wia-pill-detail-item" style="color: ${status.both100 ? '#58a6ff' : '#ff7b72'}; font-weight: bold;">${gatingNote}</div>` : ''}
+          <div class="wia-pill-detail-item" style="border-top: 1px solid rgba(255,255,255,0.08); margin-top: 6px; padding-top: 6px;">
+            <div style="font-weight: bold; margin-bottom: 4px; color: #8b949e;">${gatingHeaderStr}:</div>
+            <div style="font-size: 90%; color: ${isHnHReady ? '#58a6ff' : '#ff7b72'};">${hnhGatingStr}</div>
+            <div style="font-size: 90%; color: ${isDebuffReady || info.pillTakenAt === 0 ? '#58a6ff' : '#ff7b72'};">${debuffGatingStr}</div>
+            ${windowGatingStr ? `<div style="font-size: 90%; color: ${isWindowReady ? '#58a6ff' : '#ff7b72'};">${windowGatingStr}</div>` : ''}
+          </div>
         </div>
       </div>
     `;
@@ -4448,7 +4560,26 @@
     }
 
     const info = getPillCycleInfo();
-    const isReady = info.phase === 'READY';
+    const status = parseHealthAndHunger();
+    const now = Date.now();
+
+    const pillTakenAt = GM_getValue(KEYS.pillTakenAt, 0);
+    const isHnHReady = status.both100;
+    const isWindowReady = CONFIG.pillPrefWindowFrom ? isInsidePreferredWindow(now) : true;
+
+    let isReady = false;
+    let isGated = false;
+
+    if (pillTakenAt > 0) {
+      isReady = info.phase === 'READY';
+      isGated = info.phase === 'GATED';
+    } else {
+      if (isHnHReady && isWindowReady) {
+        isReady = true;
+      } else {
+        isGated = true;
+      }
+    }
 
     const cocainImgs = document.querySelectorAll("img[alt='cocain']");
     cocainImgs.forEach(img => {
@@ -4459,14 +4590,19 @@
       card.removeAttribute('data-label');
 
       if (isReady) {
-        const status = parseHealthAndHunger();
-        if (status.both100) {
-          card.classList.add('wia-cocain-highlight');
-          card.setAttribute('data-label', t('pillTakeNowOverlay'));
-        } else {
-          card.classList.add('wia-cocain-gated-highlight');
-          card.setAttribute('data-label', t('pillTopUpOverlay'));
+        card.classList.add('wia-cocain-highlight');
+        card.setAttribute('data-label', t('pillOverlayReady'));
+      } else if (isGated) {
+        card.classList.add('wia-cocain-gated-highlight');
+        
+        let labelText = '';
+        if (!isHnHReady) {
+          const lowestPct = Math.round(Math.min(status.hpPercent, status.hungerPercent));
+          labelText = `H&H ${lowestPct}%`;
+        } else if (!isWindowReady) {
+          labelText = CONFIG.pillPrefWindowFrom;
         }
+        card.setAttribute('data-label', labelText);
       }
     });
   }
