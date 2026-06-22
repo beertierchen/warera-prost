@@ -918,7 +918,7 @@ try {
 
   const hpBudgetVal = hpTextContainer.querySelector('.wia-hnh-budget-label');
   assert.ok(hpBudgetVal, 'HP budget label should be appended');
-  assert.strictEqual(hpBudgetVal.textContent, '⬇ 39 free', 'HP spendable should be parsed as 39');
+  assert.strictEqual(hpBudgetVal.textContent, '100% · ⬇ 39 free', 'HP spendable should be parsed as 100% · ⬇ 39 free');
   
   const hpFree = hpTrack.querySelector('.wia-hnh-free-overlay');
   assert.ok(hpFree, 'HP free overlay should be created');
@@ -931,7 +931,7 @@ try {
 
   const hungerBudgetVal = hungerTextContainer.querySelector('.wia-hnh-budget-label');
   assert.ok(hungerBudgetVal, 'Hunger budget label should be appended');
-  assert.strictEqual(hungerBudgetVal.textContent, '⬇ 1.5 free', 'Hunger spendable should be parsed as 1.5');
+  assert.strictEqual(hungerBudgetVal.textContent, '100% · ⬇ 1.5 free', 'Hunger spendable should be parsed as 100% · ⬇ 1.5 free');
 
   const hungerFree = hungerTrack.querySelector('.wia-hnh-free-overlay');
   assert.ok(hungerFree, 'Hunger free overlay should be created');
@@ -940,7 +940,7 @@ try {
 
   hpText.textContent = '80/130';
   globalThis.renderHnHBudget();
-  assert.strictEqual(hpBudgetVal.textContent, '✕ 0 free', 'HP zero-budget should show stop glyph, not a down arrow');
+  assert.strictEqual(hpBudgetVal.textContent, '62% · ✕ 0 free', 'HP zero-budget should show stop glyph with percentage, not a down arrow');
   const hpMarkerNew = hpTrack.querySelector('.wia-hnh-floor-marker');
   assert.ok(hpMarkerNew, 'HP floor marker should be found after re-render');
   assert.ok(hpMarkerNew.classList.contains('wia-hnh-alert'), 'HP marker should have alert style when current is below floor');
@@ -951,7 +951,22 @@ try {
   const hpBudgetValEmpty = hpTextContainer.querySelector('.wia-hnh-budget-label');
   assert.strictEqual(hpBudgetValEmpty, null, 'HP budget label should be removed when no window is configured');
 
-  // Restore preferred window for subsequent cleanup testing
+  // Test BUFF phase behavior
+  globalThis.CONFIG.pillPrefWindowFrom = '15:05';
+  globalThis.GM_setValue('wia.pillTakenAt', now - 0.5 * 3600000); // 30 mins ago, in BUFF phase
+  hpText.textContent = '117/130'; // 90%
+  globalThis.renderHnHBudget();
+  const hpBudgetValBuff = hpTextContainer.querySelector('.wia-hnh-budget-label');
+  assert.ok(hpBudgetValBuff, 'HP budget label should be present during BUFF');
+  assert.strictEqual(hpBudgetValBuff.textContent, '90%', 'HP during BUFF should only show percent');
+  assert.strictEqual(hpBudgetValBuff.style.color, '', 'HP label during BUFF should have no inline color');
+  const hpFreeBuff = hpTrack.querySelector('.wia-hnh-free-overlay');
+  assert.strictEqual(hpFreeBuff, null, 'HP free overlay should not be created during BUFF');
+  const hpMarkerBuff = hpTrack.querySelector('.wia-hnh-floor-marker');
+  assert.strictEqual(hpMarkerBuff, null, 'HP floor marker should not be created during BUFF');
+
+  // Restore state for subsequent cleanup testing
+  globalThis.GM_setValue('wia.pillTakenAt', now - 20 * 3600000); // debuff phase again
   globalThis.CONFIG.pillPrefWindowFrom = '15:05';
   globalThis.renderHnHBudget();
 

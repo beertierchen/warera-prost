@@ -3916,7 +3916,7 @@
     return null;
   }
 
-  function applyBarBudget(bar, readoutEl, current, max, floorVal, spendable) {
+  function applyBarBudget(bar, readoutEl, current, max, floorVal, spendable, isBuff) {
     const { track, fill } = bar;
     if (!track) return;
 
@@ -3936,25 +3936,27 @@
     const barTop = fill ? `${fill.offsetTop}px` : '0';
     const barH = fill ? `${fill.offsetHeight}px` : '';
 
-    // 1. Free Overlay
-    if (currentPct > floorPct) {
-      const free = document.createElement('div');
-      free.className = 'wia-hnh-free-overlay';
-      free.style.left = `${floorPct}%`;
-      free.style.width = `${currentPct - floorPct}%`;
-      if (fill) { free.style.top = barTop; free.style.bottom = 'auto'; free.style.height = barH; }
-      track.appendChild(free);
-    }
+    if (!isBuff) {
+      // 1. Free Overlay
+      if (currentPct > floorPct) {
+        const free = document.createElement('div');
+        free.className = 'wia-hnh-free-overlay';
+        free.style.left = `${floorPct}%`;
+        free.style.width = `${currentPct - floorPct}%`;
+        if (fill) { free.style.top = barTop; free.style.bottom = 'auto'; free.style.height = barH; }
+        track.appendChild(free);
+      }
 
-    // 2. Floor Marker Line
-    const marker = document.createElement('div');
-    marker.className = 'wia-hnh-floor-marker';
-    if (floorVal >= current) {
-      marker.classList.add('wia-hnh-alert');
+      // 2. Floor Marker Line
+      const marker = document.createElement('div');
+      marker.className = 'wia-hnh-floor-marker';
+      if (floorVal >= current) {
+        marker.classList.add('wia-hnh-alert');
+      }
+      marker.style.left = `${Math.min(99.5, currentPct, floorPct)}%`;
+      if (fill) { marker.style.top = barTop; marker.style.bottom = 'auto'; marker.style.height = barH; }
+      track.appendChild(marker);
     }
-    marker.style.left = `${Math.min(99.5, currentPct, floorPct)}%`;
-    if (fill) { marker.style.top = barTop; marker.style.bottom = 'auto'; marker.style.height = barH; }
-    track.appendChild(marker);
 
     // 3. Text Readout Label
     let label = readoutEl.parentElement.querySelector('.wia-hnh-budget-label');
@@ -3969,13 +3971,21 @@
     label.style.fontWeight = 'bold';
     label.style.verticalAlign = 'middle';
     label.style.opacity = '0.8';
-    if (spendable === 0) {
-      label.textContent = t('pillSpendableNone');
-      label.style.color = '#ff7b72';
+
+    const pct = Math.round((current / max) * 100);
+
+    if (isBuff) {
+      label.textContent = `${pct}%`;
+      label.style.color = '';
     } else {
-      const valText = spendable % 1 === 0 ? spendable : spendable.toFixed(1);
-      label.textContent = t('pillSpendableFree', { val: valText });
-      label.style.color = '#3fb950';
+      if (spendable === 0) {
+        label.textContent = `${pct}% · ${t('pillSpendableNone')}`;
+        label.style.color = '#ff7b72';
+      } else {
+        const valText = spendable % 1 === 0 ? spendable : spendable.toFixed(1);
+        label.textContent = `${pct}% · ${t('pillSpendableFree', { val: valText })}`;
+        label.style.color = '#3fb950';
+      }
     }
   }
 
@@ -4010,13 +4020,15 @@
       ticks = 1 + Math.floor((msToWindow - status.nextTickMs) / 3600000);
     }
 
+    const isBuff = getPillCycleInfo().phase === 'BUFF';
+
     if (status.hpFound && status.hpEl) {
       const bar = getBarElements(status.hpEl);
       if (bar) {
         const regenAvail = ticks * status.hpRegen;
         const floorVal = Math.max(0, Math.min(status.hpMax, status.hpMax - regenAvail));
         const spendable = Math.max(0, status.hpCurrent - floorVal);
-        applyBarBudget(bar, status.hpEl, status.hpCurrent, status.hpMax, floorVal, spendable);
+        applyBarBudget(bar, status.hpEl, status.hpCurrent, status.hpMax, floorVal, spendable, isBuff);
       }
     }
 
@@ -4026,7 +4038,7 @@
         const regenAvail = ticks * status.hungerRegen;
         const floorVal = Math.max(0, Math.min(status.hungerMax, status.hungerMax - regenAvail));
         const spendable = Math.max(0, status.hungerCurrent - floorVal);
-        applyBarBudget(bar, status.hungerEl, status.hungerCurrent, status.hungerMax, floorVal, spendable);
+        applyBarBudget(bar, status.hungerEl, status.hungerCurrent, status.hungerMax, floorVal, spendable, isBuff);
       }
     }
   }
