@@ -3062,8 +3062,8 @@
         color: #f8fafc;
       }
       .wia-mkt-toggle-btn.wia-active {
-        background: #4ec9d4;
-        border-color: #4ec9d4;
+        background: #f97316;
+        border-color: #f97316;
         color: #020617;
       }
       .wia-mkt-legend {
@@ -3083,13 +3083,13 @@
         background-color: #A19638;
       }
       .wia-legend-dot.intraday {
-        background-color: #4ec9d4;
+        background-color: #f97316;
       }
       .wia-legend-text {
         margin-right: 6px;
       }
       .wia-mkt-point {
-        fill: #4ec9d4;
+        fill: #f97316;
         transition: r 0.15s ease, opacity 0.15s ease;
         opacity: 0.6;
         cursor: pointer;
@@ -3105,7 +3105,7 @@
         stroke-width: 2px;
         stroke-linecap: butt;
         stroke-linejoin: miter;
-        fill: #4ec9d4;
+        fill: #f97316;
         font-family: inherit;
         pointer-events: none;
       }
@@ -3120,7 +3120,7 @@
         display: none;
         z-index: 100002;
         background: rgba(15, 23, 42, 0.95);
-        border: 1px solid rgba(78, 201, 212, 0.4);
+        border: 1px solid rgba(249, 115, 22, 0.4);
         border-radius: 6px;
         padding: 6px 10px;
         color: #f8fafc;
@@ -5246,37 +5246,59 @@
       
       const tMax = now();
       const tMin = tMax - maxSpanMs;
-      const bucketDuration = range === '24h' ? 60 * 60 * 1000 : 3 * 60 * 60 * 1000;
-      const numBuckets = Math.ceil(maxSpanMs / bucketDuration);
-      
-      const buckets = Array.from({ length: numBuckets }, (_, i) => {
-        const bStart = tMin + i * bucketDuration;
-        const bEnd = bStart + bucketDuration;
-        return {
-          start: bStart,
-          end: bEnd,
-          sum: 0,
-          count: 0
-        };
-      });
+      const buckets = [];
+      let cur = tMax;
+
+      if (range === '24h') {
+        // Last 3 hours: 15-minute buckets (12 buckets)
+        const transitionTime = tMax - (3 * 60 * 60 * 1000);
+        while (cur > transitionTime) {
+          const next = cur - (15 * 60 * 1000);
+          buckets.push({ start: next, end: cur, sum: 0, count: 0 });
+          cur = next;
+        }
+        // Older: 1-hour buckets (21 buckets)
+        const minTime = tMax - (24 * 60 * 60 * 1000);
+        while (cur > minTime) {
+          const next = cur - (60 * 60 * 1000);
+          buckets.push({ start: next, end: cur, sum: 0, count: 0 });
+          cur = next;
+        }
+      } else {
+        // 3d Mode
+        // Last 12 hours: 1-hour buckets (12 buckets)
+        const transitionTime = tMax - (12 * 60 * 60 * 1000);
+        while (cur > transitionTime) {
+          const next = cur - (60 * 60 * 1000);
+          buckets.push({ start: next, end: cur, sum: 0, count: 0 });
+          cur = next;
+        }
+        // Older: 3-hour buckets (20 buckets)
+        const minTime = tMax - (72 * 60 * 60 * 1000);
+        while (cur > minTime) {
+          const next = cur - (3 * 60 * 60 * 1000);
+          buckets.push({ start: next, end: cur, sum: 0, count: 0 });
+          cur = next;
+        }
+      }
+      buckets.reverse();
       
       points.forEach(pt => {
         if (pt.t >= tMin && pt.t <= tMax) {
-          const bucketIdx = Math.floor((pt.t - tMin) / bucketDuration);
-          if (bucketIdx >= 0 && bucketIdx < numBuckets) {
-            buckets[bucketIdx].sum += pt.price;
-            buckets[bucketIdx].count += 1;
+          const bucket = buckets.find(b => pt.t >= b.start && pt.t <= b.end);
+          if (bucket) {
+            bucket.sum += pt.price;
+            bucket.count += 1;
           }
         }
       });
       
       const plottedPoints = buckets
-        .map((b, idx) => {
+        .map((b) => {
           if (b.count > 0) {
             return {
               t: (b.start + b.end) / 2,
-              price: b.sum / b.count,
-              index: idx
+              price: b.sum / b.count
             };
           }
           return null;
@@ -5304,7 +5326,7 @@
       }
       
       const getX = (pt) => {
-        const pctX = pt.index / (numBuckets - 1 || 1);
+        const pctX = (pt.t - tMin) / maxSpanMs;
         return pctX * W;
       };
       
@@ -5313,43 +5335,51 @@
         return H - pctY * H;
       };
       
-      let pathD = '';
-      plottedPoints.forEach((pt, i) => {
-        const x = getX(pt);
-        const y = getY(pt.price);
-        if (i === 0) {
-          pathD = `M ${x.toFixed(2)} ${y.toFixed(2)}`;
-        } else {
-          pathD += ` L ${x.toFixed(2)} ${y.toFixed(2)}`;
-        }
-      });
-      
       suspendModalObserver();
       try {
-        const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        pathEl.setAttribute('d', pathD);
-        pathEl.setAttribute('fill', 'none');
-        pathEl.setAttribute('stroke', '#4ec9d4');
-        pathEl.setAttribute('class', 'wia-mkt-line');
+        const threshold = range === '24h' ? 3 * 60 * 60 * 1000 : 10 * 60 * 60 * 1000;
         
-        const nativePath = svg.querySelector('g[transform="translate(4,6)"] path[stroke="#A19638"]');
-        if (nativePath) {
-          const strokeWidth = nativePath.getAttribute('stroke-width') || '2';
-          const strokeLinecap = nativePath.getAttribute('stroke-linecap') || 'round';
-          const strokeLinejoin = nativePath.getAttribute('stroke-linejoin') || 'round';
-          const filterVal = nativePath.getAttribute('filter');
+        for (let i = 0; i < plottedPoints.length - 1; i++) {
+          const ptA = plottedPoints[i];
+          const ptB = plottedPoints[i+1];
+          const xA = getX(ptA);
+          const yA = getY(ptA.price);
+          const xB = getX(ptB);
+          const yB = getY(ptB.price);
           
-          pathEl.setAttribute('stroke-width', strokeWidth);
-          pathEl.setAttribute('stroke-linecap', strokeLinecap);
-          pathEl.setAttribute('stroke-linejoin', strokeLinejoin);
-          if (filterVal) pathEl.setAttribute('filter', filterVal);
-        } else {
-          pathEl.setAttribute('stroke-width', '2');
-          pathEl.setAttribute('stroke-linecap', 'round');
-          pathEl.setAttribute('stroke-linejoin', 'round');
+          const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+          pathEl.setAttribute('d', `M ${xA.toFixed(2)} ${yA.toFixed(2)} L ${xB.toFixed(2)} ${yB.toFixed(2)}`);
+          pathEl.setAttribute('fill', 'none');
+          pathEl.setAttribute('stroke', '#f97316');
+          pathEl.setAttribute('class', 'wia-mkt-line');
+          
+          const isGap = (ptB.t - ptA.t) > threshold;
+          if (isGap) {
+            pathEl.setAttribute('stroke-dasharray', '4 4');
+            pathEl.setAttribute('opacity', '0.4');
+          } else {
+            pathEl.setAttribute('opacity', '1');
+          }
+          
+          const nativePath = svg.querySelector('g[transform="translate(4,6)"] path[stroke="#A19638"]');
+          if (nativePath) {
+            const strokeWidth = nativePath.getAttribute('stroke-width') || '2';
+            const strokeLinecap = nativePath.getAttribute('stroke-linecap') || 'round';
+            const strokeLinejoin = nativePath.getAttribute('stroke-linejoin') || 'round';
+            const filterVal = nativePath.getAttribute('filter');
+            
+            pathEl.setAttribute('stroke-width', strokeWidth);
+            pathEl.setAttribute('stroke-linecap', strokeLinecap);
+            pathEl.setAttribute('stroke-linejoin', strokeLinejoin);
+            if (filterVal) pathEl.setAttribute('filter', filterVal);
+          } else {
+            pathEl.setAttribute('stroke-width', '2');
+            pathEl.setAttribute('stroke-linecap', 'round');
+            pathEl.setAttribute('stroke-linejoin', 'round');
+          }
+          
+          overlayG.appendChild(pathEl);
         }
-        
-        overlayG.appendChild(pathEl);
         
         plottedPoints.forEach(pt => {
           const cx = getX(pt);
@@ -5363,7 +5393,7 @@
           
           circle.onmouseenter = (e) => {
             const tooltip = getOrCreateTooltip();
-            tooltip.innerHTML = `${formatHoverTime(pt.t, range)} · <span style="color: #4ec9d4;">${t('marketGraphHoverPrice', { price: fmt(pt.price) })}</span>`;
+            tooltip.innerHTML = `${formatHoverTime(pt.t, range)} · <span style="color: #f97316;">${t('marketGraphHoverPrice', { price: fmt(pt.price) })}</span>`;
             tooltip.style.display = 'block';
           };
           circle.onmousemove = (e) => {
