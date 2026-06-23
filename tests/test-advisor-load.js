@@ -42,6 +42,10 @@ class MockElement {
     this.offsetHeight = 50;
   }
 
+  get childNodes() {
+    return this.children;
+  }
+
   get className() {
     return this._className;
   }
@@ -239,6 +243,9 @@ class MockElement {
     if (tag && this.tagName !== tag) return false;
     if (!rest) return true;
 
+    if (rest.startsWith('#')) {
+      return this.getAttribute('id') === rest.slice(1);
+    }
     if (rest.startsWith('.')) {
       return this.classList.contains(rest.slice(1));
     }
@@ -332,6 +339,12 @@ global.document = {
   addEventListener: () => {},
   removeEventListener: () => {},
   createElement: (tag) => new MockElement(tag),
+  createTextNode: (text) => {
+    const el = new MockElement('span');
+    el.nodeType = 3;
+    el.textContent = text;
+    return el;
+  },
   body: documentBody,
   querySelectorAll: (selector) => documentBody.querySelectorAll(selector),
   querySelector: (selector) => {
@@ -626,16 +639,18 @@ try {
   assert.ok(modalEl, 'Settings modal should be rendered');
 
   const hintBtns = bg.querySelectorAll('.wia-hint-toggle');
-  assert.strictEqual(hintBtns.length, 6, 'Should have exactly 6 hint toggle buttons (Notes, Battle, Live Offers, Scrap Flip, Pill Reminder, Market Graph)');
+  assert.strictEqual(hintBtns.length, 7, 'Should have exactly 7 hint toggle buttons (Notes, Battle, Live Offers, Scrap Flip, Pill Reminder, Market Graph, P&L Tracker)');
 
   const liveOffersCheckbox = bg.querySelector('.wia-live-offers');
   const scrapFlipCheckbox = bg.querySelector('.wia-scrap-flip');
   const featPillCheckbox = bg.querySelector('.wia-feat-pill');
   const featMarketGraphCheckbox = bg.querySelector('.wia-feat-market-graph');
+  const featPnlTrackerCheckbox = bg.querySelector('.wia-feat-pnl-tracker');
   assert.ok(liveOffersCheckbox, 'Live offers checkbox should be present');
   assert.ok(scrapFlipCheckbox, 'Scrap flip checkbox should be present');
   assert.ok(featPillCheckbox, 'Pill reminder checkbox should be present');
   assert.ok(featMarketGraphCheckbox, 'Market graph checkbox should be present');
+  assert.ok(featPnlTrackerCheckbox, 'P&L Tracker checkbox should be present');
 
   const highCritCheckbox = bg.querySelector('.wia-high-crit');
   assert.strictEqual(highCritCheckbox, null, 'High crit checkbox should be removed');
@@ -1264,6 +1279,75 @@ try {
   // Restore fetchPrices
   globalThis.fetchPrices = originalFetchPrices;
   console.log('scanInventory provisional rendering tests passed successfully.');
+
+  console.log('--- Testing Daily P&L Tracker: Phase 1 ---');
+  
+  // Clean storage mock
+  globalThis.clearCache();
+  globalThis.CONFIG.featPnlTracker = true;
+  globalThis.GM_setValue('wia.pnl.ledger', null);
+  globalThis.GM_setValue('wia.pnl.yesterday', null);
+  globalThis.GM_setValue('wia.pnl.snapshots', null);
+  
+  // 1. Day key calculations
+  const timeA = new Date(2026, 5, 24, 1, 0, 0).getTime();
+  const dayKeyA = globalThis.getPnlDayKey(timeA);
+  assert.strictEqual(dayKeyA, '2026-06-23', 'PnL day key at 01:00 AM should belong to previous day');
+  
+  const timeB = new Date(2026, 5, 24, 3, 0, 0).getTime();
+  const dayKeyB = globalThis.getPnlDayKey(timeB);
+  assert.strictEqual(dayKeyB, '2026-06-24', 'PnL day key at 03:00 AM should belong to current day');
+  
+  // 2. Gold Balance parsing test
+  const testMenu = new MockElement('div');
+  testMenu.setAttribute('id', 'layoutUserMenu');
+  const goldContainer = new MockElement('div');
+  const goldIcon = new MockElement('img');
+  goldIcon.setAttribute('src', '/images/items/gold.png');
+  goldIcon.setAttribute('alt', 'gold');
+  goldContainer.appendChild(goldIcon);
+  goldContainer.appendChild(global.document.createTextNode(' 108.517 '));
+  testMenu.appendChild(goldContainer);
+  
+  // Temporarily replace documentBody children or querySelector to point to our test menu
+  const oldBodyQuerySelector = global.document.querySelector;
+  const oldBodyGetElementById = global.document.getElementById;
+  global.document.getElementById = (id) => id === 'layoutUserMenu' ? testMenu : null;
+  global.document.querySelector = (sel) => {
+    if (sel === '#layoutUserMenu') return testMenu;
+    return testMenu.querySelector(sel);
+  };
+  
+  const goldParsed = globalThis.getGoldBalance();
+  assert.strictEqual(goldParsed, 108.517, 'Parsed gold balance should be 108.517');
+  
+  // 3. Reset and ledger initialization
+  const initialLedger = globalThis.checkPnlDayReset();
+  assert.ok(initialLedger, 'Ledger should be initialized');
+  assert.strictEqual(initialLedger.dayKey, globalThis.getPnlDayKey(), 'Ledger dayKey should match current day key');
+  
+  const snap = globalThis.GM_getValue('wia.pnl.snapshots');
+  assert.ok(snap, 'Snapshots should be saved');
+  assert.strictEqual(snap.gold_start, 108.517, 'Snapshot gold_start should be captured');
+  
+  // Test UI injection
+  globalThis.updatePnlUi();
+  const trackerBadge = testMenu.querySelector('#wia-pnl-tracker');
+  assert.ok(trackerBadge, 'P&L tracker badge should be injected');
+  
+  // If we change gold balance, UI update should show delta
+  goldContainer.children = [];
+  goldContainer.appendChild(goldIcon);
+  goldContainer.appendChild(global.document.createTextNode(' 110.117 ')); // +1.600 gold
+  
+  globalThis.updatePnlUi();
+  assert.strictEqual(trackerBadge.textContent.includes('▲ +1.600'), true, 'P&L tracker UI should display +1.600 Gold delta');
+  
+  // Restore document mock functions
+  global.document.querySelector = oldBodyQuerySelector;
+  global.document.getElementById = oldBodyGetElementById;
+  
+  console.log('Daily P&L Tracker Phase 1 tests passed successfully.');
 
   console.log('Success! The script loaded and initialized without throwing any runtime errors.');
   process.exit(0);

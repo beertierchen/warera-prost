@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         PROST
+// @name         TEST PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.7.7
+// @version      0.7.8-unstable
 // @description  PROST — Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -61,6 +61,7 @@
     featBattleAdvisor: false,            // experimental: highlight ally button on /battle/<id> pages
     alliedCountryCodes: ['de','pt','es','gm','ir','na','sr','th','at','fi','ie','no','se','uk','va','bf','cd','ye','ne','au','br','id'],
     featMarketGraph: false,
+    featPnlTracker: true,
 
     // --- caching / rate-limit ---
     priceCacheTtlMs: 20 * 60 * 1000,    // 20 min (spec: 15-30 min)
@@ -406,7 +407,9 @@
         marketGraphLegendIntraday: 'Intraday',
         marketGraphHoverPrice: '☉ {price}',
         settingsFeatMarketGraphCheckbox: 'Resource Market Intraday Graph 💹',
-        settingsFeatMarketGraphHint: 'Overlay an intraday (24h/3d) price graph on resource market buy/sell modals.'
+        settingsFeatMarketGraphHint: 'Overlay an intraday (24h/3d) price graph on resource market buy/sell modals.',
+        settingsFeatPnlTrackerCheckbox: 'Daily P&L Tracker 📊',
+        settingsFeatPnlTrackerHint: 'Display your daily profit/loss tracker in the topbar next to your gold balance.'
       },
       de: {
         never: 'nie',
@@ -591,7 +594,9 @@
         marketGraphLegendIntraday: 'Intraday',
         marketGraphHoverPrice: '☉ {price}',
         settingsFeatMarketGraphCheckbox: 'Ressourcen-Markt Intraday-Grafik 💹',
-        settingsFeatMarketGraphHint: 'Blendet einen Intraday-Preisverlauf (24h/3d) im Kauf-/Verkaufs-Modal von Ressourcen ein.'
+        settingsFeatMarketGraphHint: 'Blendet einen Intraday-Preisverlauf (24h/3d) im Kauf-/Verkaufs-Modal von Ressourcen ein.',
+        settingsFeatPnlTrackerCheckbox: 'Täglicher P&L Tracker 📊',
+        settingsFeatPnlTrackerHint: 'Zeigt deinen täglichen Gewinn/Verlust Tracker in der Topbar neben deinem Goldstand an.'
       }
     },
 
@@ -631,6 +636,11 @@
     priceSeries: NS + 'priceSeries',
     resourceTransactionsCache: NS + 'resTxsCache',
     persistedAdvice: NS + 'persistedAdvice',
+    featPnlTracker: NS + 'featPnlTracker',
+    pnlLedger: NS + 'pnl.ledger',
+    pnlYesterday: NS + 'pnl.yesterday',
+    pnlCostBasis: NS + 'pnl.costBasis',
+    pnlSnapshots: NS + 'pnl.snapshots',
   };
 
   const memoryCache = {};
@@ -641,7 +651,7 @@
     }
     const val = GM_getValue(key, null);
     let defaultVal = {};
-    if (key === KEYS.priceCache) {
+    if (key === KEYS.priceCache || key === KEYS.pnlLedger || key === KEYS.pnlYesterday || key === KEYS.pnlCostBasis || key === KEYS.pnlSnapshots) {
       defaultVal = null;
     }
     const valWithDefault = (val === undefined || val === null) ? defaultVal : val;
@@ -698,6 +708,10 @@
     writeCache(KEYS.transactionsCache, {});
     writeCache(KEYS.scrapedPrices, {});
     writeCache(KEYS.persistedAdvice, {});
+    writeCache(KEYS.pnlLedger, null);
+    writeCache(KEYS.pnlYesterday, null);
+    writeCache(KEYS.pnlCostBasis, null);
+    writeCache(KEYS.pnlSnapshots, null);
     GM_setValue(KEYS.scrapCache, null);
     GM_setValue(KEYS.resourceTransactionsCache, {});
     GM_setValue(KEYS.priceSeries, {});
@@ -1417,6 +1431,11 @@
     globalThis.getNativeSvgFingerprint = getNativeSvgFingerprint;
     globalThis.scanInventory = scanInventory;
     globalThis.fetchPrices = fetchPrices;
+    globalThis.getPnlDayKey = getPnlDayKey;
+    globalThis.getGoldBalance = getGoldBalance;
+    globalThis.checkPnlDayReset = checkPnlDayReset;
+    globalThis.updatePnlUi = updatePnlUi;
+    globalThis.clearCache = clearCache;
   }
 
   function getLocale() {
@@ -3430,6 +3449,43 @@
         font-family: system-ui, -apple-system, sans-serif;
         white-space: nowrap;
       }
+      
+      /* ── Daily P&L Tracker styles ── */
+      .wia-pnl-tracker {
+        display: inline-flex; align-items: center; justify-content: center;
+        position: relative; margin: 0 4px;
+        font: 600 13px/1 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        border-radius: 999px; padding: 5px 12px; cursor: pointer; user-select: none;
+        z-index: 10000; min-height: 28px; box-sizing: border-box;
+        color: #e8eef5;
+        background: rgba(13, 17, 23, 0.55);
+        border: 1px solid rgba(255, 255, 255, 0.10);
+        box-shadow: 0 1px 3px rgba(0, 0, 0, .4);
+        text-shadow: 0 1px 1px rgba(0, 0, 0, .6);
+      }
+      .wia-pnl-tracker.is-positive {
+        border-color: rgba(63, 185, 80, .55);
+        color: #3fb950;
+      }
+      .wia-pnl-tracker.is-negative {
+        border-color: rgba(248, 81, 73, .55);
+        color: #f85149;
+      }
+      .wia-pnl-tracker.is-neutral {
+        border-color: rgba(139, 148, 158, .50);
+        color: #8b949e;
+      }
+      .wia-pnl-hover {
+        display: none; position: absolute; top: 100%; right: 0; margin-top: 8px;
+        width: 280px; background: rgba(13, 17, 23, .96);
+        border: 1px solid rgba(255, 255, 255, .12);
+        border-radius: 10px; padding: 14px; box-shadow: 0 8px 24px rgba(0, 0, 0, .55);
+        color: #c9d1d9; font-weight: normal; text-align: left; font-size: 11px;
+        text-shadow: none; z-index: 10001; line-height: 1.45;
+      }
+      .wia-pnl-tracker:hover .wia-pnl-hover {
+        display: block;
+      }
     `);
   }
 
@@ -3499,6 +3555,7 @@
     const prevAlliedCodes = bg.querySelector('.wia-allied-codes')?.value ?? CONFIG.alliedCountryCodes.join(',');
     const prevFeatPill = bg.querySelector('.wia-feat-pill')?.checked ?? CONFIG.featPillReminder;
     const prevFeatMarketGraph = bg.querySelector('.wia-feat-market-graph')?.checked ?? CONFIG.featMarketGraph;
+    const prevFeatPnlTracker = bg.querySelector('.wia-feat-pnl-tracker')?.checked ?? CONFIG.featPnlTracker;
     const prevPillBuff = bg.querySelector('.wia-pill-buff')?.value ?? CONFIG.pillBuffH;
     const prevPillKnife = bg.querySelector('.wia-pill-knife')?.value ?? CONFIG.pillKnifeH;
     const prevPillDebuff = bg.querySelector('.wia-pill-debuff')?.value ?? CONFIG.pillDebuffH;
@@ -3606,6 +3663,14 @@
             <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
           </div>
           <div class="wia-hint" hidden>${t('settingsFeatMarketGraphHint')}</div>
+        </div>
+        <div class="wia-feat-row" style="margin-top: 6px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <input type="checkbox" class="wia-feat-pnl-tracker" style="width: auto;" ${prevFeatPnlTracker ? 'checked' : ''} />
+            <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatPnlTrackerCheckbox')}</label>
+            <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
+          </div>
+          <div class="wia-hint" hidden>${t('settingsFeatPnlTrackerHint')}</div>
         </div>
         <button type="button" class="wia-help-toggle" aria-expanded="false">${t('settingsHelpSummary')}</button>
         <aside class="wia-help-panel" hidden>
@@ -3757,6 +3822,11 @@
       GM_setValue(KEYS.featMarketGraph, featMarketGraph);
       CONFIG.featMarketGraph = featMarketGraph;
       if (featMarketGraph) { initMarketGraph(); } else { teardownMarketGraph(); }
+
+      const featPnlTracker = bg.querySelector('.wia-feat-pnl-tracker').checked;
+      GM_setValue(KEYS.featPnlTracker, featPnlTracker);
+      CONFIG.featPnlTracker = featPnlTracker;
+      if (featPnlTracker) { initPnlTracker(); } else { teardownPnlTracker(); }
 
       if (tokenChanged) {
         clearCache();
@@ -3986,6 +4056,10 @@
     
     if (CONFIG.featPillReminder) {
       setTimeout(tickPillReminder, 50);
+    }
+
+    if (CONFIG.featPnlTracker) {
+      setTimeout(updatePnlUi, 50);
     }
   }
 
@@ -6491,6 +6565,205 @@
     panel.innerHTML = html;
   }
 
+  // ───────────────────────────────────────────────────────────────────────────
+  // Daily P&L Tracker module
+  // ───────────────────────────────────────────────────────────────────────────
+  let pnlInterval = null;
+
+  function getPnlDayKey(time = Date.now()) {
+    const adjustedTime = time - (2 * 60 * 60 * 1000); // 02:00 local time offset
+    const d = new Date(adjustedTime);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  function createEmptyLedger(dayKey) {
+    return {
+      dayKey,
+      startedAt: Date.now(),
+      income: {},
+      expense: {},
+      total: 0
+    };
+  }
+
+  function getGoldBalance() {
+    const menu = document.getElementById('layoutUserMenu');
+    if (!menu) return null;
+    const goldImg = menu.querySelector('img[src*="gold"], img[alt*="gold"]');
+    if (!goldImg) return null;
+    const parent = goldImg.parentElement;
+    if (!parent) return null;
+    const text = parent.textContent.trim();
+    const match = text.match(/([0-9]+[.,]?[0-9]*)/);
+    if (match) {
+      return parseFloat(match[1].replace(',', '.'));
+    }
+    return null;
+  }
+
+  function checkPnlDayReset() {
+    const currentDayKey = getPnlDayKey();
+    let ledger = readCache(KEYS.pnlLedger);
+    if (!ledger || ledger.dayKey !== currentDayKey) {
+      log(`PnL: Day reset detected (old day=${ledger ? ledger.dayKey : 'none'}, new day=${currentDayKey})`);
+      if (ledger) {
+        writeCache(KEYS.pnlYesterday, ledger);
+      }
+      ledger = createEmptyLedger(currentDayKey);
+      writeCache(KEYS.pnlLedger, ledger);
+      
+      const goldVal = getGoldBalance();
+      const snapshots = {
+        gold_start: goldVal !== null ? goldVal : 0,
+        durability_start: {},
+        invQty_start: {}
+      };
+      writeCache(KEYS.pnlSnapshots, snapshots);
+    }
+    return ledger;
+  }
+
+  function safeWritePnlUi(fn) {
+    if (pillBarObserver) {
+      pillBarObserver.disconnect();
+    }
+    try {
+      fn();
+    } finally {
+      if (pillBarObserver) {
+        const m = document.getElementById('layoutUserMenu');
+        if (m) {
+          pillBarObserver.takeRecords();
+          pillBarObserver.observe(m, PILL_OBS_OPTS);
+        }
+      }
+    }
+  }
+
+  function updatePnlUi() {
+    if (!CONFIG.featPnlTracker) {
+      teardownPnlUi();
+      return;
+    }
+    
+    const menu = document.getElementById('layoutUserMenu');
+    if (!menu) return;
+    
+    const goldImg = menu.querySelector('img[src*="gold"], img[alt*="gold"]');
+    if (!goldImg) return;
+    
+    const goldContainer = goldImg.parentElement;
+    if (!goldContainer) return;
+    
+    let pnlBadge = menu.querySelector('#wia-pnl-tracker');
+    if (!pnlBadge) {
+      pnlBadge = document.createElement('div');
+      pnlBadge.id = 'wia-pnl-tracker';
+      pnlBadge.className = 'wia-pnl-tracker';
+      
+      const hoverEl = document.createElement('div');
+      hoverEl.className = 'wia-pnl-hover';
+      pnlBadge.appendChild(hoverEl);
+      
+      safeWritePnlUi(() => {
+        goldContainer.insertAdjacentElement('afterend', pnlBadge);
+      });
+    }
+    
+    checkPnlDayReset();
+    const ledger = readCache(KEYS.pnlLedger);
+    const yesterday = readCache(KEYS.pnlYesterday);
+    const snapshots = readCache(KEYS.pnlSnapshots);
+    
+    const currentGold = getGoldBalance();
+    let total = 0;
+    if (currentGold !== null && snapshots && snapshots.gold_start !== undefined) {
+      total = currentGold - snapshots.gold_start;
+    }
+    
+    const sign = total > 0.0001 ? '▲ +' : total < -0.0001 ? '▼ -' : '• ';
+    const valStr = Math.abs(total).toFixed(3);
+    const signClass = total > 0.0001 ? 'is-positive' : total < -0.0001 ? 'is-negative' : 'is-neutral';
+    
+    safeWritePnlUi(() => {
+      pnlBadge.className = 'wia-pnl-tracker ' + signClass;
+      
+      let textNode = null;
+      for (const node of pnlBadge.childNodes) {
+        if (node.nodeType === 3) {
+          textNode = node;
+          break;
+        }
+      }
+      const label = `${sign}${valStr}`;
+      if (textNode) {
+        textNode.textContent = label;
+      } else {
+        pnlBadge.appendChild(document.createTextNode(label));
+      }
+      
+      const hoverEl = pnlBadge.querySelector('.wia-pnl-hover');
+      if (hoverEl) {
+        const yesterdayTotal = yesterday ? yesterday.total : 0;
+        const yesterdaySign = yesterdayTotal > 0.0001 ? '+' : yesterdayTotal < -0.0001 ? '-' : '';
+        const yesterdayStr = `${yesterdaySign}${Math.abs(yesterdayTotal).toFixed(3)}`;
+        
+        let html = `<div style="font-weight: bold; font-size: 12px; margin-bottom: 8px; color: #58a6ff; display: flex; justify-content: space-between;">`;
+        html += `<span>📊 Daily P&L Tracker</span>`;
+        html += `<span style="font-size: 10px; color: #8b949e;">Reset 02:00</span>`;
+        html += `</div>`;
+        html += `<div style="margin-bottom: 6px; display: flex; justify-content: space-between;">`;
+        html += `<span>Today:</span>`;
+        html += `<span style="font-weight: bold; color: ${total > 0.0001 ? '#3fb950' : total < -0.0001 ? '#f85149' : '#8b949e'}">${total > 0.0001 ? '+' : ''}${total.toFixed(3)} Gold</span>`;
+        html += `</div>`;
+        html += `<div style="margin-bottom: 6px; display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 6px;">`;
+        html += `<span>Yesterday:</span>`;
+        html += `<span style="font-weight: bold; color: ${yesterdayTotal > 0.0001 ? '#3fb950' : yesterdayTotal < -0.0001 ? '#f85149' : '#8b949e'}">${yesterdayStr} Gold</span>`;
+        html += `</div>`;
+        html += `<div style="font-size: 10px; color: #8b949e; font-style: italic; white-space: normal; line-height: 1.3;">`;
+        html += `Accrual tracking active. Today's total is calculated as current Gold minus day-start Gold (${snapshots ? snapshots.gold_start.toFixed(3) : '0.000'} Gold).`;
+        html += `</div>`;
+        
+        hoverEl.innerHTML = html;
+      }
+    });
+  }
+
+  function teardownPnlUi() {
+    const badge = document.getElementById('wia-pnl-tracker');
+    if (badge) {
+      safeWritePnlUi(() => {
+        badge.remove();
+      });
+    }
+  }
+
+  function initPnlTracker() {
+    if (!CONFIG.featPnlTracker) {
+      teardownPnlTracker();
+      return;
+    }
+    
+    checkPnlDayReset();
+    updatePnlUi();
+    
+    if (pnlInterval) clearInterval(pnlInterval);
+    pnlInterval = setInterval(() => {
+      if (CONFIG.featPnlTracker) {
+        checkPnlDayReset();
+        updatePnlUi();
+      }
+    }, 10000);
+  }
+
+  function teardownPnlTracker() {
+    if (pnlInterval) {
+      clearInterval(pnlInterval);
+      pnlInterval = null;
+    }
+    teardownPnlUi();
+  }
+
   function start() {
     migrateTransactionsCache();
     CONFIG.locale = GM_getValue(KEYS.locale, CONFIG.locale || 'de') || 'de';
@@ -6504,6 +6777,7 @@
     CONFIG.alliedCountryCodes = GM_getValue(KEYS.alliedCountryCodes, CONFIG.alliedCountryCodes);
     CONFIG.featPillReminder = GM_getValue(KEYS.featPillReminder, false);
     CONFIG.featMarketGraph = GM_getValue(KEYS.featMarketGraph, false);
+    CONFIG.featPnlTracker = GM_getValue(KEYS.featPnlTracker, true);
     CONFIG.pillBuffH = GM_getValue(KEYS.pillBuffH, CONFIG.pillBuffH);
     CONFIG.pillKnifeH = GM_getValue(KEYS.pillKnifeH, CONFIG.pillKnifeH);
     CONFIG.pillDebuffH = GM_getValue(KEYS.pillDebuffH, CONFIG.pillDebuffH);
@@ -6514,6 +6788,7 @@
     if (CONFIG.featBattleAdvisor && isBattlePage()) applyBattleAdvisory();
     if (CONFIG.featPillReminder) initPillReminder();
     if (CONFIG.featMarketGraph) initMarketGraph();
+    if (CONFIG.featPnlTracker) initPnlTracker();
     injectGear();
     refreshMenuCommands();
 
