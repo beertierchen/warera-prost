@@ -4955,6 +4955,15 @@
           GM_setValue(KEYS.priceSeries, store);
           GM_setValue(NS + 'lastSampleTime', nowMs);
           log('Price series sampler successfully updated.');
+          
+          const found = findMarketGraph();
+          if (found) {
+            const code = getModalResourceCode(found.modal);
+            if (code && prices[code] != null) {
+              lastMktState = null;
+              checkAndRenderGraph(found);
+            }
+          }
         }
       }
     } catch (e) {
@@ -5090,20 +5099,24 @@
     }
   }
 
-  let modalObserverSuspended = false;
+  let modalObserverDepth = 0;
 
   function suspendModalObserver() {
     if (modalObserver) {
-      modalObserver.disconnect();
-      modalObserverSuspended = true;
+      if (modalObserverDepth === 0) {
+        modalObserver.disconnect();
+      }
+      modalObserverDepth++;
     }
   }
 
   function resumeModalObserver(modal) {
-    if (modalObserverSuspended && modalObserver && modal) {
-      modalObserver.takeRecords();
-      modalObserver.observe(modal, { childList: true, subtree: true });
-      modalObserverSuspended = false;
+    if (modalObserver && modal) {
+      modalObserverDepth = Math.max(0, modalObserverDepth - 1);
+      if (modalObserverDepth === 0) {
+        modalObserver.takeRecords();
+        modalObserver.observe(modal, { childList: true, subtree: true });
+      }
     }
   }
 
@@ -5253,9 +5266,7 @@
           warnText.textContent = getLocale() === 'de' ? 'Intraday-Daten spärlich (lade...)' : 'Intraday data sparse (loading...)';
           
           overlayG.appendChild(warnText);
-          
-          const fingerprint = getNativeSvgFingerprint(freshSvg);
-          lastMktState = `${code}-${range}-${fingerprint}`;
+          lastMktState = null;
           return;
         }
       } finally {
@@ -5321,8 +5332,7 @@
         .filter(Boolean);
         
       if (plottedPoints.length === 0) {
-        const fingerprint = getNativeSvgFingerprint(freshSvg);
-        lastMktState = `${code}-${range}-${fingerprint}`;
+        lastMktState = null;
         return;
       }
       
