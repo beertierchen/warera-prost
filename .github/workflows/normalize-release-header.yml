@@ -1,0 +1,56 @@
+name: Normalize release header
+
+# When something lands on main, make the userscript header GreasyFork-safe:
+#   - force @name to "PROST" (dev branches may carry "TEST PROST")
+#   - strip any prerelease suffix from @version (e.g. 0.7.8-unstable -> 0.7.8)
+# GreasyFork auto-imports main's raw and refuses syncs that change @name or carry
+# a prerelease version, so this guarantees released versions stay importable.
+#
+# Note: this can ONLY clean what reaches main — it cannot push for you. Release by
+# merging the PR on GitHub (server-side push to main) so this runs automatically.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'warera-prost.user.js'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: normalize-release-header
+  cancel-in-progress: false
+
+jobs:
+  normalize:
+    # Skip the bot's own normalization commit to avoid an infinite loop.
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Normalize @name and @version
+        id: norm
+        run: |
+          f=warera-prost.user.js
+          # Force @name to PROST (the [[:space:]]+ after @name won't match @namespace).
+          sed -i -E 's|^(// @name[[:space:]]+).*$|\1PROST|' "$f"
+          # Strip a prerelease suffix from a semver @version: 0.7.8-unstable -> 0.7.8
+          sed -i -E 's|^(// @version[[:space:]]+[0-9]+\.[0-9]+\.[0-9]+)-[0-9A-Za-z.]+[[:space:]]*$|\1|' "$f"
+          if git diff --quiet -- "$f"; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Normalized header:"; grep -E '^// @(name|version)' "$f"
+          fi
+
+      - name: Commit normalized header
+        if: steps.norm.outputs.changed == 'true'
+        run: |
+          git config user.name "beertierchen"
+          git config user.email "271843730+beertierchen@users.noreply.github.com"
+          git commit -am "chore: normalize release header (PROST, strip prerelease) [skip ci]"
+          git push
