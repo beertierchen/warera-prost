@@ -3467,36 +3467,44 @@
       
       /* ── Daily P&L Tracker styles ── */
       .wia-pnl-tracker {
-        display: inline-flex; align-items: center; justify-content: center;
+        display: inline-flex; flex-direction: column; align-items: center; justify-content: center;
         position: relative; margin: 0 4px;
-        font: 600 13px/1 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        border-radius: 999px; padding: 5px 12px; cursor: pointer; user-select: none;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        border-radius: 6px; padding: 2px 8px; cursor: pointer; user-select: none;
         z-index: 10000; min-height: 28px; box-sizing: border-box;
-        color: #e8eef5;
         background: rgba(13, 17, 23, 0.55);
         border: 1px solid rgba(255, 255, 255, 0.10);
         box-shadow: 0 1px 3px rgba(0, 0, 0, .4);
-        text-shadow: 0 1px 1px rgba(0, 0, 0, .6);
+        line-height: 1.15;
+        pointer-events: auto;
       }
       .wia-pnl-tracker.is-positive {
         border-color: rgba(63, 185, 80, .55);
-        color: #3fb950;
       }
       .wia-pnl-tracker.is-negative {
         border-color: rgba(248, 81, 73, .55);
-        color: #f85149;
       }
       .wia-pnl-tracker.is-neutral {
         border-color: rgba(139, 148, 158, .50);
-        color: #8b949e;
       }
       .wia-pnl-hover {
         display: none; position: absolute; top: 100%; right: 0; margin-top: 8px;
-        width: 300px; background: rgba(13, 17, 23, .96);
-        border: 1px solid rgba(255, 255, 255, .12);
-        border-radius: 10px; padding: 14px; box-shadow: 0 8px 24px rgba(0, 0, 0, .55);
+        width: 250px; background: rgba(13, 17, 23, .98);
+        border: 1px solid rgba(255, 255, 255, .15);
+        border-radius: 8px; padding: 10px 12px; box-shadow: 0 8px 24px rgba(0, 0, 0, .65);
         color: #c9d1d9; font-weight: normal; text-align: left; font-size: 11px;
-        text-shadow: none; z-index: 10001; line-height: 1.45;
+        text-shadow: none; z-index: 10001; line-height: 1.4;
+        max-height: 350px; overflow-y: auto;
+      }
+      .wia-pnl-hover::-webkit-scrollbar {
+        width: 4px;
+      }
+      .wia-pnl-hover::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .wia-pnl-hover::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.15);
+        border-radius: 99px;
       }
       .wia-pnl-tracker:hover .wia-pnl-hover {
         display: block;
@@ -6597,7 +6605,8 @@
       startedAt: Date.now(),
       income: {},
       expense: {},
-      total: 0
+      total: 0,
+      processedTxs: []
     };
   }
 
@@ -6661,7 +6670,8 @@
           ledger.processedTxs = [];
         }
         
-        if (tx.id && ledger.processedTxs.includes(tx.id)) {
+        const txId = tx._id || tx.id;
+        if (txId && ledger.processedTxs.includes(txId)) {
           continue;
         }
         
@@ -6704,8 +6714,11 @@
           }
         }
         
-        if (booked && tx.id) {
-          ledger.processedTxs.push(tx.id);
+        if (booked && txId) {
+          ledger.processedTxs.push(txId);
+          if (ledger.processedTxs.length > 500) {
+            ledger.processedTxs.shift();
+          }
           ledgerChanged = true;
         }
       }
@@ -7209,30 +7222,48 @@
     }
   };
 
+  function findOrCreatePnlContainer() {
+    const menu = document.getElementById('layoutUserMenu');
+    if (!menu) return null;
+    
+    let container = menu.querySelector('div[style*="bottom: -12px"]') || 
+                    menu.querySelector('div[style*="bottom:-12px"]') ||
+                    menu.querySelector('div._1dnmndyb36') ||
+                    menu.querySelector('.wia-pnl-secondary-row');
+                    
+    if (!container) {
+      container = document.createElement('div');
+      container.className = 'wia-pnl-secondary-row _1dnmndyb0j _1dnmndyayl _1dnmndyb36 _1dnmndyl3l _1dnmndylqi';
+      container.setAttribute('style', 'bottom: -12px; left: 8px; right: 8px; display: flex; gap: 8px; position: absolute; pointer-events: none;');
+      menu.appendChild(container);
+    }
+    return container;
+  }
+
   function updatePnlUi() {
     if (!CONFIG.featPnlTracker) {
       teardownPnlUi();
       return;
     }
     
-    const menu = document.getElementById('layoutUserMenu');
-    if (!menu) return;
+    const container = findOrCreatePnlContainer();
+    if (!container) return;
     
-    const goldContainer = menu.querySelector('#money') || document.getElementById('money');
-    if (!goldContainer) return;
-    
-    let pnlBadge = menu.querySelector('#wia-pnl-tracker');
+    let pnlBadge = document.getElementById('wia-pnl-tracker') || container.querySelector('#wia-pnl-tracker');
     if (!pnlBadge) {
       pnlBadge = document.createElement('div');
       pnlBadge.id = 'wia-pnl-tracker';
-      pnlBadge.className = 'wia-pnl-tracker';
       
       const hoverEl = document.createElement('div');
       hoverEl.className = 'wia-pnl-hover';
       pnlBadge.appendChild(hoverEl);
       
       safeWritePnlUi(() => {
-        goldContainer.insertAdjacentElement('afterend', pnlBadge);
+        container.appendChild(pnlBadge);
+      });
+    } else if (pnlBadge.parentElement !== container) {
+      safeWritePnlUi(() => {
+        container.appendChild(pnlBadge);
       });
     }
     
@@ -7271,7 +7302,16 @@
     const yesterdayTotal = yesterday ? yesterday.total : 0;
     const yesterdaySign = yesterdayTotal > 0.0001 ? '▲ +' : yesterdayTotal < -0.0001 ? '▼ -' : '• ';
     const yesterdayValStr = Math.abs(yesterdayTotal).toFixed(3);
-    const yesterdayColor = yesterdayTotal > 0.0001 ? '#3fb950' : yesterdayTotal < -0.0001 ? '#f85149' : '#8b949e';
+    
+    // Apply status tint styling classes
+    pnlBadge.className = 'wia-pnl-tracker';
+    if (ledger.total > 0.0001) {
+      pnlBadge.classList.add('is-positive');
+    } else if (ledger.total < -0.0001) {
+      pnlBadge.classList.add('is-negative');
+    } else {
+      pnlBadge.classList.add('is-neutral');
+    }
     
     safeWritePnlUi(() => {
       // Rebuild topbar badge text while keeping hoverEl
@@ -7281,27 +7321,25 @@
         pnlBadge.appendChild(hoverEl);
       }
       
-      const todaySpan = document.createElement('span');
-      todaySpan.style.color = todayColor;
-      todaySpan.style.fontWeight = 'bold';
-      todaySpan.textContent = `${todaySign}${todayValStr} ${getLocale() === 'de' ? 'heute' : 'today'}`;
-      pnlBadge.appendChild(todaySpan);
+      const loc = pnlTx[getLocale()];
       
-      const divider = document.createElement('span');
-      divider.style.margin = '0 6px';
-      divider.style.color = 'rgba(255,255,255,0.2)';
-      divider.textContent = '|';
-      pnlBadge.appendChild(divider);
+      const yesterdayDiv = document.createElement('div');
+      yesterdayDiv.style.fontSize = '8.5px';
+      yesterdayDiv.style.color = '#8b949e';
+      yesterdayDiv.style.opacity = '0.7';
+      yesterdayDiv.style.whiteSpace = 'nowrap';
+      yesterdayDiv.textContent = `${loc.yesterday.toLowerCase()}: ${yesterdaySign}${yesterdayValStr}`;
+      pnlBadge.appendChild(yesterdayDiv);
       
-      const yesterdaySpan = document.createElement('span');
-      yesterdaySpan.style.color = yesterdayColor;
-      yesterdaySpan.style.fontWeight = 'bold';
-      yesterdaySpan.textContent = `${yesterdaySign}${yesterdayValStr} ${getLocale() === 'de' ? 'gestern' : 'yesterday'}`;
-      pnlBadge.appendChild(yesterdaySpan);
+      const todayDiv = document.createElement('div');
+      todayDiv.style.fontSize = '11px';
+      todayDiv.style.fontWeight = 'bold';
+      todayDiv.style.color = todayColor;
+      todayDiv.style.whiteSpace = 'nowrap';
+      todayDiv.textContent = `${loc.today.toLowerCase()}: ${todaySign}${todayValStr}`;
+      pnlBadge.appendChild(todayDiv);
       
       if (hoverEl) {
-        const loc = pnlTx[getLocale()];
-        
         // Income categories
         const todaySales = ledger.income.Sales || 0;
         const yesterdaySales = yesterday ? (yesterday.income.Sales || 0) : 0;
@@ -7416,6 +7454,12 @@
     if (badge) {
       safeWritePnlUi(() => {
         badge.remove();
+      });
+    }
+    const customRow = document.querySelector('.wia-pnl-secondary-row');
+    if (customRow && customRow.childNodes.length === 0) {
+      safeWritePnlUi(() => {
+        customRow.remove();
       });
     }
   }

@@ -1736,8 +1736,8 @@ try {
       
       // Verify badge text
       const badgeContent = badgeP5.textContent;
-      assert.ok(badgeContent.includes('▼ -4.980 today'), 'Badge text should display today\'s accrual P&L total');
-      assert.ok(badgeContent.includes('▼ -21.000 yesterday'), 'Badge text should display yesterday\'s accrual P&L total');
+      assert.ok(badgeContent.includes('today: ▼ -4.980'), 'Badge text should display today\'s accrual P&L total');
+      assert.ok(badgeContent.includes('yesterday: ▼ -21.000'), 'Badge text should display yesterday\'s accrual P&L total');
       
       // Verify tooltip table breakdown content
       const hoverElP5 = badgeP5.querySelector('.wia-pnl-hover');
