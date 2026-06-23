@@ -1977,6 +1977,20 @@
 
   const WIA_HEADER_PX = 18;   // top strip height for score + bubble (tune live)
 
+  function reserveCardLayout(card) {
+    if (card.dataset.wiaHeader === '1') return;
+    card.style.position = 'relative';
+    card.style.minHeight = (48 + WIA_HEADER_PX) + 'px';
+    card.dataset.wiaHeader = '1';
+    const imgWrap = card.querySelector('img')?.parentElement;
+    if (imgWrap) {
+      imgWrap.style.top = WIA_HEADER_PX + 'px';
+      imgWrap.style.height = 'auto';
+      imgWrap.style.bottom = '0';
+      imgWrap.dataset.wiaShifted = '1';
+    }
+  }
+
   function getResultFingerprint(item, result) {
     const isProvisional = result.provisional ? '1' : '0';
     const scrapVal = result.scrapValue ?? 'null';
@@ -2025,8 +2039,13 @@
     card.dataset.wiaFingerprint = fingerprint;
 
     card.dataset.wiaDone = '1';
-    if (getComputedStyle(card).position === 'static') {
-      card.style.position = 'relative';
+    if (card.dataset.wiaHeader !== '1') {
+      suspendObserver();
+      try {
+        reserveCardLayout(card);
+      } finally {
+        resumeObserver();
+      }
     }
 
     // Clean up old classes if they exist from hot-reloads
@@ -2082,21 +2101,6 @@
       scoreSub.remove();
     }
 
-    // 3.5. Grow card header (always active for active non-damaged items)
-    suspendObserver();
-    try {
-      card.style.minHeight = (48 + WIA_HEADER_PX) + 'px';
-      card.dataset.wiaHeader = '1';
-      const imgWrap = card.querySelector('img')?.parentElement;
-      if (imgWrap) {
-        imgWrap.style.top = WIA_HEADER_PX + 'px';
-        imgWrap.style.height = 'auto';
-        imgWrap.style.bottom = '0';
-        imgWrap.dataset.wiaShifted = '1';
-      }
-    } finally {
-      resumeObserver();
-    }
 
     // 4. Price Sub-badge (only for 100% unequipped)
     const showPrice = result.scrapValue != null || result.market != null;
@@ -2733,6 +2737,8 @@
       return;
     }
 
+    bypassNextScanDebounce = false;
+
     log(`scanInventory started (force=${force})`);
     scanning = true;
     lastInventoryCards = cards;
@@ -2742,6 +2748,20 @@
     });
 
     try {
+      // Synchronously reserve layout for all valid cards upfront
+      suspendObserver();
+      try {
+        cards.forEach((img, card) => {
+          const { type } = detectType(img, card);
+          if (type === 'scrap' || type === 'unknown') return;
+          const stats = parseStats(card, type);
+          if (shouldSuppressItem(card, stats)) return;
+          reserveCardLayout(card);
+        });
+      } finally {
+        resumeObserver();
+      }
+
       const items = [];
       cards.forEach((img, card) => {
         const { type, alt, code, tier } = detectType(img, card);
@@ -3786,6 +3806,10 @@
     return /\/market\/equipments/.test(location.pathname);
   }
 
+  let bootstrapObserver = null;
+  let bypassNextScanDebounce = false;
+  let routePollFrame = null;
+
   const debouncedScan = debounce(() => {
     if (isInventoryPage()) {
       scanInventory(false);
@@ -3794,6 +3818,20 @@
       scanInventory(false);
     }
   }, CONFIG.rescanDebounceMs);
+
+  function triggerScan(force = false) {
+    if (bypassNextScanDebounce) {
+      bypassNextScanDebounce = false;
+      if (isInventoryPage()) {
+        scanInventory(force);
+      } else if (isMarketPage()) {
+        scrapeMarketPrices();
+        scanInventory(force);
+      }
+    } else {
+      debouncedScan();
+    }
+  }
 
   function updateObserverTarget() {
     if (!observer) return;
@@ -3817,20 +3855,55 @@
           return;
         }
       }
-      log(`No inventory cards found yet, observing body for initial load...`);
-      observer.observe(document.body, { childList: true, subtree: true });
     } else if (isMarketPage()) {
-      observer.observe(document.body, { childList: true, subtree: true });
+      const sellContainer = findMarketSellContainer();
+      if (sellContainer) {
+        log(`Observing market sell container:`, sellContainer);
+        observer.observe(sellContainer, { childList: true, subtree: true });
+        return;
+      }
     }
   }
 
+  function initBootstrapObserver() {
+    if (bootstrapObserver) {
+      bootstrapObserver.disconnect();
+      bootstrapObserver = null;
+    }
+    
+    // Check if cards exist immediately
+    if (document.querySelector("[id^='item-code-selector-']") || findItemCards().size > 0) {
+      return;
+    }
+    
+    bootstrapObserver = new MutationObserver((mutations, obs) => {
+      if (document.querySelector("[id^='item-code-selector-']") || findItemCards().size > 0) {
+        log('Bootstrap observer: cards detected in DOM');
+        obs.disconnect();
+        bootstrapObserver = null;
+        if (routePollFrame) {
+          const cancelAF = typeof cancelAnimationFrame !== 'undefined' ? cancelAnimationFrame : clearTimeout;
+          cancelAF(routePollFrame);
+          routePollFrame = null;
+        }
+        scanInventory(false);
+      }
+    });
+    
+    bootstrapObserver.observe(document.body, { childList: true, subtree: true });
+  }
+
   let lastPath = location.pathname;
-  let routePollInterval = null;
 
   function startRoutePolling() {
-    if (routePollInterval) clearInterval(routePollInterval);
+    if (routePollFrame) {
+      const cancelAF = typeof cancelAnimationFrame !== 'undefined' ? cancelAnimationFrame : clearTimeout;
+      cancelAF(routePollFrame);
+      routePollFrame = null;
+    }
+
     const cards = findItemCards();
-    if (cards.size > 0) {
+    if (cards.size > 0 || document.querySelector("[id^='item-code-selector-']")) {
       log('Route polling: found cards immediately');
       if (isInventoryPage()) {
         scanInventory(false);
@@ -3840,26 +3913,35 @@
       }
       return;
     }
-    let attempts = 0;
-    routePollInterval = setInterval(() => {
-      attempts++;
+
+    const startTime = Date.now();
+    const rAF = typeof requestAnimationFrame !== 'undefined' ? requestAnimationFrame : (fn) => setTimeout(fn, 16);
+    
+    const poll = () => {
       const cardsPoll = findItemCards();
-      if (cardsPoll.size > 0) {
-        log(`Route polling: found ${cardsPoll.size} cards after ${attempts} attempts`);
-        clearInterval(routePollInterval);
-        routePollInterval = null;
+      if (cardsPoll.size > 0 || document.querySelector("[id^='item-code-selector-']")) {
+        log('Route polling (rAF): found cards');
+        if (bootstrapObserver) {
+          bootstrapObserver.disconnect();
+          bootstrapObserver = null;
+        }
+        routePollFrame = null;
         if (isInventoryPage()) {
           scanInventory(false);
         } else if (isMarketPage()) {
           scrapeMarketPrices();
           scanInventory(false);
         }
+        return;
       }
-      if (attempts >= 20) { // stop polling after 5 seconds
-        clearInterval(routePollInterval);
-        routePollInterval = null;
+      if (Date.now() - startTime < 5000) {
+        routePollFrame = rAF(poll);
+      } else {
+        log('Route polling (rAF): 5s timeout reached');
+        routePollFrame = null;
       }
-    }, 250);
+    };
+    routePollFrame = rAF(poll);
   }
 
   function handleRouteChange() {
@@ -3868,16 +3950,32 @@
     lastInventoryCards = null; // Reset fingerprint on route change
     lastInventoryCardTexts.clear();
     lastMktState = null;
+    bypassNextScanDebounce = true;
     
-    if (routePollInterval) {
-      clearInterval(routePollInterval);
-      routePollInterval = null;
+    if (routePollFrame) {
+      const cancelAF = typeof cancelAnimationFrame !== 'undefined' ? cancelAnimationFrame : clearTimeout;
+      cancelAF(routePollFrame);
+      routePollFrame = null;
+    }
+    if (bootstrapObserver) {
+      bootstrapObserver.disconnect();
+      bootstrapObserver = null;
     }
     
     if (isInventoryPage() || isMarketPage()) {
       updateObserverTarget();
-      debouncedScan();
-      startRoutePolling();
+      if (document.querySelector("[id^='item-code-selector-']") || findItemCards().size > 0) {
+        log('Route change: cards exist immediately, scanning');
+        if (isInventoryPage()) {
+          scanInventory(false);
+        } else if (isMarketPage()) {
+          scrapeMarketPrices();
+          scanInventory(false);
+        }
+      } else {
+        initBootstrapObserver();
+        startRoutePolling();
+      }
     } else if (isBattlePage()) {
       observer.disconnect();
       if (CONFIG.featBattleAdvisor) applyBattleAdvisory();
@@ -6419,7 +6517,7 @@
     injectGear();
     refreshMenuCommands();
 
-    observer = new MutationObserver(debouncedScan);
+    observer = new MutationObserver(() => triggerScan(false));
     if (isInventoryPage() || isMarketPage()) {
       updateObserverTarget();
       if (isInventoryPage()) {
@@ -6433,19 +6531,19 @@
     }
 
     // Intercept pushState / replaceState for instant route detection in Next.js SPA
-    const originalPushState = history.pushState;
-    history.pushState = function (...args) {
-      originalPushState.apply(this, args);
-      setTimeout(handleRouteChange, 50);
-    };
+    const fireRoute = debounce(handleRouteChange, 15);
 
-    const originalReplaceState = history.replaceState;
-    history.replaceState = function (...args) {
-      originalReplaceState.apply(this, args);
-      setTimeout(handleRouteChange, 50);
-    };
-
-    window.addEventListener('popstate', handleRouteChange);
+    for (const m of ['pushState', 'replaceState']) {
+      const orig = history[m];
+      if (orig) {
+        history[m] = function (...a) {
+          const r = orig.apply(this, a);
+          fireRoute();
+          return r;
+        };
+      }
+    }
+    window.addEventListener('popstate', fireRoute);
 
     // Fallback interval check
     setInterval(handleRouteChange, 2000);
