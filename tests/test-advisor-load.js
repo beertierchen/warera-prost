@@ -1307,6 +1307,7 @@ try {
   const testMenu = new MockElement('div');
   testMenu.setAttribute('id', 'layoutUserMenu');
   const goldContainer = new MockElement('div');
+  goldContainer.setAttribute('id', 'money');
   const goldIcon = new MockElement('img');
   goldIcon.setAttribute('src', '/images/items/gold.png');
   goldIcon.setAttribute('alt', 'gold');
@@ -1681,6 +1682,7 @@ try {
       const testMenuP5 = new MockElement('div');
       testMenuP5.setAttribute('id', 'layoutUserMenu');
       const goldContainerP5 = new MockElement('div');
+      goldContainerP5.setAttribute('id', 'money');
       const goldIconP5 = new MockElement('img');
       goldIconP5.setAttribute('src', '/images/items/gold.png');
       goldIconP5.setAttribute('alt', 'gold');
@@ -1734,8 +1736,8 @@ try {
       
       // Verify badge text
       const badgeContent = badgeP5.textContent;
-      assert.ok(badgeContent.includes('▼ -5.000 today'), 'Badge text should display today\'s gold delta');
-      assert.ok(badgeContent.includes('▼ -21.440 yesterday'), 'Badge text should display yesterday\'s gold delta');
+      assert.ok(badgeContent.includes('▼ -4.980 today'), 'Badge text should display today\'s accrual P&L total');
+      assert.ok(badgeContent.includes('▼ -21.000 yesterday'), 'Badge text should display yesterday\'s accrual P&L total');
       
       // Verify tooltip table breakdown content
       const hoverElP5 = badgeP5.querySelector('.wia-pnl-hover');

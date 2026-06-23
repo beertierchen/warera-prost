@@ -6602,18 +6602,12 @@
   }
 
   function getGoldBalance() {
-    const menu = document.getElementById('layoutUserMenu');
-    if (!menu) return null;
-    const goldImg = menu.querySelector('img[src*="gold"], img[alt*="gold"]');
-    if (!goldImg) return null;
-    const parent = goldImg.parentElement;
-    if (!parent) return null;
-    const text = parent.textContent.trim();
-    const match = text.match(/([0-9]+[.,]?[0-9]*)/);
-    if (match) {
-      return parseFloat(match[1].replace(',', '.'));
-    }
-    return null;
+    const moneyEl = document.getElementById('money') || (document.getElementById('layoutUserMenu') && document.getElementById('layoutUserMenu').querySelector('#money'));
+    if (!moneyEl) return null;
+    const txt = moneyEl.textContent.trim();
+    if (!txt) return null;
+    const match = txt.replace(/,/g, '.').match(/\d+(?:\.\d+)?/);
+    return match ? parseFloat(match[0]) : null;
   }
 
   function todayResetTime() {
@@ -7224,10 +7218,7 @@
     const menu = document.getElementById('layoutUserMenu');
     if (!menu) return;
     
-    const goldImg = menu.querySelector('img[src*="gold"], img[alt*="gold"]');
-    if (!goldImg) return;
-    
-    const goldContainer = goldImg.parentElement;
+    const goldContainer = menu.querySelector('#money') || document.getElementById('money');
     if (!goldContainer) return;
     
     let pnlBadge = menu.querySelector('#wia-pnl-tracker');
@@ -7273,11 +7264,11 @@
     ledger.untracked = totalGoldDelta - ledger.total;
     writeCache(KEYS.pnlLedger, ledger);
     
-    const todaySign = totalGoldDelta > 0.0001 ? '▲ +' : totalGoldDelta < -0.0001 ? '▼ -' : '• ';
-    const todayValStr = Math.abs(totalGoldDelta).toFixed(3);
-    const todayColor = totalGoldDelta > 0.0001 ? '#3fb950' : totalGoldDelta < -0.0001 ? '#f85149' : '#8b949e';
+    const todaySign = ledger.total > 0.0001 ? '▲ +' : ledger.total < -0.0001 ? '▼ -' : '• ';
+    const todayValStr = Math.abs(ledger.total).toFixed(3);
+    const todayColor = ledger.total > 0.0001 ? '#3fb950' : ledger.total < -0.0001 ? '#f85149' : '#8b949e';
     
-    const yesterdayTotal = yesterday ? yesterday.goldDelta : 0;
+    const yesterdayTotal = yesterday ? yesterday.total : 0;
     const yesterdaySign = yesterdayTotal > 0.0001 ? '▲ +' : yesterdayTotal < -0.0001 ? '▼ -' : '• ';
     const yesterdayValStr = Math.abs(yesterdayTotal).toFixed(3);
     const yesterdayColor = yesterdayTotal > 0.0001 ? '#3fb950' : yesterdayTotal < -0.0001 ? '#f85149' : '#8b949e';
