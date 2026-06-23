@@ -5478,20 +5478,12 @@
         
         const maxText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
         maxText.setAttribute('x', '418');
-        maxText.setAttribute('y', '8');
+        maxText.setAttribute('y', '-4');
         maxText.setAttribute('class', 'wia-mkt-axis-label');
         maxText.setAttribute('text-anchor', 'end');
         maxText.textContent = fmt(realMax);
         
-        const minText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        minText.setAttribute('x', '418');
-        minText.setAttribute('y', '46');
-        minText.setAttribute('class', 'wia-mkt-axis-label');
-        minText.setAttribute('text-anchor', 'end');
-        minText.textContent = fmt(realMin);
-        
         overlayG.appendChild(maxText);
-        overlayG.appendChild(minText);
 
         const formatXLabel = (timestamp) => {
           const d = new Date(timestamp);
@@ -5532,7 +5524,17 @@
         nowText.setAttribute('y', '52');
         nowText.setAttribute('class', 'wia-mkt-x-label');
         nowText.setAttribute('text-anchor', 'end');
-        nowText.textContent = formatXLabel(tMax);
+        
+        const timeSpan = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
+        timeSpan.textContent = formatXLabel(tMax) + " ";
+        nowText.appendChild(timeSpan);
+        
+        const priceSpan = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
+        priceSpan.setAttribute('fill', '#f97316');
+        priceSpan.setAttribute('font-weight', 'bold');
+        priceSpan.textContent = `(${fmt(realMin)})`;
+        nowText.appendChild(priceSpan);
+        
         overlayG.appendChild(nowText);
       } finally {
         resumeModalObserver(modal);
