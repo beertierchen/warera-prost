@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## 2026-06-24 | Fehlerbehebung bei Latenzzeiten und Layout-Verschiebungen (v0.7.7)
+
+**Geänderte Dateien:** `warera-prost.user.js`
+
+**Änderungen (Deutsch):**
+- **Sofortige Navigation**: Der Seitenwechsel im Spiel wird nun über Ereignisse (pushState/replaceState/popstate) überwacht, wodurch der Ratgeber ohne Verzögerung sofort anspringt (vorher bis zu 2 Sekunden Wartezeit).
+- **Sofortige Badge-Anzeige**: Ein intelligenter, kurzlebiger Beobachter platziert Badges in dem Moment, in dem die Spiel-Gegenstände gerendert werden, anstatt auf ein Zeitintervall zu warten.
+- **Keine Layout-Ruckler**: Das Layout und die benötigte Höhe der Gegenstandskarten werden nun synchron im ersten Frame reserviert. Dadurch erscheinen die vorläufigen Symbole (`~`) direkt an der richtigen Stelle, überlappen keine Statistiken mehr und die Bilder verschieben sich nicht nachträglich.
+
+**Changes (English):**
+- **Instant Route Transitions**: Intercepted page history events (`pushState`/`replaceState`/`popstate`) to trigger route updates immediately, removing the previous 2-second detection delay.
+- **Zero-Delay Badges**: Utilized a short-lived bootstrap MutationObserver to paint recommendations the exact microtask item cards appear in the DOM, instead of waiting on a polling timer.
+- **Upfront Layout Reservation**: Synchronously reserved the card height and image offset upfront. This prevents provisional symbols (`~`) from overlapping stats and avoids any subsequent card shifting or layout jitter when final prices resolve.
+
 ## 2026-06-23 | Ressourcen-Markt Intraday-Grafik & Performance-Optimierung (v0.7.6)
 
 **Geänderte Dateien:** `warera-prost.user.js`
