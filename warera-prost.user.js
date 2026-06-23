@@ -3488,13 +3488,14 @@
         border-color: rgba(139, 148, 158, .50);
       }
       .wia-pnl-hover {
-        display: none; position: absolute; top: 100%; right: 0; margin-top: 8px;
-        width: 250px; background: rgba(13, 17, 23, .98);
+        display: none; position: absolute; top: 100%; left: 0; margin-top: 8px;
+        width: 270px; background: rgba(13, 17, 23, .98);
         border: 1px solid rgba(255, 255, 255, .15);
         border-radius: 8px; padding: 10px 12px; box-shadow: 0 8px 24px rgba(0, 0, 0, .65);
         color: #c9d1d9; font-weight: normal; text-align: left; font-size: 11px;
         text-shadow: none; z-index: 10001; line-height: 1.4;
-        max-height: 350px; overflow-y: auto;
+        max-height: 350px; overflow-y: auto; overflow-x: hidden;
+        box-sizing: border-box;
       }
       .wia-pnl-hover::-webkit-scrollbar {
         width: 4px;
@@ -7259,11 +7260,11 @@
       pnlBadge.appendChild(hoverEl);
       
       safeWritePnlUi(() => {
-        container.appendChild(pnlBadge);
+        container.insertBefore(pnlBadge, container.firstChild);
       });
     } else if (pnlBadge.parentElement !== container) {
       safeWritePnlUi(() => {
-        container.appendChild(pnlBadge);
+        container.insertBefore(pnlBadge, container.firstChild);
       });
     }
     
@@ -7412,19 +7413,6 @@
         html += renderPnlRow(loc.empWages, todayEmpWages, yesterdayEmpWages, false, false);
         html += renderPnlRow(loc.other, todayExpOther, yesterdayExpOther, false, false);
         
-        // Separator line
-        html += `<tr style="border-top: 1px solid rgba(255, 255, 255, 0.15);"><td colspan="3" style="padding: 4px 0 0 0;"></td></tr>`;
-        
-        // Untracked/Sonstiges
-        html += renderPnlRow(loc.untracked, todayUntrackedVal, yesterdayUntrackedVal, false, false);
-        
-        // Total P&L
-        html += renderPnlRow(loc.totalPnl, todayTotalVal, yesterdayTotalVal, false, false);
-        
-        // Gold Delta (Highlight)
-        html += `<tr style="border-top: 1px solid rgba(255, 255, 255, 0.15); font-weight: bold; text-align: right;">`;
-        html += `<td style="text-align: left; padding: 4px 0; color: #58a6ff;">${loc.goldDelta}</td>`;
-        
         const formatBold = (val) => {
           const absVal = Math.abs(val);
           if (absVal <= 0.0001) return `<span style="color: #8b949e;">0.000</span>`;
@@ -7432,7 +7420,23 @@
           const color = val > 0 ? '#3fb950' : '#f85149';
           return `<span style="color: ${color};">${sign}${absVal.toFixed(3)}</span>`;
         };
+
+        // Separator line
+        html += `<tr style="border-top: 1px solid rgba(255, 255, 255, 0.15);"><td colspan="3" style="padding: 4px 0 0 0;"></td></tr>`;
         
+        // Untracked/Sonstiges
+        html += renderPnlRow(loc.untracked, todayUntrackedVal, yesterdayUntrackedVal, false, false);
+        
+        // Total P&L (Highlight)
+        html += `<tr style="border-top: 1px dashed rgba(255, 255, 255, 0.15); font-weight: bold; text-align: right;">`;
+        html += `<td style="text-align: left; padding: 4px 0; color: #e8eef5;">${loc.totalPnl}</td>`;
+        html += `<td style="padding: 4px 0;">${formatBold(todayTotalVal)}</td>`;
+        html += `<td style="padding: 4px 0; padding-left: 8px;">${formatBold(yesterdayTotalVal)}</td>`;
+        html += `</tr>`;
+        
+        // Gold Delta (Highlight)
+        html += `<tr style="border-top: 1px solid rgba(255, 255, 255, 0.15); font-weight: bold; text-align: right;">`;
+        html += `<td style="text-align: left; padding: 4px 0; color: #58a6ff;">${loc.goldDelta}</td>`;
         html += `<td style="padding: 4px 0;">${formatBold(todayGoldDeltaVal)}</td>`;
         html += `<td style="padding: 4px 0; padding-left: 8px;">${formatBold(yesterdayGoldDeltaVal)}</td>`;
         html += `</tr>`;
