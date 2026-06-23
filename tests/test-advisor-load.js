@@ -1456,6 +1456,111 @@ try {
   
   console.log('Daily P&L Tracker Phase 2 tests passed successfully.');
 
+  console.log('--- Testing Daily P&L Tracker: Phase 3 ---');
+  
+  // Clean mock storage and initialize
+  globalThis.clearCache();
+  globalThis.CONFIG.featPnlTracker = true;
+  global.location.pathname = '/user/my-user-id/inventory';
+  
+  // Set cost basis: food_bread = 12. pill_haste = 100 (estimated via priceCache)
+  globalThis.writeCache('wia.pnl.costBasis', {
+    food_bread: { unitPaid: 12, qtyKnown: 10 }
+  });
+  globalThis.writeCache('wia.priceCache', {
+    data: { pill_haste: 100 },
+    fetchedAt: Date.now()
+  });
+  
+  // 1. Parse quantity test
+  const cardA = new MockElement('div');
+  const qtySpan = new MockElement('span');
+  qtySpan.textContent = 'x5';
+  cardA.appendChild(qtySpan);
+  assert.strictEqual(globalThis.parseCardQuantity(cardA), 5, 'Should parse "x5" quantity as 5');
+  
+  const cardB = new MockElement('div');
+  const qtyDiv = new MockElement('div');
+  qtyDiv.textContent = ' 20 ';
+  cardB.appendChild(qtyDiv);
+  assert.strictEqual(globalThis.parseCardQuantity(cardB), 20, 'Should parse plain "20" text node quantity as 20');
+  
+  // 2. Click consumption test
+  globalThis.bookClickConsumption('food_bread', 2); // 2 * 12 = 24 expense
+  let clickLedger = globalThis.readCache('wia.pnl.ledger');
+  assert.strictEqual(clickLedger.expense.Consumption, 24, 'Click consumption of 2 bread should cost 24');
+  assert.strictEqual(clickLedger.bookedConsumptionEvents.length, 1, 'Should record click consumption event');
+  assert.strictEqual(clickLedger.bookedConsumptionEvents[0].code, 'food_bread');
+  assert.strictEqual(clickLedger.bookedConsumptionEvents[0].qty, 2);
+  
+  // 3. Fallback inventory-delta detection test (and matching click consumption / sales)
+  // Let's prepare a snapshot with starting quantities
+  const snapshotsMock = {
+    gold_start: 1000,
+    durability_start: {},
+    invQty_start: {
+      food_bread: 10,
+      pill_haste: 5,
+      steel: 10
+    }
+  };
+  globalThis.writeCache('wia.pnl.snapshots', snapshotsMock);
+  
+  // Let's mock findItemCards
+  const oldFindItemCards = globalThis.findItemCards;
+  
+  const breadCardPnl = new MockElement('div');
+  const breadImgPnl = new MockElement('img');
+  breadImgPnl.setAttribute('alt', 'food_bread');
+  breadCardPnl.appendChild(breadImgPnl);
+  const breadQtyPnl = new MockElement('span');
+  breadQtyPnl.textContent = 'x7';
+  breadCardPnl.appendChild(breadQtyPnl);
+  
+  const pillCardPnl = new MockElement('div');
+  const pillImgPnl = new MockElement('img');
+  pillImgPnl.setAttribute('alt', 'pill_haste');
+  pillCardPnl.appendChild(pillImgPnl);
+  const pillQtyPnl = new MockElement('span');
+  pillQtyPnl.textContent = 'x4';
+  pillCardPnl.appendChild(pillQtyPnl);
+  
+  const steelCardPnl = new MockElement('div');
+  const steelImgPnl = new MockElement('img');
+  steelImgPnl.setAttribute('alt', 'steel');
+  steelCardPnl.appendChild(steelImgPnl);
+  const steelQtyPnl = new MockElement('span');
+  steelQtyPnl.textContent = 'x8';
+  steelCardPnl.appendChild(steelQtyPnl);
+  
+  globalThis.findItemCards = () => {
+    const map = new Map();
+    map.set(breadCardPnl, breadImgPnl);
+    map.set(pillCardPnl, pillImgPnl);
+    map.set(steelCardPnl, steelImgPnl);
+    return map;
+  };
+  
+  // Also we had sales today! Process a sale transaction of 2 steel today
+  const currentLedger = globalThis.readCache('wia.pnl.ledger');
+  currentLedger.todaySales = { steel: 2 };
+  globalThis.writeCache('wia.pnl.ledger', currentLedger);
+  
+  // Run inventory delta check
+  globalThis.checkInventoryDeltaConsumption();
+  
+  // Let's check the booked expense:
+  // - food_bread drop is 3. We had 2 click events for food_bread. So remaining delta is 1. Cost is 1 * 12 = 12.
+  // - pill_haste drop is 1. We had 0 click events. Cost is 1 * 100 (fallback cached price) = 100.
+  // - steel drop is 2. We had 2 sales for steel today. So remaining delta is 0. Cost is 0.
+  // Total Consumption today should be: 24 (from click) + 12 (from delta food_bread) + 100 (from delta pill_haste) = 136.
+  const finalLedger = globalThis.readCache('wia.pnl.ledger');
+  assert.strictEqual(finalLedger.expense.Consumption, 136, 'Consumption should be 136 (24 click + 12 bread delta + 100 pill delta)');
+  
+  // Restores
+  globalThis.findItemCards = oldFindItemCards;
+  console.log('Daily P&L Tracker Phase 3 tests passed successfully.');
+
   // Restore document mock functions
   global.document.querySelector = oldBodyQuerySelector;
   global.document.getElementById = oldBodyGetElementById;

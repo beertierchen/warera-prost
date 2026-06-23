@@ -1439,6 +1439,13 @@
     globalThis.todayResetTime = todayResetTime;
     globalThis.processTransactionsList = processTransactionsList;
     globalThis.fetchAndProcessTransactions = fetchAndProcessTransactions;
+    globalThis.parseCardQuantity = parseCardQuantity;
+    globalThis.getInventoryQuantities = getInventoryQuantities;
+    globalThis.bookClickConsumption = bookClickConsumption;
+    globalThis.checkInventoryDeltaConsumption = checkInventoryDeltaConsumption;
+    globalThis.findItemCards = findItemCards;
+    globalThis.writeCache = writeCache;
+    globalThis.readCache = readCache;
   }
 
   function getLocale() {
@@ -2970,6 +2977,9 @@
         }
       }
 
+      if (CONFIG.featPnlTracker) {
+        checkInventoryDeltaConsumption();
+      }
     } catch (e) {
       log('scan error:', e);
     } finally {
@@ -6746,6 +6756,228 @@
     }
   }
 
+  function parseCardQuantity(card) {
+    let qty = 1;
+    function walk(node) {
+      const isLeaf = node.nodeType === 3 || !node.childNodes || node.childNodes.length === 0;
+      if (isLeaf) {
+        const val = String(node.nodeValue || node.textContent || '').trim();
+        const m = val.match(/^x\s*(\d+)$/i) || val.match(/^(\d+)$/);
+        if (m) {
+          qty = parseInt(m[1], 10);
+        }
+      } else {
+        const cl = node.classList;
+        if (cl && (cl.contains('wia-badge') || cl.contains('wia-price-sub'))) return;
+        const text = String(node.textContent || '').trim();
+        const m = text.match(/^x\s*(\d+)$/i);
+        if (m) {
+          qty = parseInt(m[1], 10);
+          return;
+        }
+        if (node.childNodes && node.childNodes.length > 0) {
+          for (let i = 0; i < node.childNodes.length; i++) {
+            walk(node.childNodes[i]);
+          }
+        }
+      }
+    }
+    walk(card);
+    return qty;
+  }
+
+  function getInventoryQuantities() {
+    const cards = (globalThis.findItemCards || findItemCards)(false);
+    const qtyMap = {};
+    cards.forEach((img, card) => {
+      const { code } = detectType(img, card);
+      if (code) {
+        const qty = parseCardQuantity(card);
+        qtyMap[code] = (qtyMap[code] || 0) + qty;
+      }
+    });
+    return qtyMap;
+  }
+
+  function bookClickConsumption(code, qty = 1) {
+    let ledger = readCache(KEYS.pnlLedger);
+    if (!ledger) ledger = createEmptyLedger(getPnlDayKey());
+    if (!ledger.expense) ledger.expense = {};
+    
+    const costBasis = readCache(KEYS.pnlCostBasis) || {};
+    const itemBasis = costBasis[code];
+    let unitPaid = 0;
+    let isEstimated = false;
+    
+    if (itemBasis && itemBasis.unitPaid != null) {
+      unitPaid = itemBasis.unitPaid;
+    } else {
+      const price = getCachedPrice(code);
+      if (price != null) {
+        unitPaid = price;
+        isEstimated = true;
+      }
+    }
+    
+    const cost = unitPaid * qty;
+    if (cost > 0) {
+      ledger.expense.Consumption = (ledger.expense.Consumption || 0) + cost;
+      if (isEstimated) {
+        ledger.hasEstimatedConsumption = true;
+      }
+      
+      if (!ledger.bookedConsumptionEvents) {
+        ledger.bookedConsumptionEvents = [];
+      }
+      ledger.bookedConsumptionEvents.push({
+        code,
+        qty,
+        timestamp: Date.now()
+      });
+      
+      let sumIncome = 0;
+      for (const val of Object.values(ledger.income)) {
+        sumIncome += val;
+      }
+      let sumExpense = 0;
+      for (const val of Object.values(ledger.expense)) {
+        sumExpense += val;
+      }
+      ledger.total = sumIncome - sumExpense;
+      writeCache(KEYS.pnlLedger, ledger);
+      updatePnlUi();
+    }
+  }
+
+  function checkInventoryDeltaConsumption() {
+    if (!isInventoryPage()) return;
+    
+    let snapshots = readCache(KEYS.pnlSnapshots);
+    if (!snapshots) return;
+    
+    const currentQts = getInventoryQuantities();
+    
+    if (!snapshots.invQty_start || Object.keys(snapshots.invQty_start).length === 0) {
+      snapshots.invQty_start = currentQts;
+      writeCache(KEYS.pnlSnapshots, snapshots);
+      return;
+    }
+    
+    let ledger = readCache(KEYS.pnlLedger);
+    if (!ledger) ledger = createEmptyLedger(getPnlDayKey());
+    if (!ledger.expense) ledger.expense = {};
+    if (!ledger.bookedConsumptionEvents) ledger.bookedConsumptionEvents = [];
+    
+    let ledgerChanged = false;
+    let snapshotsChanged = false;
+    
+    for (const [code, startQty] of Object.entries(snapshots.invQty_start)) {
+      const curQty = currentQts[code] || 0;
+      if (curQty < startQty) {
+        let remainingDelta = startQty - curQty;
+        
+        if (ledger.bookedConsumptionEvents.length > 0) {
+          const nextEvents = [];
+          for (const evt of ledger.bookedConsumptionEvents) {
+            if (evt.code === code && remainingDelta > 0) {
+              const matched = Math.min(evt.qty, remainingDelta);
+              evt.qty -= matched;
+              remainingDelta -= matched;
+              if (evt.qty > 0) {
+                nextEvents.push(evt);
+              }
+            } else {
+              nextEvents.push(evt);
+            }
+          }
+          ledger.bookedConsumptionEvents = nextEvents;
+          ledgerChanged = true;
+        }
+        
+        if (remainingDelta > 0 && ledger.todaySales && ledger.todaySales[code] > 0) {
+          const matchedSales = Math.min(ledger.todaySales[code], remainingDelta);
+          ledger.todaySales[code] -= matchedSales;
+          remainingDelta -= matchedSales;
+          ledgerChanged = true;
+        }
+        
+        if (remainingDelta > 0) {
+          const costBasis = readCache(KEYS.pnlCostBasis) || {};
+          const itemBasis = costBasis[code];
+          let unitPaid = 0;
+          let isEstimated = false;
+          
+          if (itemBasis && itemBasis.unitPaid != null) {
+            unitPaid = itemBasis.unitPaid;
+          } else {
+            const price = getCachedPrice(code);
+            if (price != null) {
+              unitPaid = price;
+              isEstimated = true;
+            }
+          }
+          
+          const cost = unitPaid * remainingDelta;
+          if (cost > 0) {
+            ledger.expense.Consumption = (ledger.expense.Consumption || 0) + cost;
+            if (isEstimated) {
+              ledger.hasEstimatedConsumption = true;
+            }
+            ledgerChanged = true;
+          }
+        }
+        
+        snapshots.invQty_start[code] = curQty;
+        snapshotsChanged = true;
+      } else if (curQty > startQty) {
+        snapshots.invQty_start[code] = curQty;
+        snapshotsChanged = true;
+      }
+    }
+    
+    for (const [code, curQty] of Object.entries(currentQts)) {
+      if (snapshots.invQty_start[code] === undefined) {
+        snapshots.invQty_start[code] = curQty;
+        snapshotsChanged = true;
+      }
+    }
+    
+    if (snapshotsChanged) {
+      writeCache(KEYS.pnlSnapshots, snapshots);
+    }
+    
+    if (ledgerChanged) {
+      let sumIncome = 0;
+      for (const val of Object.values(ledger.income)) {
+        sumIncome += val;
+      }
+      let sumExpense = 0;
+      for (const val of Object.values(ledger.expense)) {
+        sumExpense += val;
+      }
+      ledger.total = sumIncome - sumExpense;
+      writeCache(KEYS.pnlLedger, ledger);
+      updatePnlUi();
+    }
+  }
+
+  if (typeof document !== 'undefined') {
+    document.addEventListener('click', (e) => {
+      if (!CONFIG.featPnlTracker) return;
+      const btn = e.target.closest('#eat-button');
+      if (btn) {
+        const popover = document.getElementById('consume-food-popover');
+        if (popover) {
+          const img = popover.querySelector('img[alt]');
+          if (img) {
+            const code = img.getAttribute('alt');
+            bookClickConsumption(code, 1);
+          }
+        }
+      }
+    });
+  }
+
   function checkPnlDayReset() {
     const currentDayKey = getPnlDayKey();
     let ledger = readCache(KEYS.pnlLedger);
@@ -6761,7 +6993,7 @@
       const snapshots = {
         gold_start: goldVal !== null ? goldVal : 0,
         durability_start: {},
-        invQty_start: {}
+        invQty_start: isInventoryPage() ? getInventoryQuantities() : {}
       };
       writeCache(KEYS.pnlSnapshots, snapshots);
     }
