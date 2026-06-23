@@ -4916,6 +4916,7 @@
   const EXCLUDED_ALTS = new Set(['gold', 'money', 'coins', 'xp', 'avatar', 'logo']);
   const resourceTxsInFlight = {}; // code -> promise
   let marketTooltip = null;
+  let samplerInterval = null;
 
   function getOrCreateTooltip() {
     let el = document.querySelector('.wia-mkt-tooltip');
@@ -5015,22 +5016,23 @@
     return resourceTxsInFlight[cacheKey];
   }
 
-  async function seedResourceTransactions(code, maxSpanMs) {
+  async function seedResourceTransactions(code, maxSpanMs, range) {
     const nowMs = now();
     const cacheKey = KEYS.resourceTransactionsCache;
     const cache = GM_getValue(cacheKey, {}) || {};
-    const entry = cache[code];
+    const entryKey = `${code}_${range}`;
+    const entry = cache[entryKey];
     const ttl = 15 * 60 * 1000; // 15 minutes TTL
 
     if (entry && (nowMs - entry.fetchedAt < ttl) && Array.isArray(entry.points)) {
       return entry.points;
     }
 
-    const startTime = nowMs - (3 * 24 * 60 * 60 * 1000); // 3 days max fetch
+    const pageCap = range === '24h' ? 2 : 6;
+    const startTime = nowMs - maxSpanMs;
     let cursor = null;
     let allPoints = [];
     const seenTimes = new Set();
-    const pageCap = 6;
     let pagesFetched = 0;
 
     while (pagesFetched < pageCap) {
@@ -5061,12 +5063,12 @@
     // Sort ascending by time
     allPoints.sort((a, b) => a.t - b.t);
 
-    // Keep only elements in the last 3 days
-    const cutoff = nowMs - (3 * 24 * 60 * 60 * 1000);
+    // Keep only elements in the requested span
+    const cutoff = nowMs - maxSpanMs;
     allPoints = allPoints.filter(pt => pt.t >= cutoff);
 
     // Update cache
-    cache[code] = {
+    cache[entryKey] = {
       points: allPoints,
       fetchedAt: nowMs
     };
@@ -5118,6 +5120,359 @@
         modalObserver.observe(modal, { childList: true, subtree: true });
       }
     }
+  }
+
+  function drawIntradayGraph(found, points, range, code, myGen) {
+    if (myGen !== renderGen) return;
+    const { modal: freshModal, svg: freshSvg } = found;
+    if (!freshSvg.isConnected) return;
+
+    const maxSpanMs = range === '24h' ? 24 * 60 * 60 * 1000 : 72 * 60 * 60 * 1000;
+    
+    suspendModalObserver();
+    let overlaySvg, overlayG;
+    try {
+      if (myGen !== renderGen) return;
+      const parent = freshSvg.parentElement;
+      if (!parent) return;
+
+      overlaySvg = parent.querySelector('.wia-mkt-overlay-svg');
+      if (!overlaySvg) {
+        overlaySvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        overlaySvg.setAttribute('class', 'wia-mkt-overlay-svg');
+        parent.insertBefore(overlaySvg, freshSvg.nextSibling);
+      }
+      
+      const svgRect = freshSvg.getBoundingClientRect();
+      const parentRect = parent.getBoundingClientRect();
+      const topOffset = svgRect.top - parentRect.top;
+      const leftOffset = svgRect.left - parentRect.left;
+
+      overlaySvg.style.position = 'absolute';
+      overlaySvg.style.top = `${topOffset}px`;
+      overlaySvg.style.left = `${leftOffset}px`;
+      overlaySvg.style.width = `${svgRect.width}px`;
+      overlaySvg.style.height = `${svgRect.height}px`;
+      overlaySvg.setAttribute('width', svgRect.width.toString());
+      overlaySvg.setAttribute('height', svgRect.height.toString());
+      overlaySvg.style.pointerEvents = 'none';
+      overlaySvg.style.overflow = 'visible';
+
+      overlaySvg.innerHTML = '';
+      
+      overlayG = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      overlayG.setAttribute('transform', 'translate(4,6)');
+      overlaySvg.appendChild(overlayG);
+
+      if (points.length === 0) {
+        log(`No intraday price points found for ${code}`);
+        const warnText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        warnText.setAttribute('x', '210');
+        warnText.setAttribute('y', '30');
+        warnText.setAttribute('fill', '#94a3b8');
+        warnText.setAttribute('text-anchor', 'middle');
+        warnText.setAttribute('font-size', '10px');
+        warnText.setAttribute('class', 'wia-mkt-warning');
+        warnText.textContent = getLocale() === 'de' ? 'Intraday-Daten spärlich (lade...)' : 'Intraday data sparse (loading...)';
+        
+        overlayG.appendChild(warnText);
+        lastMktState = null;
+        return;
+      }
+    } finally {
+      resumeModalObserver(freshModal);
+    }
+    
+    const sortedPoints = [...points].sort((a, b) => a.t - b.t);
+    
+    const tMax = now();
+    const tMin = tMax - maxSpanMs;
+    const buckets = [];
+    let cur = tMax;
+
+    if (range === '24h') {
+      const transitionTime = tMax - (3 * 60 * 60 * 1000);
+      while (cur > transitionTime) {
+        const next = cur - (15 * 60 * 1000);
+        buckets.push({ start: next, end: cur, sum: 0, count: 0 });
+        cur = next;
+      }
+      const minTime = tMax - (24 * 60 * 60 * 1000);
+      while (cur > minTime) {
+        const next = cur - (60 * 60 * 1000);
+        buckets.push({ start: next, end: cur, sum: 0, count: 0 });
+        cur = next;
+      }
+    } else {
+      const transitionTime = tMax - (12 * 60 * 60 * 1000);
+      while (cur > transitionTime) {
+        const next = cur - (60 * 60 * 1000);
+        buckets.push({ start: next, end: cur, sum: 0, count: 0 });
+        cur = next;
+      }
+      const minTime = tMax - (72 * 60 * 60 * 1000);
+      while (cur > minTime) {
+        const next = cur - (3 * 60 * 60 * 1000);
+        buckets.push({ start: next, end: cur, sum: 0, count: 0 });
+        cur = next;
+      }
+    }
+    buckets.reverse();
+    
+    sortedPoints.forEach(pt => {
+      if (pt.t >= tMin && pt.t <= tMax) {
+        const bucket = buckets.find(b => pt.t >= b.start && pt.t <= b.end);
+        if (bucket) {
+          bucket.sum += pt.price;
+          bucket.count += 1;
+        }
+      }
+    });
+    
+    const plottedPoints = buckets
+      .map((b) => {
+        if (b.count > 0) {
+          return {
+            t: (b.start + b.end) / 2,
+            price: b.sum / b.count
+          };
+        }
+        return null;
+      })
+      .filter(Boolean);
+      
+    if (plottedPoints.length === 0) {
+      lastMktState = null;
+      return;
+    }
+    
+    const W = 420;
+    const H = 48;
+    
+    const prices = plottedPoints.map(p => p.price);
+    const realMin = Math.min(...prices);
+    const realMax = Math.max(...prices);
+    let yMin = realMin;
+    let yMax = realMax;
+    if (yMax === yMin) {
+      yMin = yMin * 0.9;
+      yMax = yMax * 1.1;
+    } else {
+      const pad = (yMax - yMin) * 0.1;
+      yMin -= pad;
+      yMax += pad;
+    }
+    
+    const getX = (pt) => {
+      const pctX = (pt.t - tMin) / maxSpanMs;
+      return pctX * W;
+    };
+    
+    const getY = (price) => {
+      const pctY = (price - yMin) / (yMax - yMin);
+      return H - pctY * H;
+    };
+    
+    suspendModalObserver();
+    try {
+      if (myGen !== renderGen) return;
+
+      const threshold = range === '24h' ? 3 * 60 * 60 * 1000 : 10 * 60 * 60 * 1000;
+      
+      const drawPath = (pathD, isGap) => {
+        const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        pathEl.setAttribute('d', pathD);
+        pathEl.setAttribute('fill', 'none');
+        pathEl.setAttribute('stroke', '#f97316');
+        pathEl.setAttribute('class', 'wia-mkt-line');
+        if (isGap) {
+          pathEl.setAttribute('stroke-dasharray', '4 4');
+          pathEl.setAttribute('opacity', '0.4');
+        } else {
+          pathEl.setAttribute('opacity', '1');
+        }
+        
+        const nativePath = freshSvg.querySelector('g[transform="translate(4,6)"] path[stroke="#A19638"]');
+        if (nativePath) {
+          const strokeWidth = nativePath.getAttribute('stroke-width') || '2';
+          const strokeLinecap = nativePath.getAttribute('stroke-linecap') || 'round';
+          const strokeLinejoin = nativePath.getAttribute('stroke-linejoin') || 'round';
+          const filterVal = nativePath.getAttribute('filter');
+          
+          pathEl.setAttribute('stroke-width', strokeWidth);
+          pathEl.setAttribute('stroke-linecap', strokeLinecap);
+          pathEl.setAttribute('stroke-linejoin', strokeLinejoin);
+          if (filterVal) pathEl.setAttribute('filter', filterVal);
+        } else {
+          pathEl.setAttribute('stroke-width', '2');
+          pathEl.setAttribute('stroke-linecap', 'round');
+          pathEl.setAttribute('stroke-linejoin', 'round');
+        }
+        overlayG.appendChild(pathEl);
+      };
+
+      const groups = [];
+      let currentGroup = [];
+      
+      plottedPoints.forEach((pt, index) => {
+        if (index === 0) {
+          currentGroup.push(pt);
+        } else {
+          const prevPt = plottedPoints[index - 1];
+          if (pt.t - prevPt.t <= threshold) {
+            currentGroup.push(pt);
+          } else {
+            groups.push(currentGroup);
+            currentGroup = [pt];
+          }
+        }
+      });
+      if (currentGroup.length > 0) {
+        groups.push(currentGroup);
+      }
+
+      groups.forEach(g => {
+        if (g.length < 2) return;
+        
+        let pathD = `M ${getX(g[0]).toFixed(2)} ${getY(g[0].price).toFixed(2)}`;
+        if (g.length === 2) {
+          const pt0 = g[0], pt1 = g[1];
+          const x0 = getX(pt0), y0 = getY(pt0.price);
+          const x1 = getX(pt1), y1 = getY(pt1.price);
+          const cpX1 = x0 + (x1 - x0) * 0.3;
+          const cpY1 = y0;
+          const cpX2 = x1 - (x1 - x0) * 0.3;
+          const cpY2 = y1;
+          pathD += ` C ${cpX1.toFixed(2)} ${cpY1.toFixed(2)}, ${cpX2.toFixed(2)} ${cpY2.toFixed(2)}, ${x1.toFixed(2)} ${y1.toFixed(2)}`;
+        } else {
+          for (let i = 0; i < g.length - 1; i++) {
+            const ptPrev = g[i - 1] || g[i];
+            const ptA = g[i];
+            const ptB = g[i + 1];
+            const ptNext = g[i + 2] || ptB;
+            
+            const xA = getX(ptA), yA = getY(ptA.price);
+            const xB = getX(ptB), yB = getY(ptB.price);
+            const xPrev = getX(ptPrev), yPrev = getY(ptPrev.price);
+            const xNext = getX(ptNext), yNext = getY(ptNext.price);
+            
+            const tension = 0.15;
+            const cpX1 = xA + (xB - xPrev) * tension;
+            const cpY1 = yA + (yB - yPrev) * tension;
+            const cpX2 = xB - (xNext - xA) * tension;
+            const cpY2 = yB - (yNext - yPrev) * tension;
+            
+            pathD += ` C ${cpX1.toFixed(2)} ${cpY1.toFixed(2)}, ${cpX2.toFixed(2)} ${cpY2.toFixed(2)}, ${xB.toFixed(2)} ${yB.toFixed(2)}`;
+          }
+        }
+        drawPath(pathD, false);
+      });
+
+      for (let k = 0; k < groups.length - 1; k++) {
+        const ptA = groups[k][groups[k].length - 1];
+        const ptB = groups[k+1][0];
+        const xA = getX(ptA), yA = getY(ptA.price);
+        const xB = getX(ptB), yB = getY(ptB.price);
+        const pathD = `M ${xA.toFixed(2)} ${yA.toFixed(2)} L ${xB.toFixed(2)} ${yB.toFixed(2)}`;
+        drawPath(pathD, true);
+      }
+      
+      plottedPoints.forEach(pt => {
+        const cx = getX(pt);
+        const cy = getY(pt.price);
+        
+        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        circle.setAttribute('cx', cx.toFixed(2));
+        circle.setAttribute('cy', cy.toFixed(2));
+        circle.setAttribute('r', '2');
+        circle.setAttribute('class', 'wia-mkt-point');
+        
+        circle.onmouseenter = (e) => {
+          const tooltip = getOrCreateTooltip();
+          tooltip.innerHTML = `${formatHoverTime(pt.t, range)} · <span style="color: #f97316;">${t('marketGraphHoverPrice', { price: fmt(pt.price) })}</span>`;
+          tooltip.style.display = 'block';
+        };
+        circle.onmousemove = (e) => {
+          const tooltip = getOrCreateTooltip();
+          tooltip.style.left = `${e.pageX + 10}px`;
+          tooltip.style.top = `${e.pageY - 28}px`;
+        };
+        circle.onmouseleave = () => {
+          const tooltip = getOrCreateTooltip();
+          tooltip.style.display = 'none';
+        };
+        
+        overlayG.appendChild(circle);
+      });
+      
+      const maxText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      maxText.setAttribute('x', '418');
+      maxText.setAttribute('y', '-4');
+      maxText.setAttribute('class', 'wia-mkt-axis-label');
+      maxText.setAttribute('text-anchor', 'end');
+      maxText.textContent = fmt(realMax);
+      
+      overlayG.appendChild(maxText);
+
+      const formatXLabel = (timestamp) => {
+        const d = new Date(timestamp);
+        const pad = (n) => String(n).padStart(2, '0');
+        if (range === '24h') {
+          const hh = pad(d.getHours());
+          const mm = pad(d.getMinutes());
+          return `${hh}:${mm}`;
+        } else {
+          const month = pad(d.getMonth() + 1);
+          const date = pad(d.getDate());
+          if (getLocale() === 'de') {
+            return `${date}.${month}.`;
+          } else {
+            return `${month}-${date}`;
+          }
+        }
+      };
+
+      const oldestText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      oldestText.setAttribute('x', '0');
+      oldestText.setAttribute('y', '52');
+      oldestText.setAttribute('class', 'wia-mkt-x-label');
+      oldestText.setAttribute('text-anchor', 'start');
+      oldestText.textContent = formatXLabel(tMin);
+      overlayG.appendChild(oldestText);
+
+      const midText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      midText.setAttribute('x', '210');
+      midText.setAttribute('y', '52');
+      midText.setAttribute('class', 'wia-mkt-x-label');
+      midText.setAttribute('text-anchor', 'middle');
+      midText.textContent = formatXLabel(tMin + maxSpanMs / 2);
+      overlayG.appendChild(midText);
+
+      const nowText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      nowText.setAttribute('x', '418');
+      nowText.setAttribute('y', '52');
+      nowText.setAttribute('class', 'wia-mkt-x-label');
+      nowText.setAttribute('text-anchor', 'end');
+      
+      const timeSpan = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
+      timeSpan.textContent = formatXLabel(tMax) + " ";
+      nowText.appendChild(timeSpan);
+      
+      const latestPoint = plottedPoints[plottedPoints.length - 1];
+      const latestPrice = latestPoint ? latestPoint.price : realMin;
+      const priceSpan = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
+      priceSpan.setAttribute('fill', '#f97316');
+      priceSpan.setAttribute('font-weight', 'bold');
+      priceSpan.textContent = `(${fmt(latestPrice)})`;
+      nowText.appendChild(priceSpan);
+      
+      overlayG.appendChild(nowText);
+    } finally {
+      resumeModalObserver(freshModal);
+    }
+    
+    const fingerprint = getNativeSvgFingerprint(freshSvg);
+    lastMktState = `${code}-${range}-${fingerprint}`;
   }
 
   async function renderIntradayLine(code, range) {
@@ -5185,382 +5540,63 @@
         resumeModalObserver(modal);
       }
       
-      const maxSpanMs = range === '24h' ? 24 * 60 * 60 * 1000 : 72 * 60 * 60 * 1000;
-      const txs = await seedResourceTransactions(code, maxSpanMs);
-      
-      // Generation check
-      if (myGen !== renderGen) return;
-
-      // Re-resolve DOM nodes fresh
-      const foundAfter = findMarketGraph();
-      if (!foundAfter || !foundAfter.svg.isConnected || getModalResourceCode(foundAfter.modal) !== code) return;
-      const { modal: freshModal, svg: freshSvg } = foundAfter;
-      
-      const freshInnerG = freshSvg.querySelector('g[transform="translate(4,6)"]');
-      if (!freshInnerG) return;
-      
       const pollerStore = GM_getValue(KEYS.priceSeries, {}) || {};
       const samples = pollerStore[code] || [];
       
-      const points = [];
+      const cache = GM_getValue(KEYS.resourceTransactionsCache, {}) || {};
+      const cachedEntry = cache[`${code}_${range}`];
+      const cachedTxs = (cachedEntry && Array.isArray(cachedEntry.points)) ? cachedEntry.points : [];
+      
+      const instantPoints = [];
       const seenTimes = new Set();
       
-      txs.forEach(tx => {
+      cachedTxs.forEach(tx => {
         if (!seenTimes.has(tx.t)) {
           seenTimes.add(tx.t);
-          points.push({ t: tx.t, price: tx.price });
+          instantPoints.push({ t: tx.t, price: tx.price });
         }
       });
       
       samples.forEach(pt => {
         if (!seenTimes.has(pt.t)) {
           seenTimes.add(pt.t);
-          points.push({ t: pt.t, price: pt.price });
+          instantPoints.push({ t: pt.t, price: pt.price });
         }
       });
       
-      suspendModalObserver();
-      let overlaySvg, overlayG;
-      try {
+      // Draw immediately using whatever cached/poller data we have
+      drawIntradayGraph(foundStart, instantPoints, range, code, myGen);
+      
+      // Async fetch fresh transaction points in background
+      const maxSpanMs = range === '24h' ? 24 * 60 * 60 * 1000 : 72 * 60 * 60 * 1000;
+      seedResourceTransactions(code, maxSpanMs, range).then(freshTxs => {
         if (myGen !== renderGen) return;
-        const parent = freshSvg.parentElement;
-        if (!parent) return;
-
-        overlaySvg = parent.querySelector('.wia-mkt-overlay-svg');
-        if (!overlaySvg) {
-          overlaySvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-          overlaySvg.setAttribute('class', 'wia-mkt-overlay-svg');
-          parent.insertBefore(overlaySvg, freshSvg.nextSibling);
-        }
         
-        const svgRect = freshSvg.getBoundingClientRect();
-        const parentRect = parent.getBoundingClientRect();
-        const topOffset = svgRect.top - parentRect.top;
-        const leftOffset = svgRect.left - parentRect.left;
-
-        overlaySvg.style.position = 'absolute';
-        overlaySvg.style.top = `${topOffset}px`;
-        overlaySvg.style.left = `${leftOffset}px`;
-        overlaySvg.style.width = `${svgRect.width}px`;
-        overlaySvg.style.height = `${svgRect.height}px`;
-        overlaySvg.setAttribute('width', svgRect.width.toString());
-        overlaySvg.setAttribute('height', svgRect.height.toString());
-        overlaySvg.style.pointerEvents = 'none';
-        overlaySvg.style.overflow = 'visible';
-
-        overlaySvg.innerHTML = '';
+        const foundAfter = findMarketGraph();
+        if (!foundAfter || !foundAfter.svg.isConnected || getModalResourceCode(foundAfter.modal) !== code) return;
         
-        overlayG = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        overlayG.setAttribute('transform', 'translate(4,6)');
-        overlaySvg.appendChild(overlayG);
-
-        if (points.length === 0) {
-          log(`No intraday price points found for ${code}`);
-          const warnText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-          warnText.setAttribute('x', '210');
-          warnText.setAttribute('y', '30');
-          warnText.setAttribute('fill', '#94a3b8');
-          warnText.setAttribute('text-anchor', 'middle');
-          warnText.setAttribute('font-size', '10px');
-          warnText.setAttribute('class', 'wia-mkt-warning');
-          warnText.textContent = getLocale() === 'de' ? 'Intraday-Daten spärlich (lade...)' : 'Intraday data sparse (loading...)';
-          
-          overlayG.appendChild(warnText);
-          lastMktState = null;
-          return;
-        }
-      } finally {
-        resumeModalObserver(freshModal);
-      }
-      
-      points.sort((a, b) => a.t - b.t);
-      
-      const tMax = now();
-      const tMin = tMax - maxSpanMs;
-      const buckets = [];
-      let cur = tMax;
-
-      if (range === '24h') {
-        const transitionTime = tMax - (3 * 60 * 60 * 1000);
-        while (cur > transitionTime) {
-          const next = cur - (15 * 60 * 1000);
-          buckets.push({ start: next, end: cur, sum: 0, count: 0 });
-          cur = next;
-        }
-        const minTime = tMax - (24 * 60 * 60 * 1000);
-        while (cur > minTime) {
-          const next = cur - (60 * 60 * 1000);
-          buckets.push({ start: next, end: cur, sum: 0, count: 0 });
-          cur = next;
-        }
-      } else {
-        const transitionTime = tMax - (12 * 60 * 60 * 1000);
-        while (cur > transitionTime) {
-          const next = cur - (60 * 60 * 1000);
-          buckets.push({ start: next, end: cur, sum: 0, count: 0 });
-          cur = next;
-        }
-        const minTime = tMax - (72 * 60 * 60 * 1000);
-        while (cur > minTime) {
-          const next = cur - (3 * 60 * 60 * 1000);
-          buckets.push({ start: next, end: cur, sum: 0, count: 0 });
-          cur = next;
-        }
-      }
-      buckets.reverse();
-      
-      points.forEach(pt => {
-        if (pt.t >= tMin && pt.t <= tMax) {
-          const bucket = buckets.find(b => pt.t >= b.start && pt.t <= b.end);
-          if (bucket) {
-            bucket.sum += pt.price;
-            bucket.count += 1;
+        const finalPoints = [];
+        const finalSeen = new Set();
+        
+        freshTxs.forEach(tx => {
+          if (!finalSeen.has(tx.t)) {
+            finalSeen.add(tx.t);
+            finalPoints.push({ t: tx.t, price: tx.price });
           }
-        }
+        });
+        
+        samples.forEach(pt => {
+          if (!finalSeen.has(pt.t)) {
+            finalSeen.add(pt.t);
+            finalPoints.push({ t: pt.t, price: pt.price });
+          }
+        });
+        
+        drawIntradayGraph(foundAfter, finalPoints, range, code, myGen);
+      }).catch(err => {
+        log('Background seedResourceTransactions error:', err);
       });
       
-      const plottedPoints = buckets
-        .map((b) => {
-          if (b.count > 0) {
-            return {
-              t: (b.start + b.end) / 2,
-              price: b.sum / b.count
-            };
-          }
-          return null;
-        })
-        .filter(Boolean);
-        
-      if (plottedPoints.length === 0) {
-        lastMktState = null;
-        return;
-      }
-      
-      const W = 420;
-      const H = 48;
-      
-      const prices = plottedPoints.map(p => p.price);
-      const realMin = Math.min(...prices);
-      const realMax = Math.max(...prices);
-      let yMin = realMin;
-      let yMax = realMax;
-      if (yMax === yMin) {
-        yMin = yMin * 0.9;
-        yMax = yMax * 1.1;
-      } else {
-        const pad = (yMax - yMin) * 0.1;
-        yMin -= pad;
-        yMax += pad;
-      }
-      
-      const getX = (pt) => {
-        const pctX = (pt.t - tMin) / maxSpanMs;
-        return pctX * W;
-      };
-      
-      const getY = (price) => {
-        const pctY = (price - yMin) / (yMax - yMin);
-        return H - pctY * H;
-      };
-      
-      suspendModalObserver();
-      try {
-        if (myGen !== renderGen) return;
-
-        const threshold = range === '24h' ? 3 * 60 * 60 * 1000 : 10 * 60 * 60 * 1000;
-        
-        const drawPath = (pathD, isGap) => {
-          const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-          pathEl.setAttribute('d', pathD);
-          pathEl.setAttribute('fill', 'none');
-          pathEl.setAttribute('stroke', '#f97316');
-          pathEl.setAttribute('class', 'wia-mkt-line');
-          if (isGap) {
-            pathEl.setAttribute('stroke-dasharray', '4 4');
-            pathEl.setAttribute('opacity', '0.4');
-          } else {
-            pathEl.setAttribute('opacity', '1');
-          }
-          
-          const nativePath = freshSvg.querySelector('g[transform="translate(4,6)"] path[stroke="#A19638"]');
-          if (nativePath) {
-            const strokeWidth = nativePath.getAttribute('stroke-width') || '2';
-            const strokeLinecap = nativePath.getAttribute('stroke-linecap') || 'round';
-            const strokeLinejoin = nativePath.getAttribute('stroke-linejoin') || 'round';
-            const filterVal = nativePath.getAttribute('filter');
-            
-            pathEl.setAttribute('stroke-width', strokeWidth);
-            pathEl.setAttribute('stroke-linecap', strokeLinecap);
-            pathEl.setAttribute('stroke-linejoin', strokeLinejoin);
-            if (filterVal) pathEl.setAttribute('filter', filterVal);
-          } else {
-            pathEl.setAttribute('stroke-width', '2');
-            pathEl.setAttribute('stroke-linecap', 'round');
-            pathEl.setAttribute('stroke-linejoin', 'round');
-          }
-          overlayG.appendChild(pathEl);
-        };
-
-        const groups = [];
-        let currentGroup = [];
-        
-        plottedPoints.forEach((pt, index) => {
-          if (index === 0) {
-            currentGroup.push(pt);
-          } else {
-            const prevPt = plottedPoints[index - 1];
-            if (pt.t - prevPt.t <= threshold) {
-              currentGroup.push(pt);
-            } else {
-              groups.push(currentGroup);
-              currentGroup = [pt];
-            }
-          }
-        });
-        if (currentGroup.length > 0) {
-          groups.push(currentGroup);
-        }
-
-        groups.forEach(g => {
-          if (g.length < 2) return;
-          
-          let pathD = `M ${getX(g[0]).toFixed(2)} ${getY(g[0].price).toFixed(2)}`;
-          if (g.length === 2) {
-            const pt0 = g[0], pt1 = g[1];
-            const x0 = getX(pt0), y0 = getY(pt0.price);
-            const x1 = getX(pt1), y1 = getY(pt1.price);
-            const cpX1 = x0 + (x1 - x0) * 0.3;
-            const cpY1 = y0;
-            const cpX2 = x1 - (x1 - x0) * 0.3;
-            const cpY2 = y1;
-            pathD += ` C ${cpX1.toFixed(2)} ${cpY1.toFixed(2)}, ${cpX2.toFixed(2)} ${cpY2.toFixed(2)}, ${x1.toFixed(2)} ${y1.toFixed(2)}`;
-          } else {
-            for (let i = 0; i < g.length - 1; i++) {
-              const ptPrev = g[i - 1] || g[i];
-              const ptA = g[i];
-              const ptB = g[i + 1];
-              const ptNext = g[i + 2] || ptB;
-              
-              const xA = getX(ptA), yA = getY(ptA.price);
-              const xB = getX(ptB), yB = getY(ptB.price);
-              const xPrev = getX(ptPrev), yPrev = getY(ptPrev.price);
-              const xNext = getX(ptNext), yNext = getY(ptNext.price);
-              
-              const tension = 0.15;
-              const cpX1 = xA + (xB - xPrev) * tension;
-              const cpY1 = yA + (yB - yPrev) * tension;
-              const cpX2 = xB - (xNext - xA) * tension;
-              const cpY2 = yB - (yNext - yPrev) * tension;
-              
-              pathD += ` C ${cpX1.toFixed(2)} ${cpY1.toFixed(2)}, ${cpX2.toFixed(2)} ${cpY2.toFixed(2)}, ${xB.toFixed(2)} ${yB.toFixed(2)}`;
-            }
-          }
-          drawPath(pathD, false);
-        });
-
-        for (let k = 0; k < groups.length - 1; k++) {
-          const ptA = groups[k][groups[k].length - 1];
-          const ptB = groups[k+1][0];
-          const xA = getX(ptA), yA = getY(ptA.price);
-          const xB = getX(ptB), yB = getY(ptB.price);
-          const pathD = `M ${xA.toFixed(2)} ${yA.toFixed(2)} L ${xB.toFixed(2)} ${yB.toFixed(2)}`;
-          drawPath(pathD, true);
-        }
-        
-        plottedPoints.forEach(pt => {
-          const cx = getX(pt);
-          const cy = getY(pt.price);
-          
-          const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-          circle.setAttribute('cx', cx.toFixed(2));
-          circle.setAttribute('cy', cy.toFixed(2));
-          circle.setAttribute('r', '2');
-          circle.setAttribute('class', 'wia-mkt-point');
-          
-          circle.onmouseenter = (e) => {
-            const tooltip = getOrCreateTooltip();
-            tooltip.innerHTML = `${formatHoverTime(pt.t, range)} · <span style="color: #f97316;">${t('marketGraphHoverPrice', { price: fmt(pt.price) })}</span>`;
-            tooltip.style.display = 'block';
-          };
-          circle.onmousemove = (e) => {
-            const tooltip = getOrCreateTooltip();
-            tooltip.style.left = `${e.pageX + 10}px`;
-            tooltip.style.top = `${e.pageY - 28}px`;
-          };
-          circle.onmouseleave = () => {
-            const tooltip = getOrCreateTooltip();
-            tooltip.style.display = 'none';
-          };
-          
-          overlayG.appendChild(circle);
-        });
-        
-        const maxText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        maxText.setAttribute('x', '418');
-        maxText.setAttribute('y', '-4');
-        maxText.setAttribute('class', 'wia-mkt-axis-label');
-        maxText.setAttribute('text-anchor', 'end');
-        maxText.textContent = fmt(realMax);
-        
-        overlayG.appendChild(maxText);
-
-        const formatXLabel = (timestamp) => {
-          const d = new Date(timestamp);
-          const pad = (n) => String(n).padStart(2, '0');
-          if (range === '24h') {
-            const hh = pad(d.getHours());
-            const mm = pad(d.getMinutes());
-            return `${hh}:${mm}`;
-          } else {
-            const month = pad(d.getMonth() + 1);
-            const date = pad(d.getDate());
-            if (getLocale() === 'de') {
-              return `${date}.${month}.`;
-            } else {
-              return `${month}-${date}`;
-            }
-          }
-        };
-
-        const oldestText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        oldestText.setAttribute('x', '0');
-        oldestText.setAttribute('y', '52');
-        oldestText.setAttribute('class', 'wia-mkt-x-label');
-        oldestText.setAttribute('text-anchor', 'start');
-        oldestText.textContent = formatXLabel(tMin);
-        overlayG.appendChild(oldestText);
-
-        const midText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        midText.setAttribute('x', '210');
-        midText.setAttribute('y', '52');
-        midText.setAttribute('class', 'wia-mkt-x-label');
-        midText.setAttribute('text-anchor', 'middle');
-        midText.textContent = formatXLabel(tMin + maxSpanMs / 2);
-        overlayG.appendChild(midText);
-
-        const nowText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        nowText.setAttribute('x', '418');
-        nowText.setAttribute('y', '52');
-        nowText.setAttribute('class', 'wia-mkt-x-label');
-        nowText.setAttribute('text-anchor', 'end');
-        
-        const timeSpan = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
-        timeSpan.textContent = formatXLabel(tMax) + " ";
-        nowText.appendChild(timeSpan);
-        
-        const priceSpan = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
-        priceSpan.setAttribute('fill', '#f97316');
-        priceSpan.setAttribute('font-weight', 'bold');
-        priceSpan.textContent = `(${fmt(realMin)})`;
-        nowText.appendChild(priceSpan);
-        
-        overlayG.appendChild(nowText);
-      } finally {
-        resumeModalObserver(freshModal);
-      }
-      
-      const fingerprint = getNativeSvgFingerprint(freshSvg);
-      lastMktState = `${code}-${range}-${fingerprint}`;
     } catch (e) {
       log('renderIntradayLine error:', e);
     }
@@ -5578,8 +5614,7 @@
     const titleText = titleEl.textContent.trim();
     const isBuySell = titleText.includes('Buy order') || titleText.includes('Buy Order') || 
                       titleText.includes('Kaufauftrag') || titleText.includes('Verkaufsangebot') || 
-                      titleText.includes('Sell order') || titleText.includes('Sell Order') ||
-                      titleText.includes('order') || titleText.includes('Order');
+                      titleText.includes('Sell order') || titleText.includes('Sell Order');
     if (!isBuySell) return null;
 
     const svg = modal.querySelector('svg[width="428"][height="60"]:not(.wia-mkt-overlay-svg)');
@@ -5613,6 +5648,11 @@
   function initMarketGraph() {
     teardownMarketGraph();
     
+    if (!samplerInterval) {
+      tickPriceSampler();
+      samplerInterval = setInterval(tickPriceSampler, 60000);
+    }
+    
     bodyObserver = new MutationObserver(() => {
       if (!CONFIG.featMarketGraph) return;
       
@@ -5629,7 +5669,7 @@
       }
     });
     
-    bodyObserver.observe(document.body, { childList: true });
+    bodyObserver.observe(document.body, { childList: true, subtree: true });
     
     const found = findMarketGraph();
     if (found) {
@@ -5699,6 +5739,11 @@
       modalObserver = null;
     }
     lastMktState = null;
+    modalObserverDepth = 0;
+    if (samplerInterval) {
+      clearInterval(samplerInterval);
+      samplerInterval = null;
+    }
     const tooltip = document.querySelector('.wia-mkt-tooltip');
     if (tooltip) tooltip.remove();
     const overlays = document.querySelectorAll('.wia-mkt-overlay-svg');
@@ -6050,8 +6095,6 @@
     if (CONFIG.featBattleAdvisor && isBattlePage()) applyBattleAdvisory();
     if (CONFIG.featPillReminder) initPillReminder();
     if (CONFIG.featMarketGraph) initMarketGraph();
-    tickPriceSampler();
-    setInterval(tickPriceSampler, 60000);
     injectGear();
     refreshMenuCommands();
 
