@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         PROST
+// @name         TEST PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.7.6
+// @version      0.7.6-unstable
 // @description  PROST — Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -936,6 +936,61 @@
     return offersInFlight[code];
   }
 
+  function getTypeFromCode(code) {
+    if (!code) return 'unknown';
+    const cleanCode = code.replace(/\d+$/, '').trim().toLowerCase();
+    for (const [kw, t] of Object.entries(CONFIG.typeByAltKeyword)) {
+      if (cleanCode === kw) return t;
+    }
+    return 'unknown';
+  }
+
+  function getTxPrice(tx) {
+    return tx.p !== undefined ? tx.p : tx.money;
+  }
+
+  function getTxTimestamp(tx) {
+    return tx.t !== undefined ? tx.t : (tx.createdAt ? Date.parse(tx.createdAt) : 0);
+  }
+
+  function getTxScore(tx, type) {
+    if (tx.s !== undefined) return tx.s;
+    return statForType(type, tx.item?.skills);
+  }
+
+  function migrateTransactionsCache() {
+    const key = NS + 'cacheSchemaVersion';
+    const currentVersion = GM_getValue(key, 0);
+    if (currentVersion === 2) return;
+
+    log('Migrating transactionsCache to schema version 2...');
+    const store = GM_getValue(KEYS.transactionsCache, {}) || {};
+    let migrated = false;
+    for (const [code, entry] of Object.entries(store)) {
+      if (entry && Array.isArray(entry.data)) {
+        const isOld = entry.data.some(tx => tx && (tx.transactionType !== undefined || tx.money !== undefined));
+        if (isOld) {
+          const type = getTypeFromCode(code);
+          entry.data = entry.data.map(tx => {
+            if (!tx) return null;
+            if (tx.transactionType !== undefined && tx.transactionType !== 'itemMarket') return null;
+            const price = tx.p !== undefined ? tx.p : tx.money;
+            const timestamp = tx.t !== undefined ? tx.t : (tx.createdAt ? new Date(tx.createdAt).getTime() : null);
+            const score = tx.s !== undefined ? tx.s : statForType(type, tx.item?.skills);
+            if (price == null || timestamp == null) return null;
+            return { p: price, t: timestamp, s: score };
+          }).filter(Boolean);
+          migrated = true;
+        }
+      }
+    }
+    if (migrated) {
+      GM_setValue(KEYS.transactionsCache, store);
+      log('transactionsCache successfully migrated to schema version 2.');
+    }
+    GM_setValue(key, 2);
+  }
+
   // ── Equipment transactions (gateway/historical) ──────────────────────────
   const transactionsInFlight = {}; // code -> promise (dedup)
 
@@ -969,10 +1024,21 @@
         const data = JSON.parse(res.text);
         const items = data?.result?.data?.items || [];
         
+        const type = getTypeFromCode(code);
+        const mapped = items.map(tx => {
+          if (tx.transactionType !== 'itemMarket' || tx.money == null || !tx.createdAt) return null;
+          const score = statForType(type, tx.item?.skills);
+          return {
+            p: Number(tx.money),
+            t: new Date(tx.createdAt).getTime(),
+            s: score
+          };
+        }).filter(Boolean);
+
         const next = GM_getValue(KEYS.transactionsCache, {}) || {};
-        next[code] = { data: items, fetchedAt: now() };
+        next[code] = { data: mapped, fetchedAt: now() };
         GM_setValue(KEYS.transactionsCache, next);
-        return items;
+        return mapped;
       } catch (e) {
         log('fetchItemTransactions failed:', code, e.message);
         return cached ? cached.data : null;
@@ -1574,13 +1640,13 @@
     const sixDaysAgo = Date.now() - 6 * 24 * 60 * 60 * 1000;
     
     const validTxs = txs.map(tx => {
-      const t = tx.createdAt ? Date.parse(tx.createdAt) : NaN;
-      if (!Number.isFinite(t) || t < sixDaysAgo) return null;
-      if (tx.transactionType !== 'itemMarket') return null;
+      const t = getTxTimestamp(tx);
+      if (!t || t < sixDaysAgo) return null;
+      if (tx.transactionType !== undefined && tx.transactionType !== 'itemMarket') return null;
       
-      const score = statForType(type, tx.item?.skills);
+      const score = getTxScore(tx, type);
       return {
-        price: tx.money,
+        price: getTxPrice(tx),
         score,
         diff: score != null ? Math.abs(score - myStat) : Infinity
       };
@@ -1681,8 +1747,10 @@
     
     const sixDaysAgo = Date.now() - 6 * 24 * 60 * 60 * 1000;
     item.txCount = txData ? txData.filter(t => {
-      const parsedTime = t.createdAt ? Date.parse(t.createdAt) : NaN;
-      return Number.isFinite(parsedTime) && parsedTime >= sixDaysAgo && t.money != null && t.transactionType === 'itemMarket';
+      const parsedTime = getTxTimestamp(t);
+      const price = getTxPrice(t);
+      const isMarket = t.transactionType === undefined || t.transactionType === 'itemMarket';
+      return Number.isFinite(parsedTime) && parsedTime >= sixDaysAgo && price != null && isMarket;
     }).length : 0;
 
     let market = item.txRefPrice;
@@ -5809,7 +5877,7 @@
     const tc = GM_getValue(KEYS.transactionsCache, {}) || {};
     const itemTxs = tc[itemCode];
     if (itemTxs && Array.isArray(itemTxs.data) && itemTxs.data.length > 0) {
-      const prices = itemTxs.data.map(t => t.price).filter(p => p != null && !isNaN(p));
+      const prices = itemTxs.data.map(t => getTxPrice(t)).filter(p => p != null && !isNaN(p));
       if (prices.length > 0) {
         const txMin = Math.min(...prices);
         const txMax = Math.max(...prices);
@@ -6074,6 +6142,7 @@
   }
 
   function start() {
+    migrateTransactionsCache();
     CONFIG.locale = GM_getValue(KEYS.locale, CONFIG.locale || 'de') || 'de';
     if (typeof window !== 'undefined') {
       window.__WIA_LOCALE__ = CONFIG.locale;
