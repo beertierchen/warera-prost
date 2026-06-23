@@ -629,6 +629,7 @@
     featMarketGraph: NS + 'featMarketGraph',
     marketGraphRange: NS + 'mktGraphRange',
     priceSeries: NS + 'priceSeries',
+    resourceTransactionsCache: NS + 'resTxsCache',
   };
   let menuSettingsId = null;
   let menuClearId = null;
@@ -655,6 +656,7 @@
     GM_setValue(KEYS.scrapCache, null);
     GM_setValue(KEYS.offersCache, {});
     GM_setValue(KEYS.transactionsCache, {});
+    GM_setValue(KEYS.resourceTransactionsCache, {});
     GM_setValue(KEYS.scrapedPrices, {});
     GM_setValue(KEYS.priceSeries, {});
     GM_setValue(KEYS.apiBase, '');
@@ -3091,6 +3093,7 @@
         transition: r 0.15s ease, opacity 0.15s ease;
         opacity: 0.6;
         cursor: pointer;
+        pointer-events: auto;
       }
       .wia-mkt-point:hover {
         r: 5px;
@@ -4998,41 +5001,63 @@
   }
 
   async function seedResourceTransactions(code, maxSpanMs) {
-    const startTime = now() - maxSpanMs;
+    const nowMs = now();
+    const cacheKey = KEYS.resourceTransactionsCache;
+    const cache = GM_getValue(cacheKey, {}) || {};
+    const entry = cache[code];
+    const ttl = 15 * 60 * 1000; // 15 minutes TTL
+
+    if (entry && (nowMs - entry.fetchedAt < ttl) && Array.isArray(entry.points)) {
+      return entry.points;
+    }
+
+    const startTime = nowMs - (3 * 24 * 60 * 60 * 1000); // 3 days max fetch
     let cursor = null;
-    let allTx = [];
-    const seenIds = new Set();
+    let allPoints = [];
+    const seenTimes = new Set();
     const pageCap = 6;
     let pagesFetched = 0;
-    
+
     while (pagesFetched < pageCap) {
       const res = await fetchResourceTransactions(code, false, cursor);
       if (!res || !res.items || res.items.length === 0) break;
-      
-      let oldestTime = now();
+
+      let oldestTime = nowMs;
       for (const item of res.items) {
-        if (!seenIds.has(item._id)) {
-          seenIds.add(item._id);
-          allTx.push(item);
-        }
         const itemTime = new Date(item.createdAt).getTime();
         if (itemTime < oldestTime) {
           oldestTime = itemTime;
         }
+
+        const price = Number(item.money) / Number(item.quantity);
+        if (!isNaN(price) && !seenTimes.has(itemTime)) {
+          seenTimes.add(itemTime);
+          allPoints.push({ t: itemTime, price: price });
+        }
       }
-      
+
       pagesFetched++;
       cursor = res.nextCursor;
-      
+
       if (!cursor) break;
       if (oldestTime <= startTime) break;
-      if (now() - oldestTime > 3 * 60 * 60 * 1000) {
-        log(`seedResourceTransactions: bounded seed reached > 3h span for ${code}. Truncating fetch.`);
-        break;
-      }
     }
-    
-    return allTx;
+
+    // Sort ascending by time
+    allPoints.sort((a, b) => a.t - b.t);
+
+    // Keep only elements in the last 3 days
+    const cutoff = nowMs - (3 * 24 * 60 * 60 * 1000);
+    allPoints = allPoints.filter(pt => pt.t >= cutoff);
+
+    // Update cache
+    cache[code] = {
+      points: allPoints,
+      fetchedAt: nowMs
+    };
+    GM_setValue(cacheKey, cache);
+
+    return allPoints;
   }
 
   function getNativeSvgFingerprint(svg) {
@@ -5059,6 +5084,23 @@
     }
   }
 
+  let modalObserverSuspended = false;
+
+  function suspendModalObserver() {
+    if (modalObserver) {
+      modalObserver.disconnect();
+      modalObserverSuspended = true;
+    }
+  }
+
+  function resumeModalObserver(modal) {
+    if (modalObserverSuspended && modalObserver && modal) {
+      modalObserver.takeRecords();
+      modalObserver.observe(modal, { childList: true, subtree: true });
+      modalObserverSuspended = false;
+    }
+  }
+
   async function renderIntradayLine(code, range, svg, modal) {
     if (renderingIntraday) {
       nextRenderRequest = { code, range, svg, modal };
@@ -5067,8 +5109,19 @@
     renderingIntraday = true;
     
     try {
-      const oldToggle = modal.querySelector('.wia-mkt-toggle-row');
-      if (oldToggle) oldToggle.remove();
+      suspendModalObserver();
+      try {
+        const oldToggle = modal.querySelector('.wia-mkt-toggle-row');
+        if (oldToggle) oldToggle.remove();
+        
+        const innerG = svg.querySelector('g[transform="translate(4,6)"]');
+        if (innerG) {
+          const ourSvgEls = innerG.querySelectorAll('[class^="wia-mkt-"], [class*=" wia-mkt-"]');
+          ourSvgEls.forEach(el => el.remove());
+        }
+      } finally {
+        resumeModalObserver(modal);
+      }
       
       const innerG = svg.querySelector('g[transform="translate(4,6)"]');
       if (!innerG) {
@@ -5076,38 +5129,40 @@
         return;
       }
       
-      const ourSvgEls = innerG.querySelectorAll('[class^="wia-mkt-"], [class*=" wia-mkt-"]');
-      ourSvgEls.forEach(el => el.remove());
-      
-      const toggleRow = document.createElement('div');
-      toggleRow.className = 'wia-mkt-toggle-row';
-      toggleRow.innerHTML = `
-        <button type="button" class="wia-mkt-toggle-btn ${range === '24h' ? 'wia-active' : ''}" data-range="24h">${t('marketGraph24h')}</button>
-        <button type="button" class="wia-mkt-toggle-btn ${range === '3d' ? 'wia-active' : ''}" data-range="3d">${t('marketGraph3d')}</button>
-        <span class="wia-mkt-legend">
-          <span class="wia-legend-dot native"></span> <span class="wia-legend-text">${t('marketGraphLegendNative')}</span>
-          <span class="wia-legend-dot intraday"></span> <span class="wia-legend-text">${t('marketGraphLegendIntraday')}</span>
-        </span>
-      `;
-      
-      const btns = toggleRow.querySelectorAll('.wia-mkt-toggle-btn');
-      btns.forEach(btn => {
-        btn.onclick = (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          const newRange = btn.getAttribute('data-range');
-          GM_setValue(KEYS.marketGraphRange, newRange);
-          lastMktState = null;
-          debouncedRenderIntraday(code, newRange, svg, modal);
-        };
-      });
-      
-      const parent = svg.parentElement;
-      if (parent) {
-        if (parent.style.position !== 'relative') {
-          parent.style.position = 'relative';
+      suspendModalObserver();
+      try {
+        const toggleRow = document.createElement('div');
+        toggleRow.className = 'wia-mkt-toggle-row';
+        toggleRow.innerHTML = `
+          <button type="button" class="wia-mkt-toggle-btn ${range === '24h' ? 'wia-active' : ''}" data-range="24h">${t('marketGraph24h')}</button>
+          <button type="button" class="wia-mkt-toggle-btn ${range === '3d' ? 'wia-active' : ''}" data-range="3d">${t('marketGraph3d')}</button>
+          <span class="wia-mkt-legend">
+            <span class="wia-legend-dot native"></span> <span class="wia-legend-text">${t('marketGraphLegendNative')}</span>
+            <span class="wia-legend-dot intraday"></span> <span class="wia-legend-text">${t('marketGraphLegendIntraday')}</span>
+          </span>
+        `;
+        
+        const btns = toggleRow.querySelectorAll('.wia-mkt-toggle-btn');
+        btns.forEach(btn => {
+          btn.onclick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const newRange = btn.getAttribute('data-range');
+            GM_setValue(KEYS.marketGraphRange, newRange);
+            lastMktState = null;
+            debouncedRenderIntraday(code, newRange, svg, modal);
+          };
+        });
+        
+        const parent = svg.parentElement;
+        if (parent) {
+          if (parent.style.position !== 'relative') {
+            parent.style.position = 'relative';
+          }
+          parent.insertBefore(toggleRow, svg);
         }
-        parent.insertBefore(toggleRow, svg);
+      } finally {
+        resumeModalObserver(modal);
       }
       
       const maxSpanMs = range === '24h' ? 24 * 60 * 60 * 1000 : 72 * 60 * 60 * 1000;
@@ -5120,11 +5175,9 @@
       const seenTimes = new Set();
       
       txs.forEach(tx => {
-        const t = new Date(tx.createdAt).getTime();
-        const price = Number(tx.money) / Number(tx.quantity);
-        if (!isNaN(price) && !seenTimes.has(t)) {
-          seenTimes.add(t);
-          points.push({ t, price });
+        if (!seenTimes.has(tx.t)) {
+          seenTimes.add(tx.t);
+          points.push({ t: tx.t, price: tx.price });
         }
       });
       
@@ -5135,21 +5188,58 @@
         }
       });
       
-      if (points.length === 0) {
-        log(`No intraday price points found for ${code}`);
-        const warnText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        warnText.setAttribute('x', '210');
-        warnText.setAttribute('y', '30');
-        warnText.setAttribute('fill', '#94a3b8');
-        warnText.setAttribute('text-anchor', 'middle');
-        warnText.setAttribute('font-size', '10px');
-        warnText.setAttribute('class', 'wia-mkt-warning');
-        warnText.textContent = getLocale() === 'de' ? 'Intraday-Daten spärlich (lade...)' : 'Intraday data sparse (loading...)';
+      suspendModalObserver();
+      let overlaySvg, overlayG;
+      try {
+        const parent = svg.parentElement;
+        if (!parent) return;
+
+        overlaySvg = parent.querySelector('.wia-mkt-overlay-svg');
+        if (!overlaySvg) {
+          overlaySvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+          overlaySvg.setAttribute('class', 'wia-mkt-overlay-svg');
+          parent.insertBefore(overlaySvg, svg.nextSibling);
+        }
         
-        innerG.appendChild(warnText);
+        const svgRect = svg.getBoundingClientRect();
+        const parentRect = parent.getBoundingClientRect();
+        const topOffset = svgRect.top - parentRect.top;
+        const leftOffset = svgRect.left - parentRect.left;
+
+        overlaySvg.style.position = 'absolute';
+        overlaySvg.style.top = `${topOffset}px`;
+        overlaySvg.style.left = `${leftOffset}px`;
+        overlaySvg.style.width = `${svgRect.width}px`;
+        overlaySvg.style.height = `${svgRect.height}px`;
+        overlaySvg.setAttribute('width', svgRect.width.toString());
+        overlaySvg.setAttribute('height', svgRect.height.toString());
+        overlaySvg.style.pointerEvents = 'none';
+        overlaySvg.style.overflow = 'visible';
+
+        overlaySvg.innerHTML = '';
         
-        lastMktState = `${code}-${range}-${getNativeSvgFingerprint(svg)}`;
-        return;
+        overlayG = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        overlayG.setAttribute('transform', 'translate(4,6)');
+        overlaySvg.appendChild(overlayG);
+
+        if (points.length === 0) {
+          log(`No intraday price points found for ${code}`);
+          const warnText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          warnText.setAttribute('x', '210');
+          warnText.setAttribute('y', '30');
+          warnText.setAttribute('fill', '#94a3b8');
+          warnText.setAttribute('text-anchor', 'middle');
+          warnText.setAttribute('font-size', '10px');
+          warnText.setAttribute('class', 'wia-mkt-warning');
+          warnText.textContent = getLocale() === 'de' ? 'Intraday-Daten spärlich (lade...)' : 'Intraday data sparse (loading...)';
+          
+          overlayG.appendChild(warnText);
+          
+          lastMktState = `${code}-${range}-${getNativeSvgFingerprint(svg)}`;
+          return;
+        }
+      } finally {
+        resumeModalObserver(modal);
       }
       
       points.sort((a, b) => a.t - b.t);
@@ -5234,73 +5324,78 @@
         }
       });
       
-      const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      pathEl.setAttribute('d', pathD);
-      pathEl.setAttribute('fill', 'none');
-      pathEl.setAttribute('stroke', '#4ec9d4');
-      pathEl.setAttribute('class', 'wia-mkt-line');
-      
-      const nativePath = svg.querySelector('g[transform="translate(4,6)"] path[stroke="#A19638"]');
-      if (nativePath) {
-        const strokeWidth = nativePath.getAttribute('stroke-width') || '2';
-        const strokeLinecap = nativePath.getAttribute('stroke-linecap') || 'round';
-        const strokeLinejoin = nativePath.getAttribute('stroke-linejoin') || 'round';
-        const filterVal = nativePath.getAttribute('filter');
+      suspendModalObserver();
+      try {
+        const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        pathEl.setAttribute('d', pathD);
+        pathEl.setAttribute('fill', 'none');
+        pathEl.setAttribute('stroke', '#4ec9d4');
+        pathEl.setAttribute('class', 'wia-mkt-line');
         
-        pathEl.setAttribute('stroke-width', strokeWidth);
-        pathEl.setAttribute('stroke-linecap', strokeLinecap);
-        pathEl.setAttribute('stroke-linejoin', strokeLinejoin);
-        if (filterVal) pathEl.setAttribute('filter', filterVal);
-      } else {
-        pathEl.setAttribute('stroke-width', '2');
-        pathEl.setAttribute('stroke-linecap', 'round');
-        pathEl.setAttribute('stroke-linejoin', 'round');
+        const nativePath = svg.querySelector('g[transform="translate(4,6)"] path[stroke="#A19638"]');
+        if (nativePath) {
+          const strokeWidth = nativePath.getAttribute('stroke-width') || '2';
+          const strokeLinecap = nativePath.getAttribute('stroke-linecap') || 'round';
+          const strokeLinejoin = nativePath.getAttribute('stroke-linejoin') || 'round';
+          const filterVal = nativePath.getAttribute('filter');
+          
+          pathEl.setAttribute('stroke-width', strokeWidth);
+          pathEl.setAttribute('stroke-linecap', strokeLinecap);
+          pathEl.setAttribute('stroke-linejoin', strokeLinejoin);
+          if (filterVal) pathEl.setAttribute('filter', filterVal);
+        } else {
+          pathEl.setAttribute('stroke-width', '2');
+          pathEl.setAttribute('stroke-linecap', 'round');
+          pathEl.setAttribute('stroke-linejoin', 'round');
+        }
+        
+        overlayG.appendChild(pathEl);
+        
+        plottedPoints.forEach(pt => {
+          const cx = getX(pt);
+          const cy = getY(pt.price);
+          
+          const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          circle.setAttribute('cx', cx.toFixed(2));
+          circle.setAttribute('cy', cy.toFixed(2));
+          circle.setAttribute('r', '3');
+          circle.setAttribute('class', 'wia-mkt-point');
+          
+          circle.onmouseenter = (e) => {
+            const tooltip = getOrCreateTooltip();
+            tooltip.innerHTML = `${formatHoverTime(pt.t, range)} · <span style="color: #4ec9d4;">${t('marketGraphHoverPrice', { price: fmt(pt.price) })}</span>`;
+            tooltip.style.display = 'block';
+          };
+          circle.onmousemove = (e) => {
+            const tooltip = getOrCreateTooltip();
+            tooltip.style.left = `${e.pageX + 10}px`;
+            tooltip.style.top = `${e.pageY - 28}px`;
+          };
+          circle.onmouseleave = () => {
+            const tooltip = getOrCreateTooltip();
+            tooltip.style.display = 'none';
+          };
+          
+          overlayG.appendChild(circle);
+        });
+        
+        const maxText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        maxText.setAttribute('x', '415');
+        maxText.setAttribute('y', '10');
+        maxText.setAttribute('class', 'wia-mkt-axis-label');
+        maxText.textContent = fmt(yMax);
+        
+        const minText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        minText.setAttribute('x', '415');
+        minText.setAttribute('y', '44');
+        minText.setAttribute('class', 'wia-mkt-axis-label');
+        minText.textContent = fmt(yMin);
+        
+        overlayG.appendChild(maxText);
+        overlayG.appendChild(minText);
+      } finally {
+        resumeModalObserver(modal);
       }
-      
-      innerG.appendChild(pathEl);
-      
-      plottedPoints.forEach(pt => {
-        const cx = getX(pt);
-        const cy = getY(pt.price);
-        
-        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        circle.setAttribute('cx', cx.toFixed(2));
-        circle.setAttribute('cy', cy.toFixed(2));
-        circle.setAttribute('r', '3');
-        circle.setAttribute('class', 'wia-mkt-point');
-        
-        circle.onmouseenter = (e) => {
-          const tooltip = getOrCreateTooltip();
-          tooltip.innerHTML = `${formatHoverTime(pt.t, range)} · <span style="color: #4ec9d4;">${t('marketGraphHoverPrice', { price: fmt(pt.price) })}</span>`;
-          tooltip.style.display = 'block';
-        };
-        circle.onmousemove = (e) => {
-          const tooltip = getOrCreateTooltip();
-          tooltip.style.left = `${e.pageX + 10}px`;
-          tooltip.style.top = `${e.pageY - 28}px`;
-        };
-        circle.onmouseleave = () => {
-          const tooltip = getOrCreateTooltip();
-          tooltip.style.display = 'none';
-        };
-        
-        innerG.appendChild(circle);
-      });
-      
-      const maxText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      maxText.setAttribute('x', '415');
-      maxText.setAttribute('y', '10');
-      maxText.setAttribute('class', 'wia-mkt-axis-label');
-      maxText.textContent = fmt(yMax);
-      
-      const minText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      minText.setAttribute('x', '415');
-      minText.setAttribute('y', '44');
-      minText.setAttribute('class', 'wia-mkt-axis-label');
-      minText.textContent = fmt(yMin);
-      
-      innerG.appendChild(maxText);
-      innerG.appendChild(minText);
       
       lastMktState = `${code}-${range}-${getNativeSvgFingerprint(svg)}`;
     } catch (e) {
@@ -5331,7 +5426,7 @@
                       titleText.includes('order') || titleText.includes('Order');
     if (!isBuySell) return null;
 
-    const svg = modal.querySelector('svg[width="428"][height="60"]');
+    const svg = modal.querySelector('svg[width="428"][height="60"]:not(.wia-mkt-overlay-svg)');
     if (!svg) return null;
     
     return { modal, titleEl, svg };
@@ -5390,8 +5485,28 @@
   function setupModalObserver(modal) {
     if (modalObserver) return;
     
-    modalObserver = new MutationObserver(() => {
+    modalObserver = new MutationObserver((mutations) => {
       if (!CONFIG.featMarketGraph) return;
+      
+      // Self-mutation guard: ignore if all mutations are on our own custom elements
+      const onlyOurs = mutations.every(m => {
+        const isOurTarget = m.target instanceof Element && m.target.closest('.wia-mkt-overlay-svg, .wia-mkt-toggle-row, .wia-mkt-tooltip');
+        if (isOurTarget) return true;
+        
+        if (m.type === 'childList') {
+          const onlyOurNodesAdded = Array.from(m.addedNodes).every(node => 
+            node instanceof Element && (node.classList.contains('wia-mkt-overlay-svg') || node.classList.contains('wia-mkt-toggle-row'))
+          );
+          const onlyOurNodesRemoved = Array.from(m.removedNodes).every(node => 
+            node instanceof Element && (node.classList.contains('wia-mkt-overlay-svg') || node.classList.contains('wia-mkt-toggle-row'))
+          );
+          return (m.addedNodes.length === 0 || onlyOurNodesAdded) && (m.removedNodes.length === 0 || onlyOurNodesRemoved);
+        }
+        return false;
+      });
+      
+      if (onlyOurs) return;
+
       const found = findMarketGraph();
       if (found) {
         checkAndRenderGraph(found);
@@ -5413,8 +5528,8 @@
     const fingerprint = getNativeSvgFingerprint(svg);
     const stateKey = `${code}-${range}-${fingerprint}`;
     
-    const lineMissing = !svg.querySelector('.wia-mkt-line') && !svg.querySelector('.wia-mkt-warning');
-    if (stateKey === lastMktState && !lineMissing) return;
+    const overlayMissing = !svg.parentElement || !svg.parentElement.querySelector('.wia-mkt-overlay-svg');
+    if (stateKey === lastMktState && !overlayMissing) return;
     lastMktState = stateKey;
     
     debouncedRenderIntraday(code, range, svg, modal);
@@ -5432,6 +5547,10 @@
     lastMktState = null;
     const tooltip = document.querySelector('.wia-mkt-tooltip');
     if (tooltip) tooltip.remove();
+    const overlays = document.querySelectorAll('.wia-mkt-overlay-svg');
+    overlays.forEach(el => el.remove());
+    const toggles = document.querySelectorAll('.wia-mkt-toggle-row');
+    toggles.forEach(el => el.remove());
   }
 
   // ───────────────────────────────────────────────────────────────────────────
