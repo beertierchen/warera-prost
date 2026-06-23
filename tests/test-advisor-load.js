@@ -13,6 +13,7 @@ const mockStorage = { 'wia.locale': 'en' };
 global.GM_getValue = (key, def) => (key in mockStorage ? mockStorage[key] : def);
 global.GM_setValue = (key, val) => { mockStorage[key] = val; };
 global.GM_registerMenuCommand = () => {};
+global.Node = { TEXT_NODE: 3, ELEMENT_NODE: 1 };
 
 // Mock Element class
 class MockElement {
@@ -1197,6 +1198,72 @@ try {
   assert.strictEqual(fingerprintAfter, 'M0,0 L10,10', 'Fingerprint should be unaffected by injected wia-mkt- elements');
 
   console.log('Resource Market Intraday Graph tests passed successfully.');
+
+  // --- Test: scanInventory renders advice without awaiting network ---
+  console.log('--- Testing scanInventory Instant/Provisional Renders ---');
+  
+  // Clear body
+  documentBody.children = [];
+  
+  // Setup mock inventory page with 1 item card
+  const invCell = new MockElement('div');
+  invCell.setAttribute('aria-haspopup', 'dialog');
+  invCell.setAttribute('id', 'item-card-cell-1');
+  
+  const invCard = new MockElement('div');
+  invCard.setAttribute('id', 'wia-item-card-1');
+  invCell.appendChild(invCard);
+  
+  const invImg = new MockElement('img');
+  invImg.setAttribute('src', '/images/items/gloves1.png');
+  invImg.setAttribute('alt', 'gloves1');
+  invCard.appendChild(invImg);
+  
+  // Add some stats elements so parseStats succeeds
+  const statsDiv = new MockElement('div');
+  const statIcon = new MockElement('div', 'a6izou0');
+  const statPath = new MockElement('path');
+  statPath.setAttribute('d', 'M12,1L3,5V11C3,16.55'); // armor fingerprint
+  statIcon.appendChild(statPath);
+  statsDiv.appendChild(statIcon);
+  const statText = new MockElement('span');
+  statText.textContent = '10';
+  statsDiv.appendChild(statText);
+  invCard.appendChild(statsDiv);
+  
+  documentBody.appendChild(invCell);
+  
+  // Mock route
+  global.location.pathname = '/user/test-user-123/inventory';
+  
+  // Back up original fetchPrices and mock it to never resolve (simulate slow network)
+  const originalFetchPrices = globalThis.fetchPrices;
+  let fetchPricesCalled = false;
+  globalThis.fetchPrices = function() {
+    fetchPricesCalled = true;
+    return new Promise(() => {}); // never resolves
+  };
+  
+  // Ensure we start with empty price cache
+  globalThis.GM_setValue('wia.priceCache', null);
+  globalThis.GM_setValue('wia.offersCache', {});
+  globalThis.GM_setValue('wia.transactionsCache', {});
+  globalThis.GM_setValue('wia.persistedAdvice', {});
+  
+  // Run scanInventory (which is async, but we do NOT await it so we test synchronous rendering)
+  globalThis.scanInventory(true);
+  
+  // Assertions
+  assert.strictEqual(fetchPricesCalled, true, 'fetchPrices should have been triggered in the background');
+  
+  const badgeEl = invCard.querySelector('.wia-badge');
+  assert.ok(badgeEl, 'Badge should be rendered immediately/synchronously');
+  assert.strictEqual(badgeEl.textContent.startsWith('~'), true, 'Badge should be marked provisional (with ~)');
+  assert.strictEqual(invCard.dataset.wiaProvisional, '1', 'Card should have data-wia-provisional="1"');
+  
+  // Restore fetchPrices
+  globalThis.fetchPrices = originalFetchPrices;
+  console.log('scanInventory provisional rendering tests passed successfully.');
 
   console.log('Success! The script loaded and initialized without throwing any runtime errors.');
   process.exit(0);
