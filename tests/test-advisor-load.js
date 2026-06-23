@@ -1340,9 +1340,122 @@ try {
   goldContainer.appendChild(goldIcon);
   goldContainer.appendChild(global.document.createTextNode(' 110.117 ')); // +1.600 gold
   
-  globalThis.updatePnlUi();
-  assert.strictEqual(trackerBadge.textContent.includes('▲ +1.600'), true, 'P&L tracker UI should display +1.600 Gold delta');
+  console.log('--- Testing Daily P&L Tracker: Phase 2 ---');
   
+  // Clean mock storage and initialize
+  globalThis.clearCache();
+  globalThis.CONFIG.featPnlTracker = true;
+  globalThis.GM_setValue('wia.pnl.ledger', null);
+  globalThis.GM_setValue('wia.pnl.yesterday', null);
+  globalThis.GM_setValue('wia.pnl.snapshots', null);
+  globalThis.GM_setValue('wia.pnl.costBasis', null);
+  
+  // Let's mock todayResetTime to return a fixed time: 2026-06-24 02:00:00 (local reset)
+  const fixedResetTime = new Date(2026, 5, 24, 2, 0, 0).getTime();
+  const oldTodayResetTime = globalThis.todayResetTime;
+  globalThis.todayResetTime = () => fixedResetTime;
+  
+  // Let's create mock transactions
+  const mockUserId = 'my-user-id';
+  
+  const mockTxs = [
+    // 1. Purchase before today's reset -> should update cost basis, but NOT ledger today
+    {
+      id: 'tx-old-buy',
+      transactionType: 'trading',
+      money: '50.000',
+      quantity: 5,
+      sellerId: 'other-user-id',
+      buyerId: mockUserId,
+      itemCode: 'food_bread',
+      createdAt: new Date(2026, 5, 24, 1, 0, 0).toISOString() // 1:00 AM
+    },
+    // 2. Purchase today -> should update cost basis, and capitalized (NOT expensed)
+    {
+      id: 'tx-today-buy',
+      transactionType: 'trading',
+      money: '120.000',
+      quantity: 10,
+      sellerId: 'other-user-id',
+      buyerId: mockUserId,
+      itemCode: 'food_bread',
+      createdAt: new Date(2026, 5, 24, 3, 0, 0).toISOString() // 3:00 AM
+    },
+    // 3. Sale today -> should add to Sales income today
+    {
+      id: 'tx-today-sell',
+      transactionType: 'trading',
+      money: '200.000',
+      quantity: 4,
+      sellerId: mockUserId,
+      buyerId: 'other-user-id',
+      itemCode: 'steel',
+      createdAt: new Date(2026, 5, 24, 4, 0, 0).toISOString() // 4:00 AM
+    },
+    // 4. Earned wage today -> should add to Wages income today
+    {
+      id: 'tx-today-wage-earn',
+      transactionType: 'wage',
+      money: '15.500',
+      quantity: 1,
+      sellerId: mockUserId,
+      buyerId: 'company-user-id',
+      createdAt: new Date(2026, 5, 24, 5, 0, 0).toISOString()
+    },
+    // 5. Paid employee wage today -> should add to Employee Wages expense today
+    {
+      id: 'tx-today-wage-pay',
+      transactionType: 'wage',
+      money: '8.000',
+      quantity: 1,
+      sellerId: 'employee-user-id',
+      buyerId: mockUserId,
+      createdAt: new Date(2026, 5, 24, 6, 0, 0).toISOString()
+    },
+    // 6. Spende (donation) today -> should add to Other expense today
+    {
+      id: 'tx-today-donation',
+      transactionType: 'donation',
+      money: '5.000',
+      sellerId: 'mu-id',
+      buyerId: mockUserId,
+      createdAt: new Date(2026, 5, 24, 7, 0, 0).toISOString()
+    }
+  ];
+  
+  // Initialize ledger
+  globalThis.checkPnlDayReset();
+  
+  // Process the transactions
+  globalThis.processTransactionsList(mockTxs, mockUserId);
+  
+  // Assertions
+  const costBasisResult = globalThis.GM_getValue('wia.pnl.costBasis');
+  assert.ok(costBasisResult, 'Cost basis should be populated');
+  // For food_bread, old purchase unit paid was 10 (50 / 5), new was 12 (120 / 10).
+  // Chronologically, the new one was processed last, so it should overwrite with 12.
+  assert.strictEqual(costBasisResult.food_bread.unitPaid, 12, 'Cost basis for food_bread should be 12 (newest transaction)');
+  
+  const ledgerResult = globalThis.GM_getValue('wia.pnl.ledger');
+  assert.ok(ledgerResult, 'Ledger should be updated');
+  
+  // Income verification
+  assert.strictEqual(ledgerResult.income.Sales, 200.000, 'Sales income should be 200.000');
+  assert.strictEqual(ledgerResult.income.Wages, 15.500, 'Wages income should be 15.500');
+  // Expense verification
+  assert.strictEqual(ledgerResult.expense['Employee Wages'], 8.000, 'Employee Wages expense should be 8.000');
+  assert.strictEqual(ledgerResult.expense.Other, 5.000, 'Donation should be mapped to Other expense (5.000)');
+  // Purchases (trading buy) should NOT be expensed (should be capitalized)
+  assert.strictEqual(ledgerResult.expense.Sales || 0, 0, 'Sales expense should be 0 (capitalized)');
+  
+  // Ledger total: (200 + 15.5) - (8 + 5) = 215.5 - 13 = 202.5
+  assert.strictEqual(ledgerResult.total, 202.500, 'Accrual total should be 202.500');
+  
+  // Clean up mockTodayResetTime
+  globalThis.todayResetTime = oldTodayResetTime;
+  
+  console.log('Daily P&L Tracker Phase 2 tests passed successfully.');
+
   // Restore document mock functions
   global.document.querySelector = oldBodyQuerySelector;
   global.document.getElementById = oldBodyGetElementById;

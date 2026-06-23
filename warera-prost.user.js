@@ -1436,6 +1436,9 @@
     globalThis.checkPnlDayReset = checkPnlDayReset;
     globalThis.updatePnlUi = updatePnlUi;
     globalThis.clearCache = clearCache;
+    globalThis.todayResetTime = todayResetTime;
+    globalThis.processTransactionsList = processTransactionsList;
+    globalThis.fetchAndProcessTransactions = fetchAndProcessTransactions;
   }
 
   function getLocale() {
@@ -6601,6 +6604,148 @@
     return null;
   }
 
+  function todayResetTime() {
+    const d = new Date();
+    d.setHours(2, 0, 0, 0);
+    if (Date.now() < d.getTime()) {
+      d.setDate(d.getDate() - 1);
+    }
+    return d.getTime();
+  }
+
+  function processTransactionsList(items, userId) {
+    const todayStart = todayResetTime();
+    let ledger = readCache(KEYS.pnlLedger);
+    if (!ledger) ledger = createEmptyLedger(getPnlDayKey());
+    
+    let costBasis = readCache(KEYS.pnlCostBasis) || {};
+    let ledgerChanged = false;
+    let costBasisChanged = false;
+    
+    if (!ledger.income) ledger.income = {};
+    if (!ledger.expense) ledger.expense = {};
+    
+    const sorted = [...items].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    
+    for (const tx of sorted) {
+      const txTime = new Date(tx.createdAt).getTime();
+      const isToday = txTime >= todayStart;
+      
+      const money = tx.money != null ? parseFloat(tx.money) : 0;
+      const quantity = tx.quantity != null ? parseInt(tx.quantity, 10) : 1;
+      const type = tx.transactionType;
+      
+      const isSellerMe = tx.sellerId === userId;
+      const isBuyerMe = tx.buyerId === userId;
+      
+      const itemCode = tx.itemCode || tx.item?.code || tx.item?.itemCode || tx.item?.id;
+      
+      if (isBuyerMe && itemCode && money > 0 && quantity > 0) {
+        const unitPaid = money / quantity;
+        costBasis[itemCode] = {
+          unitPaid,
+          qtyKnown: quantity,
+          updatedAt: txTime
+        };
+        costBasisChanged = true;
+      }
+      
+      if (isToday) {
+        if (!ledger.processedTxs) {
+          ledger.processedTxs = [];
+        }
+        
+        if (tx.id && ledger.processedTxs.includes(tx.id)) {
+          continue;
+        }
+        
+        let booked = false;
+        
+        if (type === 'trading' || type === 'itemMarket') {
+          if (isSellerMe && money > 0) {
+            ledger.income.Sales = (ledger.income.Sales || 0) + money;
+            booked = true;
+          } else if (isBuyerMe && money > 0) {
+            booked = true; // Capitalized, not expensed
+          }
+        } else if (type === 'wage') {
+          if (isSellerMe && money > 0) {
+            ledger.income.Wages = (ledger.income.Wages || 0) + money;
+            booked = true;
+          } else if (isBuyerMe && money > 0) {
+            ledger.expense['Employee Wages'] = (ledger.expense['Employee Wages'] || 0) + money;
+            booked = true;
+          }
+        } else if (type === 'donation') {
+          if (isBuyerMe && money > 0) {
+            ledger.expense.Other = (ledger.expense.Other || 0) + money;
+            booked = true;
+          }
+        } else {
+          if (money > 0) {
+            if (isSellerMe) {
+              ledger.income.Other = (ledger.income.Other || 0) + money;
+              booked = true;
+            } else if (isBuyerMe) {
+              ledger.expense.Other = (ledger.expense.Other || 0) + money;
+              booked = true;
+            }
+          }
+        }
+        
+        if (booked && tx.id) {
+          ledger.processedTxs.push(tx.id);
+          ledgerChanged = true;
+        }
+      }
+    }
+    
+    if (costBasisChanged) {
+      writeCache(KEYS.pnlCostBasis, costBasis);
+    }
+    
+    if (ledgerChanged) {
+      let sumIncome = 0;
+      for (const val of Object.values(ledger.income)) {
+        sumIncome += val;
+      }
+      let sumExpense = 0;
+      for (const val of Object.values(ledger.expense)) {
+        sumExpense += val;
+      }
+      ledger.total = sumIncome - sumExpense;
+      writeCache(KEYS.pnlLedger, ledger);
+    }
+  }
+
+  async function fetchAndProcessTransactions() {
+    const userId = getCurrentUserId();
+    if (!userId) return;
+    try {
+      const url = 'https://gateway.warerastats.io/trpc/transaction.getPaginatedTransactions';
+      const body = JSON.stringify({
+        limit: 100,
+        userId: userId
+      });
+      const res = await gmRequest({
+        method: 'POST',
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': 'wia-userscript'
+        },
+        data: body
+      });
+      if (res.status < 200 || res.status >= 300) return;
+      
+      const json = JSON.parse(res.text);
+      const items = json?.result?.data?.items || [];
+      processTransactionsList(items, userId);
+    } catch (e) {
+      log('fetchAndProcessTransactions failed:', e.message);
+    }
+  }
+
   function checkPnlDayReset() {
     const currentDayKey = getPnlDayKey();
     let ledger = readCache(KEYS.pnlLedger);
@@ -6747,13 +6892,19 @@
     checkPnlDayReset();
     updatePnlUi();
     
+    fetchAndProcessTransactions().then(() => {
+      updatePnlUi();
+    });
+    
     if (pnlInterval) clearInterval(pnlInterval);
     pnlInterval = setInterval(() => {
       if (CONFIG.featPnlTracker) {
         checkPnlDayReset();
-        updatePnlUi();
+        fetchAndProcessTransactions().then(() => {
+          updatePnlUi();
+        });
       }
-    }, 10000);
+    }, 30000);
   }
 
   function teardownPnlTracker() {
