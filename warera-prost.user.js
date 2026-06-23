@@ -3109,6 +3109,12 @@
         font-family: inherit;
         pointer-events: none;
       }
+      .wia-mkt-x-label {
+        fill: #94a3b8;
+        font-size: 8px;
+        font-family: inherit;
+        pointer-events: none;
+      }
       .wia-mkt-line {
         pointer-events: none;
       }
@@ -5314,8 +5320,10 @@
       const H = 48;
       
       const prices = plottedPoints.map(p => p.price);
-      let yMin = Math.min(...prices);
-      let yMax = Math.max(...prices);
+      const realMin = Math.min(...prices);
+      const realMax = Math.max(...prices);
+      let yMin = realMin;
+      let yMax = realMax;
       if (yMax === yMin) {
         yMin = yMin * 0.9;
         yMax = yMax * 1.1;
@@ -5468,19 +5476,63 @@
         });
         
         const maxText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        maxText.setAttribute('x', '415');
-        maxText.setAttribute('y', '10');
+        maxText.setAttribute('x', '418');
+        maxText.setAttribute('y', '8');
         maxText.setAttribute('class', 'wia-mkt-axis-label');
-        maxText.textContent = fmt(yMax);
+        maxText.setAttribute('text-anchor', 'end');
+        maxText.textContent = fmt(realMax);
         
         const minText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        minText.setAttribute('x', '415');
-        minText.setAttribute('y', '44');
+        minText.setAttribute('x', '418');
+        minText.setAttribute('y', '46');
         minText.setAttribute('class', 'wia-mkt-axis-label');
-        minText.textContent = fmt(yMin);
+        minText.setAttribute('text-anchor', 'end');
+        minText.textContent = fmt(realMin);
         
         overlayG.appendChild(maxText);
         overlayG.appendChild(minText);
+
+        const formatXLabel = (timestamp) => {
+          const d = new Date(timestamp);
+          const pad = (n) => String(n).padStart(2, '0');
+          if (range === '24h') {
+            const hh = pad(d.getHours());
+            const mm = pad(d.getMinutes());
+            return `${hh}:${mm}`;
+          } else {
+            const month = pad(d.getMonth() + 1);
+            const date = pad(d.getDate());
+            if (getLocale() === 'de') {
+              return `${date}.${month}.`;
+            } else {
+              return `${month}-${date}`;
+            }
+          }
+        };
+
+        const oldestText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        oldestText.setAttribute('x', '0');
+        oldestText.setAttribute('y', '52');
+        oldestText.setAttribute('class', 'wia-mkt-x-label');
+        oldestText.setAttribute('text-anchor', 'start');
+        oldestText.textContent = formatXLabel(tMin);
+        overlayG.appendChild(oldestText);
+
+        const midText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        midText.setAttribute('x', '210');
+        midText.setAttribute('y', '52');
+        midText.setAttribute('class', 'wia-mkt-x-label');
+        midText.setAttribute('text-anchor', 'middle');
+        midText.textContent = formatXLabel(tMin + maxSpanMs / 2);
+        overlayG.appendChild(midText);
+
+        const nowText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        nowText.setAttribute('x', '418');
+        nowText.setAttribute('y', '52');
+        nowText.setAttribute('class', 'wia-mkt-x-label');
+        nowText.setAttribute('text-anchor', 'end');
+        nowText.textContent = formatXLabel(tMax);
+        overlayG.appendChild(nowText);
       } finally {
         resumeModalObserver(modal);
       }
