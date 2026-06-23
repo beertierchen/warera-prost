@@ -3096,7 +3096,7 @@
         pointer-events: auto;
       }
       .wia-mkt-point:hover {
-        r: 5px;
+        r: 4px;
         opacity: 1;
       }
       .wia-mkt-axis-label {
@@ -5339,21 +5339,12 @@
       try {
         const threshold = range === '24h' ? 3 * 60 * 60 * 1000 : 10 * 60 * 60 * 1000;
         
-        for (let i = 0; i < plottedPoints.length - 1; i++) {
-          const ptA = plottedPoints[i];
-          const ptB = plottedPoints[i+1];
-          const xA = getX(ptA);
-          const yA = getY(ptA.price);
-          const xB = getX(ptB);
-          const yB = getY(ptB.price);
-          
+        const drawPath = (pathD, isGap) => {
           const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-          pathEl.setAttribute('d', `M ${xA.toFixed(2)} ${yA.toFixed(2)} L ${xB.toFixed(2)} ${yB.toFixed(2)}`);
+          pathEl.setAttribute('d', pathD);
           pathEl.setAttribute('fill', 'none');
           pathEl.setAttribute('stroke', '#f97316');
           pathEl.setAttribute('class', 'wia-mkt-line');
-          
-          const isGap = (ptB.t - ptA.t) > threshold;
           if (isGap) {
             pathEl.setAttribute('stroke-dasharray', '4 4');
             pathEl.setAttribute('opacity', '0.4');
@@ -5377,8 +5368,75 @@
             pathEl.setAttribute('stroke-linecap', 'round');
             pathEl.setAttribute('stroke-linejoin', 'round');
           }
-          
           overlayG.appendChild(pathEl);
+        };
+
+        const groups = [];
+        let currentGroup = [];
+        
+        plottedPoints.forEach((pt, index) => {
+          if (index === 0) {
+            currentGroup.push(pt);
+          } else {
+            const prevPt = plottedPoints[index - 1];
+            if (pt.t - prevPt.t <= threshold) {
+              currentGroup.push(pt);
+            } else {
+              groups.push(currentGroup);
+              currentGroup = [pt];
+            }
+          }
+        });
+        if (currentGroup.length > 0) {
+          groups.push(currentGroup);
+        }
+
+        // 1. Draw solid, curved runs within each group
+        groups.forEach(g => {
+          if (g.length < 2) return;
+          
+          let pathD = `M ${getX(g[0]).toFixed(2)} ${getY(g[0].price).toFixed(2)}`;
+          if (g.length === 2) {
+            const pt0 = g[0], pt1 = g[1];
+            const x0 = getX(pt0), y0 = getY(pt0.price);
+            const x1 = getX(pt1), y1 = getY(pt1.price);
+            const cpX1 = x0 + (x1 - x0) * 0.3;
+            const cpY1 = y0;
+            const cpX2 = x1 - (x1 - x0) * 0.3;
+            const cpY2 = y1;
+            pathD += ` C ${cpX1.toFixed(2)} ${cpY1.toFixed(2)}, ${cpX2.toFixed(2)} ${cpY2.toFixed(2)}, ${x1.toFixed(2)} ${y1.toFixed(2)}`;
+          } else {
+            for (let i = 0; i < g.length - 1; i++) {
+              const ptPrev = g[i - 1] || g[i];
+              const ptA = g[i];
+              const ptB = g[i + 1];
+              const ptNext = g[i + 2] || ptB;
+              
+              const xA = getX(ptA), yA = getY(ptA.price);
+              const xB = getX(ptB), yB = getY(ptB.price);
+              const xPrev = getX(ptPrev), yPrev = getY(ptPrev.price);
+              const xNext = getX(ptNext), yNext = getY(ptNext.price);
+              
+              const tension = 0.15;
+              const cpX1 = xA + (xB - xPrev) * tension;
+              const cpY1 = yA + (yB - yPrev) * tension;
+              const cpX2 = xB - (xNext - xA) * tension;
+              const cpY2 = yB - (yNext - yPrev) * tension;
+              
+              pathD += ` C ${cpX1.toFixed(2)} ${cpY1.toFixed(2)}, ${cpX2.toFixed(2)} ${cpY2.toFixed(2)}, ${xB.toFixed(2)} ${yB.toFixed(2)}`;
+            }
+          }
+          drawPath(pathD, false);
+        });
+
+        // 2. Draw straight dashed gap lines between groups
+        for (let k = 0; k < groups.length - 1; k++) {
+          const ptA = groups[k][groups[k].length - 1];
+          const ptB = groups[k+1][0];
+          const xA = getX(ptA), yA = getY(ptA.price);
+          const xB = getX(ptB), yB = getY(ptB.price);
+          const pathD = `M ${xA.toFixed(2)} ${yA.toFixed(2)} L ${xB.toFixed(2)} ${yB.toFixed(2)}`;
+          drawPath(pathD, true);
         }
         
         plottedPoints.forEach(pt => {
@@ -5388,7 +5446,7 @@
           const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
           circle.setAttribute('cx', cx.toFixed(2));
           circle.setAttribute('cy', cy.toFixed(2));
-          circle.setAttribute('r', '3');
+          circle.setAttribute('r', '2');
           circle.setAttribute('class', 'wia-mkt-point');
           
           circle.onmouseenter = (e) => {
