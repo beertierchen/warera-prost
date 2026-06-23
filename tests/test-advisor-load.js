@@ -1670,6 +1670,112 @@ try {
       
       console.log('Daily P&L Tracker Phase 4 tests passed successfully.');
 
+      console.log('--- Testing Daily P&L Tracker: Phase 5 ---');
+      
+      // Clean mock storage and initialize
+      globalThis.clearCache();
+      globalThis.CONFIG.featPnlTracker = true;
+      globalThis.CONFIG.locale = 'en'; // Force English locale for text assertions
+      
+      // Setup testMenu with goldContainer
+      const testMenuP5 = new MockElement('div');
+      testMenuP5.setAttribute('id', 'layoutUserMenu');
+      const goldContainerP5 = new MockElement('div');
+      const goldIconP5 = new MockElement('img');
+      goldIconP5.setAttribute('src', '/images/items/gold.png');
+      goldIconP5.setAttribute('alt', 'gold');
+      goldContainerP5.appendChild(goldIconP5);
+      
+      // Starting gold is 100.000
+      const goldTextNode = global.document.createTextNode(' 100.000 ');
+      goldContainerP5.appendChild(goldTextNode);
+      testMenuP5.appendChild(goldContainerP5);
+      
+      // Mock getElementById and querySelector for UI update
+      global.document.getElementById = (id) => id === 'layoutUserMenu' ? testMenuP5 : null;
+      global.document.querySelector = (sel) => {
+        if (sel === '#layoutUserMenu') return testMenuP5;
+        return testMenuP5.querySelector(sel);
+      };
+      
+      // 1. Initialize today's reset snapshot with start gold = 100
+      globalThis.checkPnlDayReset();
+      
+      // 2. Set today's ledger values
+      let ledgerP5 = globalThis.readCache('wia.pnl.ledger');
+      ledgerP5.income = { Sales: 10.5, Wages: 0.12, Other: 0 };
+      ledgerP5.expense = { Consumption: 12.0, Repairs: 2.1, 'Employee Wages': 1.5, Other: 0 };
+      ledgerP5.hasEstimatedRepairs = true;
+      globalThis.writeCache('wia.pnl.ledger', ledgerP5);
+      
+      // 3. Set yesterday's ledger values
+      const yesterdayLedger = {
+        dayKey: '2026-06-22',
+        startedAt: Date.now() - 86400000,
+        income: { Sales: 5.2, Wages: 0.24, Other: 0 },
+        expense: { Consumption: 24.0, Repairs: 0, 'Employee Wages': 1.5, Other: 0.5 },
+        total: -21.0,
+        goldDelta: -21.44,
+        untracked: -0.44,
+        hasEstimatedConsumption: false,
+        hasEstimatedRepairs: false
+      };
+      globalThis.writeCache('wia.pnl.yesterday', yesterdayLedger);
+      
+      // 4. Change current gold balance to 95.000 (creates a live gold delta of -5.000 today)
+      goldTextNode.textContent = ' 95.000 ';
+      
+      // 5. Trigger UI update
+      globalThis.updatePnlUi();
+      
+      // 6. Assert UI elements
+      const badgeP5 = testMenuP5.querySelector('#wia-pnl-tracker');
+      assert.ok(badgeP5, 'P&L tracker badge should exist');
+      
+      // Verify badge text
+      const badgeContent = badgeP5.textContent;
+      assert.ok(badgeContent.includes('▼ -5.000 today'), 'Badge text should display today\'s gold delta');
+      assert.ok(badgeContent.includes('▼ -21.440 yesterday'), 'Badge text should display yesterday\'s gold delta');
+      
+      // Verify tooltip table breakdown content
+      const hoverElP5 = badgeP5.querySelector('.wia-pnl-hover');
+      assert.ok(hoverElP5, 'Tooltip hover element should exist');
+      const tooltipHtml = hoverElP5.innerHTML;
+      
+      // Check today's column values:
+      // Sales: +10.500
+      assert.ok(tooltipHtml.includes('+10.500'), 'Tooltip should show +10.500 Sales');
+      // Wages: +0.120
+      assert.ok(tooltipHtml.includes('+0.120'), 'Tooltip should show +0.120 Wages');
+      // Consumption: -12.000
+      assert.ok(tooltipHtml.includes('-12.000'), 'Tooltip should show -12.000 Consumption');
+      // Repairs: ≈-2.100 (estimated)
+      assert.ok(tooltipHtml.includes('≈-2.100'), 'Tooltip should show ≈-2.100 Repairs');
+      // Employee Wages: -1.500
+      assert.ok(tooltipHtml.includes('-1.500'), 'Tooltip should show -1.500 Employee Wages');
+      // Untracked (today): -0.020 (95 - 100 - (-4.980))
+      assert.ok(tooltipHtml.includes('-0.020'), 'Tooltip should show -0.020 Untracked delta');
+      // Total P&L (today): -4.980
+      assert.ok(tooltipHtml.includes('-4.980'), 'Tooltip should show -4.980 Total P&L');
+      
+      // Check yesterday's column values:
+      // Sales: +5.200
+      assert.ok(tooltipHtml.includes('+5.200'), 'Tooltip should show +5.200 Sales yesterday');
+      // Wages: +0.240
+      assert.ok(tooltipHtml.includes('+0.240'), 'Tooltip should show +0.240 Wages yesterday');
+      // Consumption: -24.000
+      assert.ok(tooltipHtml.includes('-24.000'), 'Tooltip should show -24.000 Consumption yesterday');
+      // Employee Wages: -1.500
+      assert.ok(tooltipHtml.includes('-1.500'), 'Tooltip should show -1.500 Employee Wages yesterday');
+      // Untracked: -0.440
+      assert.ok(tooltipHtml.includes('-0.440'), 'Tooltip should show -0.440 Untracked yesterday');
+      // Total P&L: -21.000
+      assert.ok(tooltipHtml.includes('-21.000'), 'Tooltip should show -21.000 Total P&L yesterday');
+      // Gold Delta: -21.440
+      assert.ok(tooltipHtml.includes('-21.440'), 'Tooltip should show -21.440 Gold Delta yesterday');
+      
+      console.log('Daily P&L Tracker Phase 5 tests passed successfully.');
+ 
       // Restore document mock functions
       global.document.querySelector = oldBodyQuerySelector;
       global.document.getElementById = oldBodyGetElementById;

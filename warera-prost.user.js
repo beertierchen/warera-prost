@@ -3492,7 +3492,7 @@
       }
       .wia-pnl-hover {
         display: none; position: absolute; top: 100%; right: 0; margin-top: 8px;
-        width: 280px; background: rgba(13, 17, 23, .96);
+        width: 300px; background: rgba(13, 17, 23, .96);
         border: 1px solid rgba(255, 255, 255, .12);
         border-radius: 10px; padding: 14px; box-shadow: 0 8px 24px rgba(0, 0, 0, .55);
         color: #c9d1d9; font-weight: normal; text-align: left; font-size: 11px;
@@ -7174,6 +7174,47 @@
     }
   }
 
+  const pnlTx = {
+    de: {
+      title: '📊 Tages-P&L Tracker',
+      resetMsg: 'Reset 02:00',
+      income: 'Einnahmen',
+      expense: 'Ausgaben',
+      sales: 'Verkäufe',
+      wages: 'Löhne',
+      empWages: 'Mitarbeiterlöhne',
+      consumption: 'Verbrauch',
+      repairs: 'Verschleiß/Rep.',
+      other: 'Sonstiges',
+      untracked: 'Sonstiges/unerfasst',
+      totalPnl: 'Gesamt P&L',
+      goldDelta: 'Gold Delta',
+      today: 'Heute',
+      yesterday: 'Gestern',
+      category: 'Kategorie',
+      footer: 'Accrual-Tracking aktiv. P&L = Einnahmen - Ausgaben. Gold Delta = Live Gold - Start.'
+    },
+    en: {
+      title: '📊 Daily P&L Tracker',
+      resetMsg: 'Reset 02:00',
+      income: 'Income',
+      expense: 'Expense',
+      sales: 'Sales',
+      wages: 'Wages',
+      empWages: 'Employee Wages',
+      consumption: 'Consumption',
+      repairs: 'Wear/Repairs',
+      other: 'Other',
+      untracked: 'Other/Untracked',
+      totalPnl: 'Total P&L',
+      goldDelta: 'Gold Delta',
+      today: 'Today',
+      yesterday: 'Yesterday',
+      category: 'Category',
+      footer: 'Accrual tracking active. P&L = Income - Expense. Gold Delta = Live Gold - Start.'
+    }
+  };
+
   function updatePnlUi() {
     if (!CONFIG.featPnlTracker) {
       teardownPnlUi();
@@ -7205,57 +7246,173 @@
     }
     
     checkPnlDayReset();
-    const ledger = readCache(KEYS.pnlLedger);
+    let ledger = readCache(KEYS.pnlLedger);
+    if (!ledger) ledger = createEmptyLedger(getPnlDayKey());
+    if (!ledger.income) ledger.income = {};
+    if (!ledger.expense) ledger.expense = {};
+    
     const yesterday = readCache(KEYS.pnlYesterday);
     const snapshots = readCache(KEYS.pnlSnapshots);
     
     const currentGold = getGoldBalance();
-    let total = 0;
+    let totalGoldDelta = 0;
     if (currentGold !== null && snapshots && snapshots.gold_start !== undefined) {
-      total = currentGold - snapshots.gold_start;
+      totalGoldDelta = currentGold - snapshots.gold_start;
     }
     
-    const sign = total > 0.0001 ? '▲ +' : total < -0.0001 ? '▼ -' : '• ';
-    const valStr = Math.abs(total).toFixed(3);
-    const signClass = total > 0.0001 ? 'is-positive' : total < -0.0001 ? 'is-negative' : 'is-neutral';
+    let sumIncome = 0;
+    for (const val of Object.values(ledger.income || {})) {
+      sumIncome += val;
+    }
+    let sumExpense = 0;
+    for (const val of Object.values(ledger.expense || {})) {
+      sumExpense += val;
+    }
+    ledger.goldDelta = totalGoldDelta;
+    ledger.total = sumIncome - sumExpense;
+    ledger.untracked = totalGoldDelta - ledger.total;
+    writeCache(KEYS.pnlLedger, ledger);
+    
+    const todaySign = totalGoldDelta > 0.0001 ? '▲ +' : totalGoldDelta < -0.0001 ? '▼ -' : '• ';
+    const todayValStr = Math.abs(totalGoldDelta).toFixed(3);
+    const todayColor = totalGoldDelta > 0.0001 ? '#3fb950' : totalGoldDelta < -0.0001 ? '#f85149' : '#8b949e';
+    
+    const yesterdayTotal = yesterday ? yesterday.goldDelta : 0;
+    const yesterdaySign = yesterdayTotal > 0.0001 ? '▲ +' : yesterdayTotal < -0.0001 ? '▼ -' : '• ';
+    const yesterdayValStr = Math.abs(yesterdayTotal).toFixed(3);
+    const yesterdayColor = yesterdayTotal > 0.0001 ? '#3fb950' : yesterdayTotal < -0.0001 ? '#f85149' : '#8b949e';
     
     safeWritePnlUi(() => {
-      pnlBadge.className = 'wia-pnl-tracker ' + signClass;
-      
-      let textNode = null;
-      for (const node of pnlBadge.childNodes) {
-        if (node.nodeType === 3) {
-          textNode = node;
-          break;
-        }
-      }
-      const label = `${sign}${valStr}`;
-      if (textNode) {
-        textNode.textContent = label;
-      } else {
-        pnlBadge.appendChild(document.createTextNode(label));
-      }
-      
+      // Rebuild topbar badge text while keeping hoverEl
       const hoverEl = pnlBadge.querySelector('.wia-pnl-hover');
+      pnlBadge.innerHTML = '';
       if (hoverEl) {
-        const yesterdayTotal = yesterday ? yesterday.total : 0;
-        const yesterdaySign = yesterdayTotal > 0.0001 ? '+' : yesterdayTotal < -0.0001 ? '-' : '';
-        const yesterdayStr = `${yesterdaySign}${Math.abs(yesterdayTotal).toFixed(3)}`;
+        pnlBadge.appendChild(hoverEl);
+      }
+      
+      const todaySpan = document.createElement('span');
+      todaySpan.style.color = todayColor;
+      todaySpan.style.fontWeight = 'bold';
+      todaySpan.textContent = `${todaySign}${todayValStr} ${getLocale() === 'de' ? 'heute' : 'today'}`;
+      pnlBadge.appendChild(todaySpan);
+      
+      const divider = document.createElement('span');
+      divider.style.margin = '0 6px';
+      divider.style.color = 'rgba(255,255,255,0.2)';
+      divider.textContent = '|';
+      pnlBadge.appendChild(divider);
+      
+      const yesterdaySpan = document.createElement('span');
+      yesterdaySpan.style.color = yesterdayColor;
+      yesterdaySpan.style.fontWeight = 'bold';
+      yesterdaySpan.textContent = `${yesterdaySign}${yesterdayValStr} ${getLocale() === 'de' ? 'gestern' : 'yesterday'}`;
+      pnlBadge.appendChild(yesterdaySpan);
+      
+      if (hoverEl) {
+        const loc = pnlTx[getLocale()];
         
-        let html = `<div style="font-weight: bold; font-size: 12px; margin-bottom: 8px; color: #58a6ff; display: flex; justify-content: space-between;">`;
-        html += `<span>📊 Daily P&L Tracker</span>`;
-        html += `<span style="font-size: 10px; color: #8b949e;">Reset 02:00</span>`;
+        // Income categories
+        const todaySales = ledger.income.Sales || 0;
+        const yesterdaySales = yesterday ? (yesterday.income.Sales || 0) : 0;
+        const todayWages = ledger.income.Wages || 0;
+        const yesterdayWages = yesterday ? (yesterday.income.Wages || 0) : 0;
+        const todayIncOther = ledger.income.Other || 0;
+        const yesterdayIncOther = yesterday ? (yesterday.income.Other || 0) : 0;
+        
+        // Expenses (pass as negative to renderPnlRow)
+        const todayCons = -(ledger.expense.Consumption || 0);
+        const yesterdayCons = yesterday ? -(yesterday.expense.Consumption || 0) : 0;
+        const todayRep = -(ledger.expense.Repairs || 0);
+        const yesterdayRep = yesterday ? -(yesterday.expense.Repairs || 0) : 0;
+        const todayEmpWages = -(ledger.expense['Employee Wages'] || 0);
+        const yesterdayEmpWages = yesterday ? -(yesterday.expense['Employee Wages'] || 0) : 0;
+        const todayExpOther = -(ledger.expense.Other || 0);
+        const yesterdayExpOther = yesterday ? -(yesterday.expense.Other || 0) : 0;
+        
+        const todayTotalVal = ledger.total || 0;
+        const yesterdayTotalVal = yesterday ? (yesterday.total || 0) : 0;
+        
+        const todayGoldDeltaVal = ledger.goldDelta || 0;
+        const yesterdayGoldDeltaVal = yesterday ? (yesterday.goldDelta || 0) : 0;
+        
+        const todayUntrackedVal = ledger.untracked || 0;
+        const yesterdayUntrackedVal = yesterday ? (yesterday.untracked || 0) : 0;
+        
+        const formatRowVal = (val, est) => {
+          const absVal = Math.abs(val);
+          if (absVal <= 0.0001) return `<span style="color: #8b949e;">0.000</span>`;
+          const sign = val > 0 ? '+' : '-';
+          const color = val > 0 ? '#3fb950' : '#f85149';
+          const estChar = est ? '≈' : '';
+          return `<span style="color: ${color};">${estChar}${sign}${absVal.toFixed(3)}</span>`;
+        };
+        
+        const renderPnlRow = (label, todayVal, yesterdayVal, estToday, estYesterday) => {
+          return `<tr style="border-bottom: 1px dashed rgba(255, 255, 255, 0.05); text-align: right;">
+            <td style="text-align: left; padding: 4px 0; color: #c9d1d9;">${label}</td>
+            <td style="padding: 4px 0;">${formatRowVal(todayVal, estToday)}</td>
+            <td style="padding: 4px 0; padding-left: 8px;">${formatRowVal(yesterdayVal, estYesterday)}</td>
+          </tr>`;
+        };
+        
+        let html = `<div style="font-weight: bold; font-size: 12px; margin-bottom: 10px; color: #58a6ff; display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 6px;">`;
+        html += `<span>${loc.title}</span>`;
+        html += `<span style="font-size: 10px; color: #8b949e; font-weight: normal; margin-top: 2px;">${loc.resetMsg}</span>`;
         html += `</div>`;
-        html += `<div style="margin-bottom: 6px; display: flex; justify-content: space-between;">`;
-        html += `<span>Today:</span>`;
-        html += `<span style="font-weight: bold; color: ${total > 0.0001 ? '#3fb950' : total < -0.0001 ? '#f85149' : '#8b949e'}">${total > 0.0001 ? '+' : ''}${total.toFixed(3)} Gold</span>`;
-        html += `</div>`;
-        html += `<div style="margin-bottom: 6px; display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 6px;">`;
-        html += `<span>Yesterday:</span>`;
-        html += `<span style="font-weight: bold; color: ${yesterdayTotal > 0.0001 ? '#3fb950' : yesterdayTotal < -0.0001 ? '#f85149' : '#8b949e'}">${yesterdayStr} Gold</span>`;
-        html += `</div>`;
-        html += `<div style="font-size: 10px; color: #8b949e; font-style: italic; white-space: normal; line-height: 1.3;">`;
-        html += `Accrual tracking active. Today's total is calculated as current Gold minus day-start Gold (${snapshots ? snapshots.gold_start.toFixed(3) : '0.000'} Gold).`;
+        
+        html += `<table style="width: 100%; border-collapse: collapse; font-family: monospace; font-size: 11px; margin-bottom: 8px;">`;
+        html += `<thead>`;
+        html += `<tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.15); color: #8b949e; text-align: right;">`;
+        html += `<th style="text-align: left; padding-bottom: 4px; font-weight: 500; color: #8b949e;">${loc.category}</th>`;
+        html += `<th style="padding-bottom: 4px; font-weight: 500; color: #8b949e;">${loc.today}</th>`;
+        html += `<th style="padding-bottom: 4px; padding-left: 8px; font-weight: 500; color: #8b949e;">${loc.yesterday}</th>`;
+        html += `</tr>`;
+        html += `</thead>`;
+        html += `<tbody>`;
+        
+        // Income Header
+        html += `<tr style="color: #3fb950; font-weight: bold; font-size: 10px;"><td colspan="3" style="padding: 6px 0 2px 0; text-transform: uppercase;">${loc.income}</td></tr>`;
+        html += renderPnlRow(loc.sales, todaySales, yesterdaySales, false, false);
+        html += renderPnlRow(loc.wages, todayWages, yesterdayWages, false, false);
+        html += renderPnlRow(loc.other, todayIncOther, yesterdayIncOther, false, false);
+        
+        // Expense Header
+        html += `<tr style="color: #f85149; font-weight: bold; font-size: 10px;"><td colspan="3" style="padding: 8px 0 2px 0; text-transform: uppercase;">${loc.expense}</td></tr>`;
+        html += renderPnlRow(loc.consumption, todayCons, yesterdayCons, ledger.hasEstimatedConsumption, yesterday ? yesterday.hasEstimatedConsumption : false);
+        html += renderPnlRow(loc.repairs, todayRep, yesterdayRep, ledger.hasEstimatedRepairs, yesterday ? yesterday.hasEstimatedRepairs : false);
+        html += renderPnlRow(loc.empWages, todayEmpWages, yesterdayEmpWages, false, false);
+        html += renderPnlRow(loc.other, todayExpOther, yesterdayExpOther, false, false);
+        
+        // Separator line
+        html += `<tr style="border-top: 1px solid rgba(255, 255, 255, 0.15);"><td colspan="3" style="padding: 4px 0 0 0;"></td></tr>`;
+        
+        // Untracked/Sonstiges
+        html += renderPnlRow(loc.untracked, todayUntrackedVal, yesterdayUntrackedVal, false, false);
+        
+        // Total P&L
+        html += renderPnlRow(loc.totalPnl, todayTotalVal, yesterdayTotalVal, false, false);
+        
+        // Gold Delta (Highlight)
+        html += `<tr style="border-top: 1px solid rgba(255, 255, 255, 0.15); font-weight: bold; text-align: right;">`;
+        html += `<td style="text-align: left; padding: 4px 0; color: #58a6ff;">${loc.goldDelta}</td>`;
+        
+        const formatBold = (val) => {
+          const absVal = Math.abs(val);
+          if (absVal <= 0.0001) return `<span style="color: #8b949e;">0.000</span>`;
+          const sign = val > 0 ? '+' : '-';
+          const color = val > 0 ? '#3fb950' : '#f85149';
+          return `<span style="color: ${color};">${sign}${absVal.toFixed(3)}</span>`;
+        };
+        
+        html += `<td style="padding: 4px 0;">${formatBold(todayGoldDeltaVal)}</td>`;
+        html += `<td style="padding: 4px 0; padding-left: 8px;">${formatBold(yesterdayGoldDeltaVal)}</td>`;
+        html += `</tr>`;
+        
+        html += `</tbody>`;
+        html += `</table>`;
+        
+        html += `<div style="font-size: 9px; color: #8b949e; white-space: normal; line-height: 1.3; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 6px; font-style: italic;">`;
+        html += loc.footer;
         html += `</div>`;
         
         hoverEl.innerHTML = html;
