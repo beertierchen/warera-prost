@@ -4912,8 +4912,7 @@
   let modalObserver = null;
   let bodyObserver = null;
   let lastMktState = null;
-  let renderingIntraday = false;
-  let nextRenderRequest = null;
+  let renderGen = 0;
   const EXCLUDED_ALTS = new Set(['gold', 'money', 'coins', 'xp', 'avatar', 'logo']);
   const resourceTxsInFlight = {}; // code -> promise
   let marketTooltip = null;
@@ -5108,14 +5107,14 @@
     }
   }
 
-  async function renderIntradayLine(code, range, svg, modal) {
-    if (renderingIntraday) {
-      nextRenderRequest = { code, range, svg, modal };
-      return;
-    }
-    renderingIntraday = true;
+  async function renderIntradayLine(code, range) {
+    const myGen = ++renderGen;
     
     try {
+      const foundStart = findMarketGraph();
+      if (!foundStart || getModalResourceCode(foundStart.modal) !== code) return;
+      const { modal, svg } = foundStart;
+
       suspendModalObserver();
       try {
         const oldToggle = modal.querySelector('.wia-mkt-toggle-row');
@@ -5131,10 +5130,7 @@
       }
       
       const innerG = svg.querySelector('g[transform="translate(4,6)"]');
-      if (!innerG) {
-        lastMktState = `${code}-${range}-${getNativeSvgFingerprint(svg)}`;
-        return;
-      }
+      if (!innerG) return;
       
       suspendModalObserver();
       try {
@@ -5156,8 +5152,12 @@
             e.stopPropagation();
             const newRange = btn.getAttribute('data-range');
             GM_setValue(KEYS.marketGraphRange, newRange);
+            renderGen++;
             lastMktState = null;
-            debouncedRenderIntraday(code, newRange, svg, modal);
+            const clickFound = findMarketGraph();
+            if (clickFound) {
+              checkAndRenderGraph(clickFound);
+            }
           };
         });
         
@@ -5174,6 +5174,17 @@
       
       const maxSpanMs = range === '24h' ? 24 * 60 * 60 * 1000 : 72 * 60 * 60 * 1000;
       const txs = await seedResourceTransactions(code, maxSpanMs);
+      
+      // Generation check
+      if (myGen !== renderGen) return;
+
+      // Re-resolve DOM nodes fresh
+      const foundAfter = findMarketGraph();
+      if (!foundAfter || !foundAfter.svg.isConnected || getModalResourceCode(foundAfter.modal) !== code) return;
+      const { modal: freshModal, svg: freshSvg } = foundAfter;
+      
+      const freshInnerG = freshSvg.querySelector('g[transform="translate(4,6)"]');
+      if (!freshInnerG) return;
       
       const pollerStore = GM_getValue(KEYS.priceSeries, {}) || {};
       const samples = pollerStore[code] || [];
@@ -5198,17 +5209,18 @@
       suspendModalObserver();
       let overlaySvg, overlayG;
       try {
-        const parent = svg.parentElement;
+        if (myGen !== renderGen) return;
+        const parent = freshSvg.parentElement;
         if (!parent) return;
 
         overlaySvg = parent.querySelector('.wia-mkt-overlay-svg');
         if (!overlaySvg) {
           overlaySvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
           overlaySvg.setAttribute('class', 'wia-mkt-overlay-svg');
-          parent.insertBefore(overlaySvg, svg.nextSibling);
+          parent.insertBefore(overlaySvg, freshSvg.nextSibling);
         }
         
-        const svgRect = svg.getBoundingClientRect();
+        const svgRect = freshSvg.getBoundingClientRect();
         const parentRect = parent.getBoundingClientRect();
         const topOffset = svgRect.top - parentRect.top;
         const leftOffset = svgRect.left - parentRect.left;
@@ -5242,11 +5254,12 @@
           
           overlayG.appendChild(warnText);
           
-          lastMktState = `${code}-${range}-${getNativeSvgFingerprint(svg)}`;
+          const fingerprint = getNativeSvgFingerprint(freshSvg);
+          lastMktState = `${code}-${range}-${fingerprint}`;
           return;
         }
       } finally {
-        resumeModalObserver(modal);
+        resumeModalObserver(freshModal);
       }
       
       points.sort((a, b) => a.t - b.t);
@@ -5257,14 +5270,12 @@
       let cur = tMax;
 
       if (range === '24h') {
-        // Last 3 hours: 15-minute buckets (12 buckets)
         const transitionTime = tMax - (3 * 60 * 60 * 1000);
         while (cur > transitionTime) {
           const next = cur - (15 * 60 * 1000);
           buckets.push({ start: next, end: cur, sum: 0, count: 0 });
           cur = next;
         }
-        // Older: 1-hour buckets (21 buckets)
         const minTime = tMax - (24 * 60 * 60 * 1000);
         while (cur > minTime) {
           const next = cur - (60 * 60 * 1000);
@@ -5272,15 +5283,12 @@
           cur = next;
         }
       } else {
-        // 3d Mode
-        // Last 12 hours: 1-hour buckets (12 buckets)
         const transitionTime = tMax - (12 * 60 * 60 * 1000);
         while (cur > transitionTime) {
           const next = cur - (60 * 60 * 1000);
           buckets.push({ start: next, end: cur, sum: 0, count: 0 });
           cur = next;
         }
-        // Older: 3-hour buckets (20 buckets)
         const minTime = tMax - (72 * 60 * 60 * 1000);
         while (cur > minTime) {
           const next = cur - (3 * 60 * 60 * 1000);
@@ -5313,7 +5321,8 @@
         .filter(Boolean);
         
       if (plottedPoints.length === 0) {
-        lastMktState = `${code}-${range}-${getNativeSvgFingerprint(svg)}`;
+        const fingerprint = getNativeSvgFingerprint(freshSvg);
+        lastMktState = `${code}-${range}-${fingerprint}`;
         return;
       }
       
@@ -5346,6 +5355,8 @@
       
       suspendModalObserver();
       try {
+        if (myGen !== renderGen) return;
+
         const threshold = range === '24h' ? 3 * 60 * 60 * 1000 : 10 * 60 * 60 * 1000;
         
         const drawPath = (pathD, isGap) => {
@@ -5361,7 +5372,7 @@
             pathEl.setAttribute('opacity', '1');
           }
           
-          const nativePath = svg.querySelector('g[transform="translate(4,6)"] path[stroke="#A19638"]');
+          const nativePath = freshSvg.querySelector('g[transform="translate(4,6)"] path[stroke="#A19638"]');
           if (nativePath) {
             const strokeWidth = nativePath.getAttribute('stroke-width') || '2';
             const strokeLinecap = nativePath.getAttribute('stroke-linecap') || 'round';
@@ -5400,7 +5411,6 @@
           groups.push(currentGroup);
         }
 
-        // 1. Draw solid, curved runs within each group
         groups.forEach(g => {
           if (g.length < 2) return;
           
@@ -5438,7 +5448,6 @@
           drawPath(pathD, false);
         });
 
-        // 2. Draw straight dashed gap lines between groups
         for (let k = 0; k < groups.length - 1; k++) {
           const ptA = groups[k][groups[k].length - 1];
           const ptB = groups[k+1][0];
@@ -5537,19 +5546,13 @@
         
         overlayG.appendChild(nowText);
       } finally {
-        resumeModalObserver(modal);
+        resumeModalObserver(freshModal);
       }
       
-      lastMktState = `${code}-${range}-${getNativeSvgFingerprint(svg)}`;
+      const fingerprint = getNativeSvgFingerprint(freshSvg);
+      lastMktState = `${code}-${range}-${fingerprint}`;
     } catch (e) {
       log('renderIntradayLine error:', e);
-    } finally {
-      renderingIntraday = false;
-      if (nextRenderRequest) {
-        const req = nextRenderRequest;
-        nextRenderRequest = null;
-        debouncedRenderIntraday(req.code, req.range, req.svg, req.modal);
-      }
     }
   }
 
@@ -5631,7 +5634,6 @@
     modalObserver = new MutationObserver((mutations) => {
       if (!CONFIG.featMarketGraph) return;
       
-      // Self-mutation guard: ignore if all mutations are on our own custom elements
       const onlyOurs = mutations.every(m => {
         const isOurTarget = m.target instanceof Element && m.target.closest('.wia-mkt-overlay-svg, .wia-mkt-toggle-row, .wia-mkt-tooltip');
         if (isOurTarget) return true;
@@ -5673,9 +5675,8 @@
     
     const overlayMissing = !svg.parentElement || !svg.parentElement.querySelector('.wia-mkt-overlay-svg');
     if (stateKey === lastMktState && !overlayMissing) return;
-    lastMktState = stateKey;
     
-    debouncedRenderIntraday(code, range, svg, modal);
+    debouncedRenderIntraday(code, range);
   }
 
   function teardownMarketGraph() {
