@@ -1,5 +1,21 @@
 # CHANGELOG
 
+## 2026-06-23 | Ressourcen-Markt Intraday-Grafik & Performance-Optimierung (v0.7.6)
+
+**Geänderte Dateien:** `warera-prost.user.js`
+
+**Änderungen (Deutsch):**
+- **Sofortige Grafikanzeige**: Die Intraday-Grafik (24h/3d) wird nun sofort aus dem Zwischenspeicher und dem lokalen Sampler gerendert, wenn das Modal geöffnet wird. Die frischen Daten werden geräuschlos im Hintergrund nachgeladen und aktualisiert.
+- **Schnellere Ladezeiten**: Die Abfrage wurde für die 24h-Ansicht optimiert und fragt maximal 2 statt 6 Daten-Seiten ab. Daten werden nun getrennt nach Ansichtszeitraum (24h und 3d) gecached, um unnötige Ladeverzögerungen beim Wechseln zu vermeiden.
+- **Bereinigte Speicherlecks**: Ein Fehler wurde behoben, bei dem die Hintergrund-Sampler-Intervalle beim Deaktivieren des Features nicht gestoppt und bei Reaktivierung mehrfach registriert wurden.
+- **Detailverbesserungen**: Der Y-Achsen-Wert für die aktuelle Zeit ("now") zeigt nun den tatsächlichen letzten Preis statt des globalen Minimums an. Modale Erkennung wurde verfeinert, um Leistungseinbußen auf nicht-ressourcenbezogenen Modalen zu verhindern.
+
+**Changes (English):**
+- **Instant Graph Painting**: The intraday price graph (24h/3d) now renders immediately using cached transactions and locally sampled series. Fresh network data is fetched asynchronously in the background and redraws seamlessly once loaded.
+- **Optimized Network Load**: Reduced default pagination to 2 pages (instead of 6) for 24h views. Queries and caches are now range-specific (24h and 3d views cached separately) to avoid network latency when swapping views.
+- **Resolved Timer & Observer Leaks**: Fixed a bug where disabling the market graph left active sampler timers running and toggling it back on registered duplicate intervals. Reentrancy depth tracking has been hardened.
+- **UI & Detection Cleanups**: The "now" X-axis price label highlights the most recent bucket's price instead of the global minimum. Refined title matching to avoid running queries on unrelated non-market dialogs.
+
 ## 2026-06-22 | Crafting-Profitabilitäts-Rechner (v0.7.5)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `tests/test-advisor-load.js`
