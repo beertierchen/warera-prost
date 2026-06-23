@@ -1446,6 +1446,8 @@
     globalThis.findItemCards = findItemCards;
     globalThis.writeCache = writeCache;
     globalThis.readCache = readCache;
+    globalThis.fetchCurrentEquipmentDurability = fetchCurrentEquipmentDurability;
+    globalThis.checkDurabilityWear = checkDurabilityWear;
   }
 
   function getLocale() {
@@ -6691,6 +6693,11 @@
             ledger.expense.Other = (ledger.expense.Other || 0) + money;
             booked = true;
           }
+        } else if (type === 'repair') {
+          if (isBuyerMe && money > 0) {
+            ledger.expense.Repairs = (ledger.expense.Repairs || 0) + money;
+            booked = true;
+          }
         } else {
           if (money > 0) {
             if (isSellerMe) {
@@ -6978,6 +6985,154 @@
     });
   }
 
+  async function fetchCurrentEquipmentDurability() {
+    const token = getToken();
+    if (!token) return null;
+    try {
+      const res = await resolveApiBase('inventory.fetchCurrentEquipment', {});
+      if (!res || !res.payload) return null;
+      
+      const payload = res.payload;
+      const equipMap = {};
+      if (Array.isArray(payload)) {
+        for (const entry of payload) {
+          const slot = entry.slot || entry.type;
+          const item = entry.item || entry;
+          if (slot && item) {
+            const code = item.itemCode || item.code || item.item || item.id;
+            const dur = item.durability ?? (item.maxDurability ? (item.maxDurability - (item.damage || 0)) : null);
+            if (code && dur != null) {
+              equipMap[slot] = { code, durability: Number(dur) };
+            }
+          }
+        }
+      } else if (payload && typeof payload === 'object') {
+        for (const [slot, item] of Object.entries(payload)) {
+          if (item && typeof item === 'object') {
+            const code = item.itemCode || item.code || item.item || item.id;
+            const dur = item.durability ?? (item.maxDurability ? (item.maxDurability - (item.damage || 0)) : null);
+            if (code && dur != null) {
+              equipMap[slot] = { code, durability: Number(dur) };
+            }
+          }
+        }
+      }
+      return equipMap;
+    } catch (e) {
+      log('fetchCurrentEquipmentDurability failed:', e.message);
+      return null;
+    }
+  }
+
+  async function fetchStartingEquipmentSnapshot() {
+    const equip = await fetchCurrentEquipmentDurability();
+    if (equip) {
+      let snapshots = readCache(KEYS.pnlSnapshots);
+      if (snapshots) {
+        snapshots.durability_start = equip;
+        writeCache(KEYS.pnlSnapshots, snapshots);
+        log('PnL: Captured starting durability snapshot for slots:', Object.keys(equip).join(', '));
+      }
+    }
+  }
+
+  async function checkDurabilityWear() {
+    const token = getToken();
+    if (!token) return;
+    
+    let snapshots = readCache(KEYS.pnlSnapshots);
+    if (!snapshots) return;
+    
+    const currentEquip = await fetchCurrentEquipmentDurability();
+    if (!currentEquip) return;
+    
+    if (!snapshots.durability_start || Object.keys(snapshots.durability_start).length === 0) {
+      snapshots.durability_start = currentEquip;
+      writeCache(KEYS.pnlSnapshots, snapshots);
+      return;
+    }
+    
+    let ledger = readCache(KEYS.pnlLedger);
+    if (!ledger) ledger = createEmptyLedger(getPnlDayKey());
+    if (!ledger.expense) ledger.expense = {};
+    
+    let ledgerChanged = false;
+    let snapshotsChanged = false;
+    
+    for (const [slot, startItem] of Object.entries(snapshots.durability_start)) {
+      const curItem = currentEquip[slot];
+      if (!curItem) continue;
+      
+      if (curItem.code !== startItem.code) {
+        snapshots.durability_start[slot] = curItem;
+        snapshotsChanged = true;
+        continue;
+      }
+      
+      const startDur = startItem.durability;
+      const curDur = curItem.durability;
+      
+      if (curDur < startDur) {
+        const wearPercent = (startDur - curDur) / 100;
+        
+        const costBasis = readCache(KEYS.pnlCostBasis) || {};
+        const itemBasis = costBasis[curItem.code];
+        let unitPaid = 0;
+        let isEstimated = false;
+        
+        if (itemBasis && itemBasis.unitPaid != null) {
+          unitPaid = itemBasis.unitPaid;
+        } else {
+          const price = getCachedPrice(curItem.code);
+          if (price != null) {
+            unitPaid = price;
+            isEstimated = true;
+          }
+        }
+        
+        const cost = unitPaid * wearPercent;
+        if (cost > 0) {
+          ledger.expense.Repairs = (ledger.expense.Repairs || 0) + cost;
+          if (isEstimated) {
+            ledger.hasEstimatedRepairs = true;
+          }
+          ledgerChanged = true;
+        }
+        
+        snapshots.durability_start[slot].durability = curDur;
+        snapshotsChanged = true;
+      } else if (curDur > startDur) {
+        snapshots.durability_start[slot].durability = curDur;
+        snapshotsChanged = true;
+      }
+    }
+    
+    for (const [slot, curItem] of Object.entries(currentEquip)) {
+      if (!snapshots.durability_start[slot]) {
+        snapshots.durability_start[slot] = curItem;
+        snapshotsChanged = true;
+      }
+    }
+    
+    if (snapshotsChanged) {
+      writeCache(KEYS.pnlSnapshots, snapshots);
+    }
+    
+    if (ledgerChanged) {
+      let sumIncome = 0;
+      for (const val of Object.values(ledger.income)) {
+        sumIncome += val;
+      }
+      let sumExpense = 0;
+      for (const val of Object.values(ledger.expense)) {
+        sumExpense += val;
+      }
+      ledger.total = sumIncome - sumExpense;
+      writeCache(KEYS.pnlLedger, ledger);
+      updatePnlUi();
+    }
+  }
+
   function checkPnlDayReset() {
     const currentDayKey = getPnlDayKey();
     let ledger = readCache(KEYS.pnlLedger);
@@ -6996,6 +7151,8 @@
         invQty_start: isInventoryPage() ? getInventoryQuantities() : {}
       };
       writeCache(KEYS.pnlSnapshots, snapshots);
+      
+      fetchStartingEquipmentSnapshot();
     }
     return ledger;
   }

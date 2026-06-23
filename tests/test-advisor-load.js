@@ -42,6 +42,9 @@ class MockElement {
     this.offsetHeight = 50;
   }
 
+  focus() {}
+  blur() {}
+
   get childNodes() {
     return this.children;
   }
@@ -314,12 +317,14 @@ class MockElement {
   }
 
   get textContent() {
-    if (this.children.length === 0) return this._textContent || '';
-    return this.children.map(c => c.textContent).join(' ');
+    if (this.children.length === 0) {
+      return this._textContent !== undefined && this._textContent !== null ? String(this._textContent) : '';
+    }
+    return this.children.map(c => String(c.textContent)).join(' ');
   }
 
   set textContent(val) {
-    this._textContent = val;
+    this._textContent = val !== undefined && val !== null ? String(val) : '';
   }
 }
 
@@ -1560,15 +1565,125 @@ try {
   // Restores
   globalThis.findItemCards = oldFindItemCards;
   console.log('Daily P&L Tracker Phase 3 tests passed successfully.');
+  // We wrap Phase 4 tests in an async IIFE to allow the use of await in this CommonJS environment
+  (async () => {
+    try {
+      console.log('--- Testing Daily P&L Tracker: Phase 4 ---');
+      
+      // Clean mock storage and initialize
+      globalThis.clearCache();
+      globalThis.CONFIG.featPnlTracker = true;
+      globalThis.CONFIG.minRequestIntervalMs = 0;
+      globalThis.CONFIG.debug = true;
+      // Set obfuscated token so internal getToken() decodes it correctly
+      const testXor = (str, pad) => {
+        let out = '';
+        for (let i = 0; i < str.length; i++) {
+          out += String.fromCharCode(str.charCodeAt(i) ^ pad.charCodeAt(i % pad.length));
+        }
+        return out;
+      };
+      const encodedToken = btoa(testXor('my-dummy-token', 'wareEra.advisor.v1'));
+      globalThis.writeCache('wia.token', encodedToken);
+      
+      // Set cost basis: chest3 (armor) = 500, helmet3 = 200 (estimated via priceCache)
+      globalThis.writeCache('wia.pnl.costBasis', {
+        chest3: { unitPaid: 500, qtyKnown: 1 }
+      });
+      globalThis.writeCache('wia.priceCache', {
+        data: { helmet3: 200 },
+        fetchedAt: Date.now()
+      });
+      
+      // 1. Mock GM_xmlhttpRequest to return equipment data
+      let currentMockEquipPayload = [
+        { slot: 'chest', itemCode: 'chest3', durability: 100 },
+        { slot: 'helmet', itemCode: 'helmet3', durability: 98 }
+      ];
+      const oldXmlHttpRequest = global.GM_xmlhttpRequest;
+      global.GM_xmlhttpRequest = (opts) => {
+        if (opts.url.includes('inventory.fetchCurrentEquipment')) {
+          opts.onload({
+            status: 200,
+            responseText: JSON.stringify([{
+              result: {
+                data: {
+                  json: currentMockEquipPayload
+                }
+              }
+            }])
+          });
+          return;
+        }
+        if (oldXmlHttpRequest) {
+          oldXmlHttpRequest(opts);
+        } else {
+          opts.onerror(new Error('not implemented'));
+        }
+      };
+      
+      // Initialize ledger and snapshots
+      globalThis.checkPnlDayReset();
+      
+      // Give the event loop a chance to resolve the async fetchStartingEquipmentSnapshot promise:
+      await new Promise(r => setTimeout(r, 0));
+      
+      const snapsAfterInit = globalThis.readCache('wia.pnl.snapshots');
+      assert.ok(snapsAfterInit.durability_start, 'Durability starting snapshots should be captured');
+      assert.strictEqual(snapsAfterInit.durability_start.chest.durability, 100, 'Chest start durability should be 100');
+      assert.strictEqual(snapsAfterInit.durability_start.helmet.durability, 98, 'Helmet start durability should be 98');
+      
+      // Now simulate durability drop:
+      // - chest: 100 -> 98 (2% drop) -> Cost is 2% * 500 = 10
+      // - helmet: 98 -> 93 (5% drop) -> Cost is 5% * 200 (fallback) = 10
+      // Total Repairs expense should be: 10 + 10 = 20
+      currentMockEquipPayload = [
+        { slot: 'chest', itemCode: 'chest3', durability: 98 },
+        { slot: 'helmet', itemCode: 'helmet3', durability: 93 }
+      ];
+      
+      await globalThis.checkDurabilityWear();
+      
+      const pnlLedgerResult = globalThis.readCache('wia.pnl.ledger');
+      assert.strictEqual(pnlLedgerResult.expense.Repairs, 20, 'Repairs expense should be 20 (10 chest wear + 10 helmet wear)');
+      
+      // Now simulate durability increase (repair) -> should update snapshots baseline but NOT add/subtract wear cost!
+      // - chest: 98 -> 100
+      // - helmet: 93 -> 98
+      currentMockEquipPayload = [
+        { slot: 'chest', itemCode: 'chest3', durability: 100 },
+        { slot: 'helmet', itemCode: 'helmet3', durability: 98 }
+      ];
+      
+      await globalThis.checkDurabilityWear();
+      
+      const postRepairLedger = globalThis.readCache('wia.pnl.ledger');
+      assert.strictEqual(postRepairLedger.expense.Repairs, 20, 'Repairs expense should remain 20 after repair (repaired jump is neutral)');
+      
+      // Check snapshot baseline was updated to 100 and 98
+      const snapsPostRepair = globalThis.readCache('wia.pnl.snapshots');
+      assert.strictEqual(snapsPostRepair.durability_start.chest.durability, 100, 'Snapshot chest baseline should update to 100');
+      assert.strictEqual(snapsPostRepair.durability_start.helmet.durability, 98, 'Snapshot helmet baseline should update to 98');
+      
+      // Restore GM_xmlhttpRequest mock
+      global.GM_xmlhttpRequest = oldXmlHttpRequest;
+      
+      console.log('Daily P&L Tracker Phase 4 tests passed successfully.');
 
-  // Restore document mock functions
-  global.document.querySelector = oldBodyQuerySelector;
-  global.document.getElementById = oldBodyGetElementById;
-  
-  console.log('Daily P&L Tracker Phase 1 tests passed successfully.');
+      // Restore document mock functions
+      global.document.querySelector = oldBodyQuerySelector;
+      global.document.getElementById = oldBodyGetElementById;
+      
+      console.log('Daily P&L Tracker Phase 1 tests passed successfully.');
 
-  console.log('Success! The script loaded and initialized without throwing any runtime errors.');
-  process.exit(0);
+      console.log('Success! The script loaded and initialized without throwing any runtime errors.');
+      process.exit(0);
+    } catch (err) {
+      console.error('Error during script load/execution:');
+      console.error(err.stack || err);
+      process.exit(1);
+    }
+  })();
 } catch (err) {
   console.error('Error during script load/execution:');
   console.error(err.stack || err);
