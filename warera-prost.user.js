@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.7.6
+// @version      0.7.7
 // @description  PROST — Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -630,7 +630,48 @@
     marketGraphRange: NS + 'mktGraphRange',
     priceSeries: NS + 'priceSeries',
     resourceTransactionsCache: NS + 'resTxsCache',
+    persistedAdvice: NS + 'persistedAdvice',
   };
+
+  const memoryCache = {};
+
+  function readCache(key) {
+    if (memoryCache[key] !== undefined) {
+      return memoryCache[key];
+    }
+    const val = GM_getValue(key, null);
+    let defaultVal = {};
+    if (key === KEYS.priceCache) {
+      defaultVal = null;
+    }
+    const valWithDefault = (val === undefined || val === null) ? defaultVal : val;
+    memoryCache[key] = valWithDefault;
+    return valWithDefault;
+  }
+
+  function writeCache(key, value) {
+    memoryCache[key] = value;
+    GM_setValue(key, value);
+  }
+
+  function getPersistedAdvice(itemId, statsHash, priceFetchedAt) {
+    if (!itemId) return null;
+    const pa = readCache(KEYS.persistedAdvice);
+    const cached = pa[itemId];
+    if (!cached) return null;
+    if (cached.statsHash !== statsHash || cached.priceFetchedAt !== priceFetchedAt) {
+      return null;
+    }
+    return cached.result;
+  }
+
+  function setPersistedAdvice(itemId, result, statsHash, priceFetchedAt) {
+    if (!itemId) return;
+    const pa = { ...readCache(KEYS.persistedAdvice) };
+    pa[itemId] = { result, statsHash, priceFetchedAt };
+    writeCache(KEYS.persistedAdvice, pa);
+  }
+
   let menuSettingsId = null;
   let menuClearId = null;
   const OBF_KEY = 'wareEra.advisor.v1'; // XOR pad — obfuscation only, not encryption
@@ -652,14 +693,18 @@
   }
   // fallback prices helper removed
   function clearCache() {
-    GM_setValue(KEYS.priceCache, null);
+    writeCache(KEYS.priceCache, null);
+    writeCache(KEYS.offersCache, {});
+    writeCache(KEYS.transactionsCache, {});
+    writeCache(KEYS.scrapedPrices, {});
+    writeCache(KEYS.persistedAdvice, {});
     GM_setValue(KEYS.scrapCache, null);
-    GM_setValue(KEYS.offersCache, {});
-    GM_setValue(KEYS.transactionsCache, {});
     GM_setValue(KEYS.resourceTransactionsCache, {});
-    GM_setValue(KEYS.scrapedPrices, {});
     GM_setValue(KEYS.priceSeries, {});
     GM_setValue(KEYS.apiBase, '');
+    for (const key in memoryCache) {
+      delete memoryCache[key];
+    }
     inFlightPrices = null;
     log('cache cleared');
   }
@@ -825,8 +870,8 @@
 
   // Returns a map { itemCode -> price } (best-effort; shape depends on the API).
   async function fetchPrices(force) {
-    const cache = GM_getValue(KEYS.priceCache, null);
-    const scrapedStore = GM_getValue(KEYS.scrapedPrices, {}) || {};
+    const cache = readCache(KEYS.priceCache);
+    const scrapedStore = readCache(KEYS.scrapedPrices) || {};
     const scrapedScrap = scrapedStore[CONFIG.scrapItemCode];
 
     let baseData = {};
@@ -842,7 +887,7 @@
         try {
           const { payload } = await resolveApiBase(CONFIG.pricesEndpoint, undefined);
           const map = normalizePrices(payload);
-          GM_setValue(KEYS.priceCache, { data: map, fetchedAt: now() });
+          writeCache(KEYS.priceCache, { data: map, fetchedAt: now() });
           renderRateLimitBanner();
           return map;
         } catch (e) {
@@ -896,14 +941,14 @@
   async function fetchItemOffers(code, force) {
     if (!code) return null;
     if (!CONFIG.useLiveOffersApi) {
-      const store = GM_getValue(KEYS.scrapedPrices, {}) || {};
+      const store = readCache(KEYS.scrapedPrices) || {};
       const cached = store[code];
       if (cached && now() - cached.fetchedAt < CONFIG.scrapedPriceTtlMs) {
         return { offers: [], floor: cached.price, fetchedAt: cached.fetchedAt };
       }
       return null;
     }
-    const store = GM_getValue(KEYS.offersCache, {});
+    const store = readCache(KEYS.offersCache);
     const cached = store[code];
     if (!force && cached && now() - cached.fetchedAt < CONFIG.priceCacheTtlMs) return cached.data;
     if (isRateLimited()) return cached ? cached.data : null;
@@ -921,9 +966,9 @@
         if (res.status === 429) { tripRateLimit(); return cached ? cached.data : null; }
         if (res.status < 200 || res.status >= 300) return cached ? cached.data : null;
         const data = normalizeOffers(unwrapTrpc(res.text));
-        const next = GM_getValue(KEYS.offersCache, {});
+        const next = { ...readCache(KEYS.offersCache) };
         next[code] = { data, fetchedAt: now() };
-        GM_setValue(KEYS.offersCache, next);
+        writeCache(KEYS.offersCache, next);
         return data;
       } catch (e) {
         log('fetchItemOffers failed:', code, e.message);
@@ -936,12 +981,67 @@
     return offersInFlight[code];
   }
 
+  function getTypeFromCode(code) {
+    if (!code) return 'unknown';
+    const cleanCode = code.replace(/\d+$/, '').trim().toLowerCase();
+    for (const [kw, t] of Object.entries(CONFIG.typeByAltKeyword)) {
+      if (cleanCode === kw) return t;
+    }
+    return 'unknown';
+  }
+
+  function getTxPrice(tx) {
+    return tx.p !== undefined ? tx.p : tx.money;
+  }
+
+  function getTxTimestamp(tx) {
+    return tx.t !== undefined ? tx.t : (tx.createdAt ? Date.parse(tx.createdAt) : 0);
+  }
+
+  function getTxScore(tx, type) {
+    if (tx.s !== undefined) return tx.s;
+    return statForType(type, tx.item?.skills);
+  }
+
+  function migrateTransactionsCache() {
+    const key = NS + 'cacheSchemaVersion';
+    const currentVersion = GM_getValue(key, 0);
+    if (currentVersion === 2) return;
+
+    log('Migrating transactionsCache to schema version 2...');
+    const store = GM_getValue(KEYS.transactionsCache, {}) || {};
+    let migrated = false;
+    for (const [code, entry] of Object.entries(store)) {
+      if (entry && Array.isArray(entry.data)) {
+        const isOld = entry.data.some(tx => tx && (tx.transactionType !== undefined || tx.money !== undefined));
+        if (isOld) {
+          const type = getTypeFromCode(code);
+          entry.data = entry.data.map(tx => {
+            if (!tx) return null;
+            if (tx.transactionType !== undefined && tx.transactionType !== 'itemMarket') return null;
+            const price = tx.p !== undefined ? tx.p : tx.money;
+            const timestamp = tx.t !== undefined ? tx.t : (tx.createdAt ? new Date(tx.createdAt).getTime() : null);
+            const score = tx.s !== undefined ? tx.s : statForType(type, tx.item?.skills);
+            if (price == null || timestamp == null) return null;
+            return { p: price, t: timestamp, s: score };
+          }).filter(Boolean);
+          migrated = true;
+        }
+      }
+    }
+    if (migrated) {
+      GM_setValue(KEYS.transactionsCache, store);
+      log('transactionsCache successfully migrated to schema version 2.');
+    }
+    GM_setValue(key, 2);
+  }
+
   // ── Equipment transactions (gateway/historical) ──────────────────────────
   const transactionsInFlight = {}; // code -> promise (dedup)
 
   async function fetchItemTransactions(code, force) {
     if (!code) return null;
-    const store = GM_getValue(KEYS.transactionsCache, {}) || {};
+    const store = readCache(KEYS.transactionsCache) || {};
     const cached = store[code];
     if (!force && cached && now() - cached.fetchedAt < CONFIG.txCacheTtlMs) return cached.data;
     if (isRateLimited()) return cached ? cached.data : null;
@@ -969,10 +1069,21 @@
         const data = JSON.parse(res.text);
         const items = data?.result?.data?.items || [];
         
-        const next = GM_getValue(KEYS.transactionsCache, {}) || {};
-        next[code] = { data: items, fetchedAt: now() };
-        GM_setValue(KEYS.transactionsCache, next);
-        return items;
+        const type = getTypeFromCode(code);
+        const mapped = items.map(tx => {
+          if (tx.transactionType !== 'itemMarket' || tx.money == null || !tx.createdAt) return null;
+          const score = statForType(type, tx.item?.skills);
+          return {
+            p: Number(tx.money),
+            t: new Date(tx.createdAt).getTime(),
+            s: score
+          };
+        }).filter(Boolean);
+
+        const next = { ...readCache(KEYS.transactionsCache) };
+        next[code] = { data: mapped, fetchedAt: now() };
+        writeCache(KEYS.transactionsCache, next);
+        return mapped;
       } catch (e) {
         log('fetchItemTransactions failed:', code, e.message);
         return cached ? cached.data : null;
@@ -1304,6 +1415,8 @@
     globalThis.formatHoverTime = formatHoverTime;
     globalThis.getModalResourceCode = getModalResourceCode;
     globalThis.getNativeSvgFingerprint = getNativeSvgFingerprint;
+    globalThis.scanInventory = scanInventory;
+    globalThis.fetchPrices = fetchPrices;
   }
 
   function getLocale() {
@@ -1464,7 +1577,7 @@
       }
     });
 
-    cleanCard.querySelectorAll('*').forEach(child => {
+    cleanCard.querySelectorAll('.wia-badge, .wia-score-sub, .wia-price-sub, .wia-top-banner, .a6izou0').forEach(child => {
       child.insertAdjacentText('afterend', ' ');
     });
 
@@ -1574,13 +1687,13 @@
     const sixDaysAgo = Date.now() - 6 * 24 * 60 * 60 * 1000;
     
     const validTxs = txs.map(tx => {
-      const t = tx.createdAt ? Date.parse(tx.createdAt) : NaN;
-      if (!Number.isFinite(t) || t < sixDaysAgo) return null;
-      if (tx.transactionType !== 'itemMarket') return null;
+      const t = getTxTimestamp(tx);
+      if (!t || t < sixDaysAgo) return null;
+      if (tx.transactionType !== undefined && tx.transactionType !== 'itemMarket') return null;
       
-      const score = statForType(type, tx.item?.skills);
+      const score = getTxScore(tx, type);
       return {
-        price: tx.money,
+        price: getTxPrice(tx),
         score,
         diff: score != null ? Math.abs(score - myStat) : Infinity
       };
@@ -1681,8 +1794,10 @@
     
     const sixDaysAgo = Date.now() - 6 * 24 * 60 * 60 * 1000;
     item.txCount = txData ? txData.filter(t => {
-      const parsedTime = t.createdAt ? Date.parse(t.createdAt) : NaN;
-      return Number.isFinite(parsedTime) && parsedTime >= sixDaysAgo && t.money != null && t.transactionType === 'itemMarket';
+      const parsedTime = getTxTimestamp(t);
+      const price = getTxPrice(t);
+      const isMarket = t.transactionType === undefined || t.transactionType === 'itemMarket';
+      return Number.isFinite(parsedTime) && parsedTime >= sixDaysAgo && price != null && isMarket;
     }).length : 0;
 
     let market = item.txRefPrice;
@@ -1766,7 +1881,12 @@
     const { value } = mkt;
 
     if (value == null && scrapValue == null) {
-      return decide(ACTION.UNKNOWN, [...reasons, t('noPriceData')], value, scrapValue);
+      if (avoidScrap) {
+        reasons.push(t('noPriceData') + ' (Held: Crit)');
+        return decide(ACTION.HOLD, reasons, value, scrapValue);
+      }
+      reasons.push(t('noPriceData') + ' (Fallback)');
+      return decide(ACTION.SCRAP, reasons, value, scrapValue);
     }
     const taxRate = CONFIG.sellTaxRate ?? 0.01;
     const netMarketValue = value != null ? value * (1 - taxRate) : null;
@@ -1821,11 +1941,10 @@
     return t('hMAgo', { h: Math.floor(min / 60), m: min % 60 });
   }
 
-  // Snapshot of cache freshness for the UI indicators.
   function cacheStatus() {
-    const pc = GM_getValue(KEYS.priceCache, null);
-    const oc = GM_getValue(KEYS.offersCache, {}) || {};
-    const tc = GM_getValue(KEYS.transactionsCache, {}) || {};
+    const pc = readCache(KEYS.priceCache);
+    const oc = readCache(KEYS.offersCache) || {};
+    const tc = readCache(KEYS.transactionsCache) || {};
     const priceStale = pc ? now() - pc.fetchedAt > CONFIG.priceCacheTtlMs : true;
     const offerTimes = Object.values(oc).map((o) => o.fetchedAt).filter(Boolean);
     const txTimes = Object.values(tc).map((t) => t.fetchedAt).filter(Boolean);
@@ -1858,6 +1977,28 @@
 
   const WIA_HEADER_PX = 18;   // top strip height for score + bubble (tune live)
 
+  function reserveCardLayout(card) {
+    if (card.dataset.wiaHeader === '1') return;
+    card.style.position = 'relative';
+    card.style.minHeight = (48 + WIA_HEADER_PX) + 'px';
+    card.dataset.wiaHeader = '1';
+    const imgWrap = card.querySelector('img')?.parentElement;
+    if (imgWrap) {
+      imgWrap.style.top = WIA_HEADER_PX + 'px';
+      imgWrap.style.height = 'auto';
+      imgWrap.style.bottom = '0';
+      imgWrap.dataset.wiaShifted = '1';
+    }
+  }
+
+  function getResultFingerprint(item, result) {
+    const isProvisional = result.provisional ? '1' : '0';
+    const scrapVal = result.scrapValue ?? 'null';
+    const marketVal = result.market ?? 'null';
+    const isStockKeep = item.isStockKeep ? '1' : '0';
+    return `${result.action}_${isProvisional}_${scrapVal}_${marketVal}_${isStockKeep}_${item.myStat ?? 'null'}`;
+  }
+
   function renderItem(card, item, result) {
     const cell = getItemCell(card);
     const state = getItemState(card, item.stats);
@@ -1868,6 +2009,7 @@
 
     // 1. Equipped suppression check
     if (state.equipped) {
+      delete card.dataset.wiaFingerprint;
       suspendObserver();
       try {
         const badge = card.querySelector('.wia-badge');
@@ -1890,9 +2032,20 @@
       return;
     }
 
+    const fingerprint = getResultFingerprint(item, result);
+    if (card.dataset.wiaFingerprint === fingerprint) {
+      return;
+    }
+    card.dataset.wiaFingerprint = fingerprint;
+
     card.dataset.wiaDone = '1';
-    if (getComputedStyle(card).position === 'static') {
-      card.style.position = 'relative';
+    if (card.dataset.wiaHeader !== '1') {
+      suspendObserver();
+      try {
+        reserveCardLayout(card);
+      } finally {
+        resumeObserver();
+      }
     }
 
     // Clean up old classes if they exist from hot-reloads
@@ -1913,7 +2066,14 @@
       card.appendChild(badge);
     }
     const emojiMap = { KEEP: '💎', SELL: '💰', SCRAP: '🔨', HOLD: '✋', UNKNOWN: '❓' };
-    badge.textContent = emojiMap[result.action] || '❓';
+    let text = emojiMap[result.action] || '❓';
+    if (result.provisional) {
+      text = '~' + text;
+      card.dataset.wiaProvisional = '1';
+    } else {
+      delete card.dataset.wiaProvisional;
+    }
+    badge.textContent = text;
     badge.style.background = BADGE_COLORS[result.action] || BADGE_COLORS.UNKNOWN;
     badge.style.opacity = item.stale ? '0.55' : '1'; // dim when on cached/stale prices
     badge.style.top = Math.round(WIA_HEADER_PX / 2) + 'px';
@@ -1941,21 +2101,6 @@
       scoreSub.remove();
     }
 
-    // 3.5. Grow card header (always active for active non-damaged items)
-    suspendObserver();
-    try {
-      card.style.minHeight = (48 + WIA_HEADER_PX) + 'px';
-      card.dataset.wiaHeader = '1';
-      const imgWrap = card.querySelector('img')?.parentElement;
-      if (imgWrap) {
-        imgWrap.style.top = WIA_HEADER_PX + 'px';
-        imgWrap.style.height = 'auto';
-        imgWrap.style.bottom = '0';
-        imgWrap.dataset.wiaShifted = '1';
-      }
-    } finally {
-      resumeObserver();
-    }
 
     // 4. Price Sub-badge (only for 100% unequipped)
     const showPrice = result.scrapValue != null || result.market != null;
@@ -2136,7 +2281,7 @@
     const scrapUnitPrice = getScrapUnitPrice(prices);
     if (scrapUnitPrice == null) return;
 
-    const scrapedStore = GM_getValue(KEYS.scrapedPrices, {}) || {};
+    const scrapedStore = readCache(KEYS.scrapedPrices) || {};
     suspendObserver();
     try {
       tiles.forEach((tile) => {
@@ -2281,7 +2426,7 @@
     const selectorElements = document.querySelectorAll("[id^='item-code-selector-']");
     if (!selectorElements.length) return;
 
-    const store = GM_getValue(KEYS.scrapedPrices, {}) || {};
+    const store = { ...readCache(KEYS.scrapedPrices) };
     let updatedCount = 0;
 
     selectorElements.forEach(el => {
@@ -2310,7 +2455,7 @@
     });
 
     if (updatedCount > 0) {
-      GM_setValue(KEYS.scrapedPrices, store);
+      writeCache(KEYS.scrapedPrices, store);
       log(`Scraped ${updatedCount} updated prices`);
       showScrapeNotification(updatedCount);
     }
@@ -2362,9 +2507,55 @@
 
   function getCardBaseText(card) {
     const cell = getItemCell(card);
-    const clone = cell.cloneNode(true);
-    clone.querySelectorAll('.wia-badge, .wia-score-sub, .wia-price-sub, .wia-top-banner').forEach(el => el.remove());
-    return clone.textContent.replace(/\s+/g, ' ').trim();
+    if (!cell) return '';
+    let text = '';
+    
+    function walk(node) {
+      const isMock = node.nodeType === undefined;
+      if (!isMock && node.nodeType === 3) { // TEXT_NODE
+        text += (node.nodeValue || '') + ' ';
+      } else {
+        const cl = node.classList;
+        if (cl && (cl.contains('wia-badge') || 
+                   cl.contains('wia-score-sub') || 
+                   cl.contains('wia-price-sub') || 
+                   cl.contains('wia-top-banner'))) {
+          return;
+        }
+        
+        if (isMock) {
+          if (node.children && node.children.length > 0) {
+            node.children.forEach(walk);
+          } else {
+            text += (node._textContent || '') + ' ';
+          }
+        } else {
+          const children = node.childNodes;
+          if (children && children.length > 0) {
+            for (let i = 0; i < children.length; i++) {
+              walk(children[i]);
+            }
+          }
+        }
+      }
+    }
+    
+    walk(cell);
+    return text.replace(/\s+/g, ' ').trim();
+  }
+
+  function reResolveCard(oldCard) {
+    if (!oldCard) return null;
+    if (oldCard.isConnected) return oldCard;
+    const itemId = findItemUniqueId(oldCard);
+    if (!itemId) return null;
+    const cards = findItemCards(false);
+    for (const card of cards.keys()) {
+      if (card.isConnected && findItemUniqueId(card) === itemId) {
+        return card;
+      }
+    }
+    return null;
   }
 
   function getItemState(card, stats) {
@@ -2396,15 +2587,11 @@
   function hasInventoryChanged(cards) {
     if (!lastInventoryCards || lastInventoryCards.size !== cards.size) return true;
 
-    const currentCards = Array.from(cards.keys());
-    const lastCards = Array.from(lastInventoryCards.keys());
-
-    for (let i = 0; i < currentCards.length; i++) {
-      const card = currentCards[i];
-      const lastCard = lastCards[i];
+    const lastKeys = lastInventoryCards.keys();
+    for (const [card, img] of cards.entries()) {
+      const lastCard = lastKeys.next().value;
       if (card !== lastCard) return true;
 
-      const img = cards.get(card);
       const lastImg = lastInventoryCards.get(card);
       if (img !== lastImg) return true;
       if (img.getAttribute('src') !== lastImg.getAttribute('src')) return true;
@@ -2469,16 +2656,18 @@
 
       calculateInventoryRankings(allItems);
 
-      const prices = await fetchPrices(false); // from cache, instant
+      const pc = readCache(KEYS.priceCache);
+      const currentPriceFetchedAt = pc ? pc.fetchedAt : 0;
+      const prices = pc ? pc.data : {};
       const scrapPrice = prices ? prices[CONFIG.scrapItemCode] ?? null : null;
+
+      const oc = readCache(KEYS.offersCache);
+      const tc = readCache(KEYS.transactionsCache);
+      const scraped = readCache(KEYS.scrapedPrices);
 
       const offers = {};
       const txs = {};
       const uniqueCodes = [...new Set(allItems.map((i) => i.code).filter(Boolean))];
-      
-      const oc = GM_getValue(KEYS.offersCache, {}) || {};
-      const tc = GM_getValue(KEYS.transactionsCache, {}) || {};
-      const scraped = GM_getValue(KEYS.scrapedPrices, {}) || {};
 
       uniqueCodes.forEach((c) => {
         if (!CONFIG.useLiveOffersApi) {
@@ -2501,8 +2690,22 @@
       try {
         allItems.forEach((item) => {
           if (item.code === code) {
-            const result = evaluate(item, ctx);
-            renderItem(item.card, item, result);
+            const card = reResolveCard(item.card);
+            if (!card) return;
+            item.card = card;
+
+            const itemId = findItemUniqueId(card);
+            const statsHash = JSON.stringify(item.stats);
+            const fresh = hasFreshCachedData(item.code);
+
+            let result = evaluate(item, ctx);
+            if (!fresh) {
+              result = { ...result };
+              result.provisional = true;
+            } else {
+              setPersistedAdvice(itemId, result, statsHash, currentPriceFetchedAt);
+            }
+            renderItem(card, item, result);
           }
         });
       } finally {
@@ -2534,6 +2737,8 @@
       return;
     }
 
+    bypassNextScanDebounce = false;
+
     log(`scanInventory started (force=${force})`);
     scanning = true;
     lastInventoryCards = cards;
@@ -2543,6 +2748,20 @@
     });
 
     try {
+      // Synchronously reserve layout for all valid cards upfront
+      suspendObserver();
+      try {
+        cards.forEach((img, card) => {
+          const { type } = detectType(img, card);
+          if (type === 'scrap' || type === 'unknown') return;
+          const stats = parseStats(card, type);
+          if (shouldSuppressItem(card, stats)) return;
+          reserveCardLayout(card);
+        });
+      } finally {
+        resumeObserver();
+      }
+
       const items = [];
       cards.forEach((img, card) => {
         const { type, alt, code, tier } = detectType(img, card);
@@ -2590,12 +2809,15 @@
 
       calculateInventoryRankings(items);
 
-      const prices = await fetchPrices(force);
+      // Synchronous Price Cache loading
+      const pc = readCache(KEYS.priceCache);
+      const currentPriceFetchedAt = pc ? pc.fetchedAt : 0;
+      const prices = pc ? pc.data : {};
       const scrapPrice = prices ? prices[CONFIG.scrapItemCode] ?? null : null;
 
-      const oc = GM_getValue(KEYS.offersCache, {}) || {};
-      const tc = GM_getValue(KEYS.transactionsCache, {}) || {};
-      const scraped = GM_getValue(KEYS.scrapedPrices, {}) || {};
+      const oc = readCache(KEYS.offersCache);
+      const tc = readCache(KEYS.transactionsCache);
+      const scraped = readCache(KEYS.scrapedPrices);
 
       const offers = {};
       const txs = {};
@@ -2629,10 +2851,24 @@
 
       const ctx = { prices, scrapPrice, offers, txs, stale: cacheStatus().stale };
 
+      // Synchronous First Paint
       suspendObserver();
       try {
         for (const item of items) {
-          const result = evaluate(item, ctx);
+          const itemId = findItemUniqueId(item.card);
+          const statsHash = JSON.stringify(item.stats);
+          const fresh = hasFreshCachedData(item.code);
+
+          let result = getPersistedAdvice(itemId, statsHash, currentPriceFetchedAt);
+          if (!result) {
+            result = evaluate(item, ctx);
+            if (!fresh) {
+              result = { ...result };
+              result.provisional = true;
+            } else {
+              setPersistedAdvice(itemId, result, statsHash, currentPriceFetchedAt);
+            }
+          }
           renderItem(item.card, item, result);
         }
       } finally {
@@ -2644,17 +2880,72 @@
         await renderScrapFlip();
       }
 
-      if (codesToFetch.length > 0) {
-        log(`Triggering background loads for: ${codesToFetch.join(', ')}`);
-        suspendObserver();
-        Promise.all(codesToFetch.map((c) => fetchAndRenderItemCodeInBackground(c, force)))
-          .finally(() => {
-            resumeObserver();
-          });
-      }
-      
-      if (CONFIG.featPillReminder) {
-        highlightCocaineItems();
+      // Background Async Loads
+      const isGlobalPriceStale = !pc || now() - pc.fetchedAt >= CONFIG.priceCacheTtlMs;
+      if (isGlobalPriceStale || codesToFetch.length > 0 || force) {
+        (async () => {
+          try {
+            if (isGlobalPriceStale || force) {
+              await (globalThis.fetchPrices || fetchPrices)(force);
+            }
+
+            if (codesToFetch.length > 0) {
+              log(`Triggering background loads for: ${codesToFetch.join(', ')}`);
+              await Promise.all(codesToFetch.map((c) => fetchAndRenderItemCodeInBackground(c, force)));
+            } else if (isGlobalPriceStale || force) {
+              log('Re-evaluating items after global price update...');
+              const nextPc = readCache(KEYS.priceCache);
+              const nextPriceFetchedAt = nextPc ? nextPc.fetchedAt : 0;
+              const nextPrices = nextPc ? nextPc.data : {};
+              const nextScrapPrice = nextPrices ? nextPrices[CONFIG.scrapItemCode] ?? null : null;
+
+              const nextCtx = {
+                prices: nextPrices,
+                scrapPrice: nextScrapPrice,
+                offers: ctx.offers,
+                txs: ctx.txs,
+                stale: cacheStatus().stale
+              };
+
+              suspendObserver();
+              try {
+                items.forEach(item => {
+                  const card = reResolveCard(item.card);
+                  if (!card) return;
+                  item.card = card;
+
+                  const itemId = findItemUniqueId(card);
+                  const statsHash = JSON.stringify(item.stats);
+                  const fresh = hasFreshCachedData(item.code);
+
+                  let result = getPersistedAdvice(itemId, statsHash, nextPriceFetchedAt);
+                  if (!result) {
+                    result = evaluate(item, nextCtx);
+                    if (!fresh) {
+                      result = { ...result };
+                      result.provisional = true;
+                    } else {
+                      setPersistedAdvice(itemId, result, statsHash, nextPriceFetchedAt);
+                    }
+                  }
+                  renderItem(card, item, result);
+                });
+              } finally {
+                resumeObserver();
+              }
+            }
+
+            if (CONFIG.featPillReminder) {
+              highlightCocaineItems();
+            }
+          } catch (err) {
+            log('Background update failed:', err);
+          }
+        })();
+      } else {
+        if (CONFIG.featPillReminder) {
+          highlightCocaineItems();
+        }
       }
 
     } catch (e) {
@@ -3167,7 +3458,7 @@
   function renderDataStrip(el) {
     if (!el) return;
     const s = cacheStatus();
-    const scraped = GM_getValue(KEYS.scrapedPrices, {});
+    const scraped = readCache(KEYS.scrapedPrices);
     const scrapedCount = Object.keys(scraped).length;
     const statusText = isRateLimited()
       ? t('status_rateLimited')
@@ -3515,6 +3806,10 @@
     return /\/market\/equipments/.test(location.pathname);
   }
 
+  let bootstrapObserver = null;
+  let bypassNextScanDebounce = false;
+  let routePollFrame = null;
+
   const debouncedScan = debounce(() => {
     if (isInventoryPage()) {
       scanInventory(false);
@@ -3523,6 +3818,20 @@
       scanInventory(false);
     }
   }, CONFIG.rescanDebounceMs);
+
+  function triggerScan(force = false) {
+    if (bypassNextScanDebounce) {
+      bypassNextScanDebounce = false;
+      if (isInventoryPage()) {
+        scanInventory(force);
+      } else if (isMarketPage()) {
+        scrapeMarketPrices();
+        scanInventory(force);
+      }
+    } else {
+      debouncedScan();
+    }
+  }
 
   function updateObserverTarget() {
     if (!observer) return;
@@ -3546,38 +3855,93 @@
           return;
         }
       }
-      log(`No inventory cards found yet, observing body for initial load...`);
-      observer.observe(document.body, { childList: true, subtree: true });
     } else if (isMarketPage()) {
-      observer.observe(document.body, { childList: true, subtree: true });
+      const sellContainer = findMarketSellContainer();
+      if (sellContainer) {
+        log(`Observing market sell container:`, sellContainer);
+        observer.observe(sellContainer, { childList: true, subtree: true });
+        return;
+      }
     }
   }
 
+  function initBootstrapObserver() {
+    if (bootstrapObserver) {
+      bootstrapObserver.disconnect();
+      bootstrapObserver = null;
+    }
+    
+    // Check if cards exist immediately
+    if (document.querySelector("[id^='item-code-selector-']") || findItemCards().size > 0) {
+      return;
+    }
+    
+    bootstrapObserver = new MutationObserver((mutations, obs) => {
+      if (document.querySelector("[id^='item-code-selector-']") || findItemCards().size > 0) {
+        log('Bootstrap observer: cards detected in DOM');
+        obs.disconnect();
+        bootstrapObserver = null;
+        if (routePollFrame) {
+          const cancelAF = typeof cancelAnimationFrame !== 'undefined' ? cancelAnimationFrame : clearTimeout;
+          cancelAF(routePollFrame);
+          routePollFrame = null;
+        }
+        scanInventory(false);
+      }
+    });
+    
+    bootstrapObserver.observe(document.body, { childList: true, subtree: true });
+  }
+
   let lastPath = location.pathname;
-  let routePollInterval = null;
 
   function startRoutePolling() {
-    if (routePollInterval) clearInterval(routePollInterval);
-    let attempts = 0;
-    routePollInterval = setInterval(() => {
-      attempts++;
-      const cards = findItemCards();
-      if (cards.size > 0) {
-        log(`Route polling: found ${cards.size} cards after ${attempts} attempts`);
-        clearInterval(routePollInterval);
-        routePollInterval = null;
+    if (routePollFrame) {
+      const cancelAF = typeof cancelAnimationFrame !== 'undefined' ? cancelAnimationFrame : clearTimeout;
+      cancelAF(routePollFrame);
+      routePollFrame = null;
+    }
+
+    const cards = findItemCards();
+    if (cards.size > 0 || document.querySelector("[id^='item-code-selector-']")) {
+      log('Route polling: found cards immediately');
+      if (isInventoryPage()) {
+        scanInventory(false);
+      } else if (isMarketPage()) {
+        scrapeMarketPrices();
+        scanInventory(false);
+      }
+      return;
+    }
+
+    const startTime = Date.now();
+    const rAF = typeof requestAnimationFrame !== 'undefined' ? requestAnimationFrame : (fn) => setTimeout(fn, 16);
+    
+    const poll = () => {
+      const cardsPoll = findItemCards();
+      if (cardsPoll.size > 0 || document.querySelector("[id^='item-code-selector-']")) {
+        log('Route polling (rAF): found cards');
+        if (bootstrapObserver) {
+          bootstrapObserver.disconnect();
+          bootstrapObserver = null;
+        }
+        routePollFrame = null;
         if (isInventoryPage()) {
           scanInventory(false);
         } else if (isMarketPage()) {
           scrapeMarketPrices();
           scanInventory(false);
         }
+        return;
       }
-      if (attempts >= 20) { // stop polling after 5 seconds
-        clearInterval(routePollInterval);
-        routePollInterval = null;
+      if (Date.now() - startTime < 5000) {
+        routePollFrame = rAF(poll);
+      } else {
+        log('Route polling (rAF): 5s timeout reached');
+        routePollFrame = null;
       }
-    }, 250);
+    };
+    routePollFrame = rAF(poll);
   }
 
   function handleRouteChange() {
@@ -3586,16 +3950,32 @@
     lastInventoryCards = null; // Reset fingerprint on route change
     lastInventoryCardTexts.clear();
     lastMktState = null;
+    bypassNextScanDebounce = true;
     
-    if (routePollInterval) {
-      clearInterval(routePollInterval);
-      routePollInterval = null;
+    if (routePollFrame) {
+      const cancelAF = typeof cancelAnimationFrame !== 'undefined' ? cancelAnimationFrame : clearTimeout;
+      cancelAF(routePollFrame);
+      routePollFrame = null;
+    }
+    if (bootstrapObserver) {
+      bootstrapObserver.disconnect();
+      bootstrapObserver = null;
     }
     
     if (isInventoryPage() || isMarketPage()) {
       updateObserverTarget();
-      debouncedScan();
-      startRoutePolling();
+      if (document.querySelector("[id^='item-code-selector-']") || findItemCards().size > 0) {
+        log('Route change: cards exist immediately, scanning');
+        if (isInventoryPage()) {
+          scanInventory(false);
+        } else if (isMarketPage()) {
+          scrapeMarketPrices();
+          scanInventory(false);
+        }
+      } else {
+        initBootstrapObserver();
+        startRoutePolling();
+      }
     } else if (isBattlePage()) {
       observer.disconnect();
       if (CONFIG.featBattleAdvisor) applyBattleAdvisory();
@@ -3749,7 +4129,43 @@
   const NOTES_KEY_PFX   = 'warera-note:';
   const NOTES_DEBOUNCE  = 150;
 
-  let notesObserver    = null;
+  let sharedBodyObserver = null;
+
+  function initSharedBodyObserver() {
+    if (sharedBodyObserver) return;
+    sharedBodyObserver = new MutationObserver((mutations) => {
+      if (CONFIG.featNotes) {
+        if (mutations.some(m => m.addedNodes.length > 0)) {
+          scheduleNotesScan();
+        }
+      }
+      if (CONFIG.featMarketGraph && isMarketPage()) {
+        const found = findMarketGraph();
+        if (found) {
+          setupModalObserver(found.modal);
+          checkAndRenderGraph(found);
+        } else {
+          if (modalObserver) {
+            modalObserver.disconnect();
+            modalObserver = null;
+          }
+          lastMktState = null;
+        }
+      }
+      triggerCraftingAdvisorCheck();
+    });
+    sharedBodyObserver.observe(document.body, { childList: true, subtree: true });
+  }
+
+  function teardownSharedBodyObserver() {
+    if (!CONFIG.featNotes && !CONFIG.featMarketGraph) {
+      if (sharedBodyObserver) {
+        sharedBodyObserver.disconnect();
+        sharedBodyObserver = null;
+      }
+    }
+  }
+
   let notesScanTimer   = null;
   let notesActiveId    = null;
   let notesActiveUser  = '';
@@ -3761,7 +4177,6 @@
   function hasNote(userId) { return getNote(userId).trim().length > 0; }
 
   function initNotes() {
-    if (notesObserver) return; // already running
     notesModal = buildNotesModal();
     document.body.appendChild(notesModal.backdrop);
     notesEscHandler = (e) => {
@@ -3769,14 +4184,10 @@
     };
     document.addEventListener('keydown', notesEscHandler);
     scanNoteLinks();
-    notesObserver = new MutationObserver((muts) => {
-      if (muts.some(m => m.addedNodes.length > 0)) scheduleNotesScan();
-    });
-    notesObserver.observe(document.body, { childList: true, subtree: true });
+    initSharedBodyObserver();
   }
 
   function teardownNotes() {
-    if (notesObserver) { notesObserver.disconnect(); notesObserver = null; }
     if (notesEscHandler) { document.removeEventListener('keydown', notesEscHandler); notesEscHandler = null; }
     if (notesModal) { notesModal.backdrop.remove(); notesModal = null; }
     // Remove all injected icons and reset attached markers
@@ -3784,6 +4195,7 @@
     document.querySelectorAll('[' + NOTES_ATTR + ']').forEach(el => el.removeAttribute(NOTES_ATTR));
     clearTimeout(notesScanTimer);
     notesScanTimer = null;
+    teardownSharedBodyObserver();
   }
 
   function scheduleNotesScan() {
@@ -4842,55 +5254,65 @@
   }
 
   function highlightCocaineItems() {
-    if (!CONFIG.featPillReminder) {
-      removeCocaineHighlights();
-      return;
-    }
-
-    const info = getPillCycleInfo();
-    const status = parseHealthAndHunger();
-    const now = Date.now();
-
-    const isHnHReady = status.both100;
-    const isWindowReady = CONFIG.pillPrefWindowFrom ? isInsidePreferredWindow(now) : true;
-    const isReady = info.phase === 'READY';
-    const isGated = info.phase === 'GATED';
-
-    const cocainImgs = document.querySelectorAll("img[alt='cocain']");
-    cocainImgs.forEach(img => {
-      const card = climbToCard(img) || img.parentElement;
-      if (!card) return;
-
-      card.classList.remove('wia-cocain-highlight', 'wia-cocain-gated-highlight');
-      card.removeAttribute('data-label');
-
-      if (isReady) {
-        card.classList.add('wia-cocain-highlight');
-        card.setAttribute('data-label', t('pillOverlayReady'));
-      } else if (isGated) {
-        card.classList.add('wia-cocain-gated-highlight');
-        
-        let labelText = '';
-        if (!isHnHReady) {
-          const lowestPct = Math.round(Math.min(status.hpPercent, status.hungerPercent));
-          labelText = `H&H ${lowestPct}%`;
-        } else if (!isWindowReady) {
-          labelText = CONFIG.pillPrefWindowFrom;
-        }
-        card.setAttribute('data-label', labelText);
+    suspendObserver();
+    try {
+      if (!CONFIG.featPillReminder) {
+        removeCocaineHighlights();
+        return;
       }
-    });
+
+      const info = getPillCycleInfo();
+      const status = parseHealthAndHunger();
+      const now = Date.now();
+
+      const isHnHReady = status.both100;
+      const isWindowReady = CONFIG.pillPrefWindowFrom ? isInsidePreferredWindow(now) : true;
+      const isReady = info.phase === 'READY';
+      const isGated = info.phase === 'GATED';
+
+      const cocainImgs = document.querySelectorAll("img[alt='cocain']");
+      cocainImgs.forEach(img => {
+        const card = climbToCard(img) || img.parentElement;
+        if (!card) return;
+
+        card.classList.remove('wia-cocain-highlight', 'wia-cocain-gated-highlight');
+        card.removeAttribute('data-label');
+
+        if (isReady) {
+          card.classList.add('wia-cocain-highlight');
+          card.setAttribute('data-label', t('pillOverlayReady'));
+        } else if (isGated) {
+          card.classList.add('wia-cocain-gated-highlight');
+          
+          let labelText = '';
+          if (!isHnHReady) {
+            const lowestPct = Math.round(Math.min(status.hpPercent, status.hungerPercent));
+            labelText = `H&H ${lowestPct}%`;
+          } else if (!isWindowReady) {
+            labelText = CONFIG.pillPrefWindowFrom;
+          }
+          card.setAttribute('data-label', labelText);
+        }
+      });
+    } finally {
+      resumeObserver();
+    }
   }
 
   function removeCocaineHighlights() {
-    const cocainImgs = document.querySelectorAll("img[alt='cocain']");
-    cocainImgs.forEach(img => {
-      const card = climbToCard(img) || img.parentElement;
-      if (card) {
-        card.classList.remove('wia-cocain-highlight', 'wia-cocain-gated-highlight');
-        card.removeAttribute('data-label');
-      }
-    });
+    suspendObserver();
+    try {
+      const cocainImgs = document.querySelectorAll("img[alt='cocain']");
+      cocainImgs.forEach(img => {
+        const card = climbToCard(img) || img.parentElement;
+        if (card) {
+          card.classList.remove('wia-cocain-highlight', 'wia-cocain-gated-highlight');
+          card.removeAttribute('data-label');
+        }
+      });
+    } finally {
+      resumeObserver();
+    }
   }
 
   function refreshNoteIcons(userId) {
@@ -4910,7 +5332,6 @@
   // Resource Market Intraday Graph module
   // ───────────────────────────────────────────────────────────────────────────
   let modalObserver = null;
-  let bodyObserver = null;
   let lastMktState = null;
   let renderGen = 0;
   const EXCLUDED_ALTS = new Set(['gold', 'money', 'coins', 'xp', 'avatar', 'logo']);
@@ -5653,23 +6074,7 @@
       samplerInterval = setInterval(tickPriceSampler, 60000);
     }
     
-    bodyObserver = new MutationObserver(() => {
-      if (!CONFIG.featMarketGraph) return;
-      
-      const found = findMarketGraph();
-      if (found) {
-        setupModalObserver(found.modal);
-        checkAndRenderGraph(found);
-      } else {
-        if (modalObserver) {
-          modalObserver.disconnect();
-          modalObserver = null;
-        }
-        lastMktState = null;
-      }
-    });
-    
-    bodyObserver.observe(document.body, { childList: true, subtree: true });
+    initSharedBodyObserver();
     
     const found = findMarketGraph();
     if (found) {
@@ -5730,10 +6135,6 @@
   }
 
   function teardownMarketGraph() {
-    if (bodyObserver) {
-      bodyObserver.disconnect();
-      bodyObserver = null;
-    }
     if (modalObserver) {
       modalObserver.disconnect();
       modalObserver = null;
@@ -5750,6 +6151,7 @@
     overlays.forEach(el => el.remove());
     const toggles = document.querySelectorAll('.wia-mkt-toggle-row');
     toggles.forEach(el => el.remove());
+    teardownSharedBodyObserver();
   }
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -5779,11 +6181,11 @@
   }
 
   function getCachedPrice(itemCode) {
-    const pc = GM_getValue(KEYS.priceCache, null);
+    const pc = readCache(KEYS.priceCache);
     if (pc && pc.data && pc.data[itemCode] != null) {
       return pc.data[itemCode];
     }
-    const scrapedStore = GM_getValue(KEYS.scrapedPrices, {}) || {};
+    const scrapedStore = readCache(KEYS.scrapedPrices) || {};
     if (scrapedStore[itemCode] != null) {
       return scrapedStore[itemCode].price;
     }
@@ -5795,7 +6197,7 @@
     let maxPrice = null;
 
     // 1. Check live offers cache
-    const oc = GM_getValue(KEYS.offersCache, {}) || {};
+    const oc = readCache(KEYS.offersCache) || {};
     const itemOffers = oc[itemCode];
     if (itemOffers && Array.isArray(itemOffers.data) && itemOffers.data.length > 0) {
       const prices = itemOffers.data.map(o => o.price).filter(p => p != null && !isNaN(p));
@@ -5806,10 +6208,10 @@
     }
 
     // 2. Check transaction history cache
-    const tc = GM_getValue(KEYS.transactionsCache, {}) || {};
+    const tc = readCache(KEYS.transactionsCache) || {};
     const itemTxs = tc[itemCode];
     if (itemTxs && Array.isArray(itemTxs.data) && itemTxs.data.length > 0) {
-      const prices = itemTxs.data.map(t => t.price).filter(p => p != null && !isNaN(p));
+      const prices = itemTxs.data.map(t => getTxPrice(t)).filter(p => p != null && !isNaN(p));
       if (prices.length > 0) {
         const txMin = Math.min(...prices);
         const txMax = Math.max(...prices);
@@ -5941,10 +6343,16 @@
     };
   }
 
+  let craftingAdvisorInterval = null;
+
   function checkAndRenderCraftingAdvisor() {
     const modal = document.querySelector('div[id^="headlessui-dialog-panel-"]');
     if (!modal) {
       lastCraftState = null;
+      if (craftingAdvisorInterval) {
+        clearInterval(craftingAdvisorInterval);
+        craftingAdvisorInterval = null;
+      }
       return;
     }
     const titleEl = modal.querySelector('div[id^="headlessui-dialog-title-"]');
@@ -5961,6 +6369,16 @@
     lastCraftState = stateKey;
 
     renderCraftingAdvisor(modal, state);
+  }
+
+  function triggerCraftingAdvisorCheck() {
+    const modal = document.querySelector('div[id^="headlessui-dialog-panel-"]');
+    if (modal) {
+      if (!craftingAdvisorInterval) {
+        craftingAdvisorInterval = setInterval(checkAndRenderCraftingAdvisor, 300);
+      }
+      checkAndRenderCraftingAdvisor();
+    }
   }
 
   function renderCraftingAdvisor(modal, state) {
@@ -6074,6 +6492,7 @@
   }
 
   function start() {
+    migrateTransactionsCache();
     CONFIG.locale = GM_getValue(KEYS.locale, CONFIG.locale || 'de') || 'de';
     if (typeof window !== 'undefined') {
       window.__WIA_LOCALE__ = CONFIG.locale;
@@ -6098,7 +6517,7 @@
     injectGear();
     refreshMenuCommands();
 
-    observer = new MutationObserver(debouncedScan);
+    observer = new MutationObserver(() => triggerScan(false));
     if (isInventoryPage() || isMarketPage()) {
       updateObserverTarget();
       if (isInventoryPage()) {
@@ -6112,25 +6531,25 @@
     }
 
     // Intercept pushState / replaceState for instant route detection in Next.js SPA
-    const originalPushState = history.pushState;
-    history.pushState = function (...args) {
-      originalPushState.apply(this, args);
-      setTimeout(handleRouteChange, 50);
-    };
+    const fireRoute = debounce(handleRouteChange, 15);
 
-    const originalReplaceState = history.replaceState;
-    history.replaceState = function (...args) {
-      originalReplaceState.apply(this, args);
-      setTimeout(handleRouteChange, 50);
-    };
-
-    window.addEventListener('popstate', handleRouteChange);
+    for (const m of ['pushState', 'replaceState']) {
+      const orig = history[m];
+      if (orig) {
+        history[m] = function (...a) {
+          const r = orig.apply(this, a);
+          fireRoute();
+          return r;
+        };
+      }
+    }
+    window.addEventListener('popstate', fireRoute);
 
     // Fallback interval check
     setInterval(handleRouteChange, 2000);
 
-    // Crafting Advisor poll interval
-    setInterval(checkAndRenderCraftingAdvisor, 300);
+    // Trigger crafting advisor check once on startup if the modal is open
+    triggerCraftingAdvisorCheck();
   }
 
   start();
