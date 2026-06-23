@@ -3102,10 +3102,11 @@
       .wia-mkt-axis-label {
         paint-order: stroke;
         stroke: #020617;
-        stroke-width: 2px;
+        stroke-width: 1px;
         stroke-linecap: butt;
         stroke-linejoin: miter;
         fill: #f97316;
+        font-size: 8px;
         font-family: inherit;
         pointer-events: none;
       }
