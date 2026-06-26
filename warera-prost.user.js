@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.7.7
+// @version      0.7.8
 // @description  PROST — Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -13,6 +13,7 @@
 // @grant        GM_setValue
 // @grant        GM_xmlhttpRequest
 // @grant        GM_registerMenuCommand
+// @grant        unsafeWindow
 // @connect      api2.warera.io
 // @connect      gateway.warerastats.io
 // @license MIT
@@ -61,6 +62,7 @@
     featBattleAdvisor: false,            // experimental: highlight ally button on /battle/<id> pages
     alliedCountryCodes: ['de','pt','es','gm','ir','na','sr','th','at','fi','ie','no','se','uk','va','bf','cd','ye','ne','au','br','id'],
     featMarketGraph: false,
+    featPnlTracker: true,
 
     // --- caching / rate-limit ---
     priceCacheTtlMs: 20 * 60 * 1000,    // 20 min (spec: 15-30 min)
@@ -212,6 +214,7 @@
     pillDebuffH: 15.5,
     pillPrefWindowFrom: '19:00',
     pillPrefWindowTo: '20:00',
+    coinsIconPathPrefix: 'M12 5C7.031', // anchor for the gold-coins value icon in selector tiles
     hpIconPath: 'M12,21.35L10.55,20.03',
     hungerIconPath: 'M11,9H9V2H7V9',
     doubleChevronPath: 'M7.41,18.41',
@@ -313,9 +316,9 @@
         pillTakeNowOverlay: 'TAKE NOW',
         pillTopUpOverlay: 'TOP UP FIRST',
         pillPreferredWindow: '{from} - {to}',
-        pillPhaseBuff: 'Active ·',
-        pillPhaseKnife: 'Knife ·',
-        pillPhaseRecover: 'Recover ·',
+        pillPhaseBuff: 'Active',
+        pillPhaseKnife: 'Knife',
+        pillPhaseRecover: 'Recover',
         pillPhaseReady: 'READY',
         pillPhaseGated: 'Pill in',
         pillGatingHeader: 'Pill gates',
@@ -405,8 +408,10 @@
         marketGraphLegendNative: 'Daily avg',
         marketGraphLegendIntraday: 'Intraday',
         marketGraphHoverPrice: '☉ {price}',
-        settingsFeatMarketGraphCheckbox: 'Resource Market Intraday Graph 💹',
-        settingsFeatMarketGraphHint: 'Overlay an intraday (24h/3d) price graph on resource market buy/sell modals.'
+        settingsFeatMarketGraphCheckbox: 'Resource Market Intraday Graph',
+        settingsFeatMarketGraphHint: 'Overlay an intraday (24h/3d) price graph on resource market buy/sell modals.',
+        settingsFeatPnlTrackerCheckbox: 'Daily P&L Tracker',
+        settingsFeatPnlTrackerHint: 'Display your daily profit/loss tracker in the topbar next to your gold balance.'
       },
       de: {
         never: 'nie',
@@ -487,7 +492,7 @@
         settingsScrapFlipHint: 'Markiert profitable Gegenstände auf dem Markt, die für Gewinn gekauft und in Schrott zerlegt werden können.',
         scrapFlipTooltip: 'Kauf {buy} → Scrap {yield}×{unit} netto {net} = +{profit} Gewinn',
         hintToggleLabel: 'Erklärung',
-        settingsFeatPillCheckbox: 'Pill-Reminder (konfigurierbares Pillen-Timing Overlay) 💊',
+        settingsFeatPillCheckbox: 'Pill-Reminder (konfigurierbares Pillen-Timing Overlay)',
         settingsFeatPillHint: 'Zeigt einen Status und Countdown in der Menüleiste, markiert nimmbereite Pillen und prüft HP/Hunger-Werte.',
         settingsPillSettingsLabel: 'Optionen für Pillen-Timing',
         settingsPillBuffLabel: 'Buff-Dauer (Stunden)',
@@ -498,9 +503,9 @@
         pillTakeNowOverlay: 'NEHMEN',
         pillTopUpOverlay: 'ERST FÜLLEN',
         pillPreferredWindow: '{from} - {to}',
-        pillPhaseBuff: 'Aktiv ·',
-        pillPhaseKnife: 'Messer ·',
-        pillPhaseRecover: 'Regen ·',
+        pillPhaseBuff: 'Aktiv',
+        pillPhaseKnife: 'Messer',
+        pillPhaseRecover: 'Regen',
         pillPhaseReady: 'BEREIT',
         pillPhaseGated: 'Pille in',
         pillGatingHeader: 'Pillen-Bedingungen',
@@ -590,8 +595,10 @@
         marketGraphLegendNative: 'Tagesschnitt',
         marketGraphLegendIntraday: 'Intraday',
         marketGraphHoverPrice: '☉ {price}',
-        settingsFeatMarketGraphCheckbox: 'Ressourcen-Markt Intraday-Grafik 💹',
-        settingsFeatMarketGraphHint: 'Blendet einen Intraday-Preisverlauf (24h/3d) im Kauf-/Verkaufs-Modal von Ressourcen ein.'
+        settingsFeatMarketGraphCheckbox: 'Ressourcen-Markt Intraday-Grafik',
+        settingsFeatMarketGraphHint: 'Blendet einen Intraday-Preisverlauf (24h/3d) im Kauf-/Verkaufs-Modal von Ressourcen ein.',
+        settingsFeatPnlTrackerCheckbox: 'Täglicher P&L Tracker',
+        settingsFeatPnlTrackerHint: 'Zeigt deinen täglichen Gewinn/Verlust Tracker in der Topbar neben deinem Goldstand an.'
       }
     },
 
@@ -631,6 +638,15 @@
     priceSeries: NS + 'priceSeries',
     resourceTransactionsCache: NS + 'resTxsCache',
     persistedAdvice: NS + 'persistedAdvice',
+    featPnlTracker: NS + 'featPnlTracker',
+    pnlLedger: NS + 'pnl.ledger',
+    pnlYesterday: NS + 'pnl.yesterday',
+    pnlCostBasis: NS + 'pnl.costBasis',
+    pnlSnapshots: NS + 'pnl.snapshots',
+    pnlSchemaVersion: NS + 'pnl.schemaVersion',
+    debug: NS + 'debug',
+    consumablePrices: NS + 'consumablePrices', // { [code]: price } harvested from #item-code-selector-* tiles
+    pnlProcessedTxs: NS + 'pnl.processedTxs',  // persistent (history-spanning) tx-id dedup for cost-basis + booking
   };
 
   const memoryCache = {};
@@ -641,7 +657,7 @@
     }
     const val = GM_getValue(key, null);
     let defaultVal = {};
-    if (key === KEYS.priceCache) {
+    if (key === KEYS.priceCache || key === KEYS.pnlLedger || key === KEYS.pnlYesterday || key === KEYS.pnlCostBasis || key === KEYS.pnlSnapshots) {
       defaultVal = null;
     }
     const valWithDefault = (val === undefined || val === null) ? defaultVal : val;
@@ -674,6 +690,7 @@
 
   let menuSettingsId = null;
   let menuClearId = null;
+  let menuDebugId = null;
   const OBF_KEY = 'wareEra.advisor.v1'; // XOR pad — obfuscation only, not encryption
 
   function xor(str, pad) {
@@ -698,6 +715,10 @@
     writeCache(KEYS.transactionsCache, {});
     writeCache(KEYS.scrapedPrices, {});
     writeCache(KEYS.persistedAdvice, {});
+    writeCache(KEYS.pnlLedger, null);
+    writeCache(KEYS.pnlYesterday, null);
+    writeCache(KEYS.pnlCostBasis, null);
+    writeCache(KEYS.pnlSnapshots, null);
     GM_setValue(KEYS.scrapCache, null);
     GM_setValue(KEYS.resourceTransactionsCache, {});
     GM_setValue(KEYS.priceSeries, {});
@@ -737,18 +758,261 @@
     if (typeof GM_unregisterMenuCommand === 'function') {
       if (menuSettingsId != null) GM_unregisterMenuCommand(menuSettingsId);
       if (menuClearId != null) GM_unregisterMenuCommand(menuClearId);
+      if (menuDebugId != null) GM_unregisterMenuCommand(menuDebugId);
     }
     menuSettingsId = GM_registerMenuCommand(t('menuSettings'), openSettings);
     menuClearId = GM_registerMenuCommand(t('menuClearRescan'), () => {
       clearCache();
       if (isInventoryPage()) scanInventory(true);
     });
+    menuDebugId = GM_registerMenuCommand(
+      CONFIG.debug ? '🐞 Debug: AN (klick = aus)' : '🐞 Debug: AUS (klick = an)',
+      () => setDebug(!CONFIG.debug)
+    );
   }
 
   // ───────────────────────────────────────────────────────────────────────────
   // Utils
   // ───────────────────────────────────────────────────────────────────────────
-  function log(...a) { if (CONFIG.debug) console.log('[WIA]', ...a); }
+  // ───────────────────────────────────────────────────────────────────────────
+  // DEBUG / HEALTH layer (see DEBUG_PLAN.md)
+  // Toggle via GM menu, URL hash #wia-debug, or WIA.debug(true). All gated on
+  // CONFIG.debug → zero overhead in prod. Health is in-memory ONLY (never
+  // persisted: GM_setValue is async/expensive on hot paths like the gold observer).
+  // ───────────────────────────────────────────────────────────────────────────
+  const Debug = { buf: [], max: 300 };   // ring buffer of recent log lines
+
+  // 2 levels only: 'debug' | 'error'. dbg(featureId, level, ...msg)
+  function dbg(feat, level, ...msg) {
+    if (!CONFIG.debug) return;
+    Debug.buf.push({ t: Date.now(), feat, level, msg });
+    if (Debug.buf.length > Debug.max) Debug.buf.shift();
+    (level === 'error' ? console.error : console.log)(`[WIA:${feat}]`, ...msg);
+  }
+  function log(...a) { dbg('core', 'debug', ...a); }   // back-compat alias
+
+  // Health registry: id -> live status. status: 'ok'|'warn'|'fail'|'idle'.
+  const Health = {};
+  function regFeature(id, name) {
+    if (!Health[id]) {
+      Health[id] = { name: name || id, status: 'idle', reason: '', lastRun: 0, runs: 0, errors: 0, lastError: '' };
+    } else if (name) {
+      Health[id].name = name;
+    }
+    return Health[id];
+  }
+  function setHealth(id, status, reason = '') {
+    const h = regFeature(id);
+    h.status = status;
+    h.reason = reason;
+    h._touched = true;                 // tells guard() not to overwrite with 'ok'
+    if (status === 'fail') h.lastError = reason;
+    if (typeof updateDebugHud === 'function') updateDebugHud();
+    return h;
+  }
+  // Wrap a feature entrypoint: isolates crashes (one broken feature no longer
+  // kills the others) and flips the ampel red with the error reason.
+  async function guard(id, fn) {
+    const h = regFeature(id);
+    h.runs++; h.lastRun = Date.now(); h._touched = false;
+    try {
+      const r = await fn();
+      if (!h._touched) { h.status = 'ok'; h.reason = ''; }   // success & feature didn't self-report
+      return r;
+    } catch (e) {
+      h.errors++;
+      setHealth(id, 'fail', (e && e.message) || String(e));
+      dbg(id, 'error', e);
+      return undefined;
+    }
+  }
+  // Selector lookup that auto-reports a miss to the registry. Use at critical
+  // DOM reads so game CSS-class drift surfaces as a red ampel + reason.
+  function pick(id, sel, root) {
+    const els = (root || document).querySelectorAll(sel);
+    if (!els.length) { setHealth(id, 'fail', `selector miss: ${sel}`); dbg(id, 'debug', 'selector miss', sel); }
+    return els;
+  }
+
+  function setDebug(on) {
+    CONFIG.debug = !!on;
+    GM_setValue(KEYS.debug, CONFIG.debug);
+    if (typeof refreshMenuCommands === 'function') refreshMenuCommands();
+    if (CONFIG.debug && typeof runProbes === 'function') runProbes();
+    if (typeof updateDebugHud === 'function') updateDebugHud();
+    console.log(`[WIA] debug = ${CONFIG.debug}`);
+  }
+
+  // Console API. Open DevTools and use WIA.health() / WIA.logs() / WIA.debug(true).
+  // Must attach to unsafeWindow — the page console runs in the page realm, not the
+  // Tampermonkey sandbox, so a plain `window.WIA` would be invisible there.
+  const PAGE_WINDOW = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : (typeof window !== 'undefined' ? window : null);
+  if (PAGE_WINDOW) {
+    PAGE_WINDOW.WIA = {
+      debug: setDebug,
+      health() {
+        if (typeof runProbes === 'function') runProbes();   // refresh before showing
+        const t = {};
+        for (const [k, v] of Object.entries(Health)) {
+          t[k] = { status: v.status, reason: v.reason, runs: v.runs, errors: v.errors };
+        }
+        console.table(t);
+        return Health;
+      },
+      probe(id) {
+        if (typeof runProbe !== 'function') return 'probes unavailable';
+        return id ? runProbe(id) : runProbes();
+      },
+      logs(n = 50) { return Debug.buf.slice(-n); },
+    };
+  }
+
+  const HEALTH_DOT = { ok: '#3fb950', warn: '#d29922', fail: '#f85149', idle: '#6e7681' };
+  // Render the feature ampel list into a container element (in-game Diagnose panel).
+  function renderHealthPanel(el) {
+    if (!el) return;
+    const ids = Object.keys(Health);
+    if (!ids.length) { el.innerHTML = '<div style="color:#8b949e; font-size:12px;">keine Features registriert</div>'; return; }
+    const rows = ids.map((id) => {
+      const h = Health[id];
+      const color = HEALTH_DOT[h.status] || HEALTH_DOT.idle;
+      const reason = h.reason ? ` — <span style="color:#8b949e;">${String(h.reason).replace(/</g, '&lt;')}</span>` : '';
+      const meta = `<span style="color:#6e7681; font-size:10px;">runs ${h.runs}, err ${h.errors}</span>`;
+      return `<div style="display:flex; align-items:center; gap:8px; padding:3px 0; font-size:12px;">
+        <span style="width:9px; height:9px; border-radius:50%; background:${color}; flex:0 0 auto; box-shadow:0 0 4px ${color};"></span>
+        <span style="font-weight:600; min-width:96px;">${h.name}</span>
+        <span style="color:#c9d1d9;">${h.status}</span>${reason}
+        <span style="margin-left:auto;">${meta}</span>
+      </div>`;
+    }).join('');
+    el.innerHTML = `<div style="background:#0d1117; border:1px solid rgba(148,163,184,.25); border-radius:6px; padding:8px;">${rows}</div>`;
+  }
+
+  // ── Phase 2: route-aware probes ──────────────────────────────────────────
+  // Each probe inspects the CURRENT page + injected DOM and returns the real
+  // status. This is the source of truth (the start()-time guard status goes
+  // stale on SPA navigation). Run on "Aktualisieren" and on every route change.
+  const PROBES = {
+    advisor() {
+      if (!(isInventoryPage() || isMarketPage())) return ['idle', 'not on inventory/market'];
+      let cards;
+      try { cards = (globalThis.findItemCards || findItemCards)(false); } catch (e) { return ['fail', 'findItemCards threw: ' + e.message]; }
+      const n = cards ? cards.size : 0;
+      if (!n) return ['fail', 'no item cards found (selector drift?)'];
+      const badges = document.querySelectorAll('.wia-badge').length;
+      return badges > 0 ? ['ok', ''] : ['fail', `advice not rendered (0 badges on ${n} cards)`];
+    },
+    battleAdvisor() {
+      if (!CONFIG.featBattleAdvisor) return ['idle', 'disabled in settings'];
+      if (!isBattlePage()) return ['idle', 'not on battle page'];
+      const present = document.querySelector('.wia-battle-primary, .wia-battle-muted');
+      return present ? ['ok', ''] : ['fail', 'advisory not injected on battle page'];
+    },
+    pnl() {
+      if (!CONFIG.featPnlTracker) return ['idle', 'disabled in settings'];
+      const money = document.getElementById('money') || (document.getElementById('layoutUserMenu') && document.getElementById('layoutUserMenu').querySelector('#money'));
+      if (!money) return ['warn', 'gold element (#money) not found'];
+      const chip = document.getElementById('wia-pnl-tracker');
+      return chip ? ['ok', ''] : ['fail', 'chip not injected (#wia-pnl-tracker)'];
+    },
+    pillReminder() {
+      if (!CONFIG.featPillReminder) return ['idle', 'disabled in settings'];
+      return document.getElementById('wia-pill-badge') ? ['ok', ''] : ['fail', 'badge not injected (#wia-pill-badge)'];
+    },
+    marketGraph() {
+      if (!CONFIG.featMarketGraph) return ['idle', 'disabled in settings'];
+      if (!isMarketPage()) return ['idle', 'not on market page'];
+      return document.querySelector('.wia-mkt-overlay-svg') ? ['ok', ''] : ['warn', 'graph not drawn yet'];
+    },
+    notes() {
+      if (!CONFIG.featNotes) return ['idle', 'disabled in settings'];
+      const icons = document.querySelectorAll('.warera-note-icon').length;
+      return icons > 0 ? ['ok', ''] : ['idle', 'no player links on this page'];
+    },
+    api() {
+      if (!getToken()) return ['warn', 'no API token set'];
+      if (typeof isRateLimited === 'function' && isRateLimited()) return ['warn', 'rate-limited'];
+      return ['ok', ''];
+    },
+  };
+
+  function runProbe(id) {
+    const p = PROBES[id];
+    if (!p) return null;
+    let res;
+    try { res = p(); } catch (e) { res = ['fail', 'probe threw: ' + e.message]; }
+    setHealth(id, res[0], res[1]);
+    return { id, status: res[0], reason: res[1] };
+  }
+  function runProbes() {
+    const out = {};
+    for (const id of Object.keys(PROBES)) out[id] = runProbe(id);
+    return out;
+  }
+
+  // ── Phase 3: persistent on-screen HUD (bug button + ampel list) ──────────
+  // Only present when CONFIG.debug. A floating button bottom-left shows the
+  // worst feature status as a colored dot; click toggles the ampel panel.
+  let debugHudEl = null;
+  let debugHudOpen = false;
+  let hudRefreshPending = false;
+  const HEALTH_RANK = { fail: 3, warn: 2, ok: 1, idle: 0 };
+
+  function worstHealthStatus() {
+    let worst = 'idle';
+    for (const v of Object.values(Health)) {
+      if ((HEALTH_RANK[v.status] || 0) > (HEALTH_RANK[worst] || 0)) worst = v.status;
+    }
+    return worst;
+  }
+
+  function buildDebugHud() {
+    const wrap = document.createElement('div');
+    wrap.id = 'wia-debug-hud';
+    wrap.style.cssText = 'position:fixed; left:12px; bottom:12px; z-index:2147483600; font:12px/1.4 system-ui,sans-serif;';
+    wrap.innerHTML = `
+      <div class="wia-hud-panel" style="display:none; width:300px; margin-bottom:8px; background:#161b22; border:1px solid #30363d; border-radius:8px; box-shadow:0 8px 30px rgba(0,0,0,.6); padding:8px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+          <strong style="color:#c9d1d9;">Feature-Health</strong>
+          <button type="button" class="wia-hud-refresh" style="font-size:11px; padding:2px 8px; cursor:pointer; background:#21262d; color:#c9d1d9; border:1px solid #30363d; border-radius:5px;">↻</button>
+        </div>
+        <div class="wia-hud-body"></div>
+      </div>
+      <button type="button" class="wia-hud-btn" title="PROST Debug Health" style="width:38px; height:38px; border-radius:50%; cursor:pointer; background:#161b22; border:1px solid #30363d; box-shadow:0 4px 14px rgba(0,0,0,.5); font-size:18px; line-height:1; position:relative;">🐞
+        <span class="wia-hud-dot" style="position:absolute; top:-2px; right:-2px; width:12px; height:12px; border-radius:50%; border:2px solid #161b22; background:${HEALTH_DOT.idle};"></span>
+      </button>`;
+    const btn = wrap.querySelector('.wia-hud-btn');
+    const panel = wrap.querySelector('.wia-hud-panel');
+    const body = wrap.querySelector('.wia-hud-body');
+    btn.onclick = () => {
+      debugHudOpen = !debugHudOpen;
+      panel.style.display = debugHudOpen ? 'block' : 'none';
+      if (debugHudOpen) { runProbes(); renderHealthPanel(body); }
+    };
+    wrap.querySelector('.wia-hud-refresh').onclick = () => { runProbes(); renderHealthPanel(body); };
+    return wrap;
+  }
+
+  function updateDebugHud() {
+    if (!CONFIG.debug || typeof document === 'undefined' || !document.body) {
+      if (debugHudEl) { debugHudEl.remove(); debugHudEl = null; debugHudOpen = false; }
+      return;
+    }
+    if (!debugHudEl) {
+      debugHudEl = buildDebugHud();
+      document.body.appendChild(debugHudEl);
+    }
+    if (hudRefreshPending) return;
+    hudRefreshPending = true;
+    setTimeout(() => {
+      hudRefreshPending = false;
+      if (!debugHudEl) return;
+      const dot = debugHudEl.querySelector('.wia-hud-dot');
+      if (dot) dot.style.background = HEALTH_DOT[worstHealthStatus()] || HEALTH_DOT.idle;
+      if (debugHudOpen) renderHealthPanel(debugHudEl.querySelector('.wia-hud-body'));
+    }, 200);
+  }
+
   function now() { return Date.now(); }
   function debounce(fn, ms) {
     let t;
@@ -1065,10 +1329,10 @@
         });
         if (res.status === 429) { tripRateLimit(); return cached ? cached.data : null; }
         if (res.status < 200 || res.status >= 300) return cached ? cached.data : null;
-        
+
         const data = JSON.parse(res.text);
         const items = data?.result?.data?.items || [];
-        
+
         const type = getTypeFromCode(code);
         const mapped = items.map(tx => {
           if (tx.transactionType !== 'itemMarket' || tx.money == null || !tx.createdAt) return null;
@@ -1417,6 +1681,22 @@
     globalThis.getNativeSvgFingerprint = getNativeSvgFingerprint;
     globalThis.scanInventory = scanInventory;
     globalThis.fetchPrices = fetchPrices;
+    globalThis.getPnlDayKey = getPnlDayKey;
+    globalThis.getGoldBalance = getGoldBalance;
+    globalThis.checkPnlDayReset = checkPnlDayReset;
+    globalThis.updatePnlUi = updatePnlUi;
+    globalThis.clearCache = clearCache;
+    globalThis.todayResetTime = todayResetTime;
+    globalThis.processTransactionsList = processTransactionsList;
+    globalThis.fetchAndProcessTransactions = fetchAndProcessTransactions;
+    globalThis.parseCardQuantity = parseCardQuantity;
+    globalThis.getInventoryQuantities = getInventoryQuantities;
+    globalThis.bookClickConsumption = bookClickConsumption;
+    globalThis.checkInventoryDeltaConsumption = checkInventoryDeltaConsumption;
+    globalThis.checkInventoryDeltaWear = checkInventoryDeltaWear;
+    globalThis.findItemCards = findItemCards;
+    globalThis.writeCache = writeCache;
+    globalThis.readCache = readCache;
   }
 
   function getLocale() {
@@ -1683,14 +1963,14 @@
 
   function getTransactionReferencePrice(txs, type, myStat) {
     if (!txs || !txs.length || myStat == null) return null;
-    
+
     const sixDaysAgo = Date.now() - 6 * 24 * 60 * 60 * 1000;
-    
+
     const validTxs = txs.map(tx => {
       const t = getTxTimestamp(tx);
       if (!t || t < sixDaysAgo) return null;
       if (tx.transactionType !== undefined && tx.transactionType !== 'itemMarket') return null;
-      
+
       const score = getTxScore(tx, type);
       return {
         price: getTxPrice(tx),
@@ -1791,7 +2071,7 @@
     item.txRefPrice = txRef ? txRef.price : null;
     item.txClosestCount = txRef ? txRef.count : 0;
     item.txClosestDiff = txRef ? txRef.diff : null;
-    
+
     const sixDaysAgo = Date.now() - 6 * 24 * 60 * 60 * 1000;
     item.txCount = txData ? txData.filter(t => {
       const parsedTime = getTxTimestamp(t);
@@ -2479,7 +2759,7 @@
       const groupItems = stockGroups[key];
       // Sort descending (highest stat/score first)
       groupItems.sort((a, b) => b.myStat - a.myStat);
-      
+
       const size = groupItems.length;
       groupItems.forEach((item, index) => {
         item.isStockKeep = index < 3; // Keep the top 3 of stock
@@ -2509,20 +2789,20 @@
     const cell = getItemCell(card);
     if (!cell) return '';
     let text = '';
-    
+
     function walk(node) {
       const isMock = node.nodeType === undefined;
       if (!isMock && node.nodeType === 3) { // TEXT_NODE
         text += (node.nodeValue || '') + ' ';
       } else {
         const cl = node.classList;
-        if (cl && (cl.contains('wia-badge') || 
-                   cl.contains('wia-score-sub') || 
-                   cl.contains('wia-price-sub') || 
+        if (cl && (cl.contains('wia-badge') ||
+                   cl.contains('wia-score-sub') ||
+                   cl.contains('wia-price-sub') ||
                    cl.contains('wia-top-banner'))) {
           return;
         }
-        
+
         if (isMock) {
           if (node.children && node.children.length > 0) {
             node.children.forEach(walk);
@@ -2539,7 +2819,7 @@
         }
       }
     }
-    
+
     walk(cell);
     return text.replace(/\s+/g, ' ').trim();
   }
@@ -2723,7 +3003,7 @@
     }
   }
 
-  async function scanInventory(force) {
+async function scanInventory(force) {
     if (scanning) {
       return;
     }
@@ -2765,14 +3045,17 @@
       const items = [];
       cards.forEach((img, card) => {
         const { type, alt, code, tier } = detectType(img, card);
-        if (type === 'scrap' || type === 'unknown') return;
-        const stats = parseStats(card, type);
-        
+
+        // stats nur parsen, wenn es kein Schrott oder Verbrauchsgegenstand ist
+        const stats = (type === 'scrap' || type === 'unknown') ? null : parseStats(card, type);
+
         if (!originalTitles.has(card)) {
           originalTitles.set(card, card.title || '');
         }
 
-        if (shouldSuppressItem(card, stats)) {
+        // HIER IST DER FIX: Alle ignorierten Typen (Schrott, Essen/Pillen UND getragene Ausrüstung)
+        // laufen in DIESEN Block und bekommen den Suppressed-Marker!
+        if (type === 'scrap' || type === 'unknown' || shouldSuppressItem(card, stats)) {
           suspendObserver();
           try {
             const cell = getItemCell(card);
@@ -2785,15 +3068,18 @@
             const topBanner = card.querySelector('.wia-top-banner');
             if (topBanner) topBanner.remove();
             card.style.boxShadow = '';
+
+            // Das ist das Wichtigste, damit der Heartbeat Ruhe gibt:
             card.dataset.wiaSuppressed = '1';
             delete card.dataset.wiaDone;
+
             if (originalTitles.has(card)) {
               card.title = originalTitles.get(card);
             }
           } finally {
             resumeObserver();
           }
-          return;
+          return; // Skript bricht für diese Karte sauber ab
         }
 
         const resolvedTier = tier != null ? tier : detectTierByColor(card);
@@ -2802,6 +3088,7 @@
         if (type === 'weapon') item.weaponScore = item.myStat;
         items.push(item);
       });
+
       if (!items.length) {
         scanning = false;
         return;
@@ -2948,6 +3235,10 @@
         }
       }
 
+      if (CONFIG.featPnlTracker) {
+        checkInventoryDeltaConsumption();
+        checkInventoryDeltaWear();
+      }
     } catch (e) {
       log('scan error:', e);
     } finally {
@@ -3014,7 +3305,7 @@
         background: #161b22; color: #c9d1d9; border: 1px solid #30363d;
         border-radius: 10px; padding: 20px; width: 420px; max-width: 95vw;
         font: 13px/1.5 system-ui, sans-serif; box-shadow: 0 8px 30px rgba(0,0,0,.6);
-        position: relative;
+        position: relative; max-height: 90vh; overflow-y: auto;
       }
       .wia-hint-toggle {
         width: 18px; height: 18px; padding: 0; border: 0; border-radius: 50%;
@@ -3034,11 +3325,9 @@
         width: 100%; text-align: left; margin-bottom: 8px;
       }
       .wia-help-panel {
-        position: absolute; top: 0; left: 100%; margin-left: 12px;
-        width: 320px; max-height: 80vh; overflow-y: auto;
-        background: #161b22; border: 1px solid #30363d; border-radius: 10px;
-        padding: 16px; box-shadow: 0 8px 30px rgba(0,0,0,.6); z-index: 1;
-        font: 13px/1.5 system-ui, sans-serif;
+        margin: 8px 0 4px; width: 100%; box-sizing: border-box;
+        background: #0d1117; border: 1px solid #30363d; border-radius: 8px;
+        padding: 12px; font: 13px/1.5 system-ui, sans-serif;
       }
       .wia-help-panel[hidden] { display: none; }
       .wia-help-content {
@@ -3117,7 +3406,7 @@
       .wia-flip-tile {
         box-shadow: inset 0 0 0 2px #3fb950 !important;
       }
-      
+
       /* ── Pill Reminder module styles ── */
       /* Mimic WareEra's native top-bar chips: pill shape, dark translucent
          fill, hairline border, drop-shadowed glyph/text. Phase is carried by a
@@ -3328,7 +3617,7 @@
         vertical-align: middle;
         flex-shrink: 0;
       }
-      
+
       /* ── Resource Market Intraday Graph ── */
       .wia-mkt-toggle-row {
         display: flex;
@@ -3430,6 +3719,52 @@
         font-family: system-ui, -apple-system, sans-serif;
         white-space: nowrap;
       }
+
+      /* ── Daily P&L Tracker styles ── */
+      .wia-pnl-tracker {
+        display: inline-flex; flex-direction: column; align-items: center; justify-content: center;
+        position: relative; margin: 0 4px; top: 20px;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        border-radius: 6px; padding: 2px 8px; cursor: pointer; user-select: none;
+        z-index: 10000; min-height: 26px; box-sizing: border-box;
+        background: rgba(13, 17, 23, 0.45);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        box-shadow: 0 1px 3px rgba(0, 0, 0, .35);
+        line-height: 1.15;
+        pointer-events: auto;
+      }
+      .wia-pnl-tracker.is-positive {
+        border-color: rgba(63, 185, 80, .55);
+      }
+      .wia-pnl-tracker.is-negative {
+        border-color: rgba(248, 81, 73, .55);
+      }
+      .wia-pnl-tracker.is-neutral {
+        border-color: rgba(139, 148, 158, .50);
+      }
+      .wia-pnl-hover {
+        display: none; position: absolute; top: 100%; left: 0; margin-top: 8px;
+        width: 248px; background: rgba(9, 12, 17, .82);
+        backdrop-filter: blur(7px); -webkit-backdrop-filter: blur(7px);
+        border: 1px solid rgba(255, 255, 255, .07);
+        border-radius: 8px; padding: 8px 10px; box-shadow: 0 6px 18px rgba(0, 0, 0, .55);
+        color: #c9d1d9; font-weight: normal; text-align: left; font-size: 10px;
+        text-shadow: none; z-index: 10001; line-height: 1.2;
+        box-sizing: border-box;
+      }
+      .wia-pnl-hover::-webkit-scrollbar {
+        width: 4px;
+      }
+      .wia-pnl-hover::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .wia-pnl-hover::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.15);
+        border-radius: 99px;
+      }
+      .wia-pnl-tracker:hover .wia-pnl-hover {
+        display: block;
+      }
     `);
   }
 
@@ -3499,6 +3834,7 @@
     const prevAlliedCodes = bg.querySelector('.wia-allied-codes')?.value ?? CONFIG.alliedCountryCodes.join(',');
     const prevFeatPill = bg.querySelector('.wia-feat-pill')?.checked ?? CONFIG.featPillReminder;
     const prevFeatMarketGraph = bg.querySelector('.wia-feat-market-graph')?.checked ?? CONFIG.featMarketGraph;
+    const prevFeatPnlTracker = bg.querySelector('.wia-feat-pnl-tracker')?.checked ?? CONFIG.featPnlTracker;
     const prevPillBuff = bg.querySelector('.wia-pill-buff')?.value ?? CONFIG.pillBuffH;
     const prevPillKnife = bg.querySelector('.wia-pill-knife')?.value ?? CONFIG.pillKnifeH;
     const prevPillDebuff = bg.querySelector('.wia-pill-debuff')?.value ?? CONFIG.pillDebuffH;
@@ -3607,10 +3943,29 @@
           </div>
           <div class="wia-hint" hidden>${t('settingsFeatMarketGraphHint')}</div>
         </div>
+        <div class="wia-feat-row" style="margin-top: 6px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <input type="checkbox" class="wia-feat-pnl-tracker" style="width: auto;" ${prevFeatPnlTracker ? 'checked' : ''} />
+            <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatPnlTrackerCheckbox')}</label>
+            <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
+          </div>
+          <div class="wia-hint" hidden>${t('settingsFeatPnlTrackerHint')}</div>
+        </div>
         <button type="button" class="wia-help-toggle" aria-expanded="false">${t('settingsHelpSummary')}</button>
         <aside class="wia-help-panel" hidden>
           <div class="wia-help-content">${t('settingsHelpContent')}</div>
         </aside>
+        <div class="wia-feat-row" style="margin-top: 10px; border-top: 1px solid rgba(148,163,184,.2); padding-top: 10px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <input type="checkbox" class="wia-debug" style="width: auto;" ${CONFIG.debug ? 'checked' : ''} />
+            <label style="margin: 0; font-weight: normal; cursor: pointer;">🐞 Debug-Logging (Konsole + Diagnose)</label>
+          </div>
+          <details class="wia-health-details" style="margin-top: 6px;">
+            <summary style="font-size: 11px; color: #8b949e; cursor: pointer; user-select: none; font-weight: bold; outline: none;">Feature-Health / Diagnose</summary>
+            <button type="button" class="wia-health-btn" style="margin: 6px 0; font-size: 11px; padding: 3px 8px; cursor: pointer;">Aktualisieren</button>
+            <div class="wia-health-panel"></div>
+          </details>
+        </div>
         <div class="wia-btns">
           <button class="wia-btn primary wia-save">${t('settingsSave')}</button>
           <button class="wia-btn wia-clear">${t('settingsClear')}</button>
@@ -3676,6 +4031,17 @@
         }
       };
     }
+
+    const debugCheckbox = modal.querySelector('.wia-debug');
+    const healthPanel = modal.querySelector('.wia-health-panel');
+    const healthBtn = modal.querySelector('.wia-health-btn');
+    if (debugCheckbox) {
+      debugCheckbox.onchange = () => setDebug(debugCheckbox.checked);   // live toggle, persisted
+    }
+    if (healthBtn && healthPanel) {
+      healthBtn.onclick = (e) => { e.preventDefault(); runProbes(); renderHealthPanel(healthPanel); };
+    }
+    if (healthPanel) { runProbes(); renderHealthPanel(healthPanel); }   // initial fill = live truth
 
     modal.addEventListener('click', (e) => {
       const hintBtn = e.target.closest('.wia-hint-toggle');
@@ -3758,6 +4124,11 @@
       CONFIG.featMarketGraph = featMarketGraph;
       if (featMarketGraph) { initMarketGraph(); } else { teardownMarketGraph(); }
 
+      const featPnlTracker = bg.querySelector('.wia-feat-pnl-tracker').checked;
+      GM_setValue(KEYS.featPnlTracker, featPnlTracker);
+      CONFIG.featPnlTracker = featPnlTracker;
+      if (featPnlTracker) { initPnlTracker(); } else { teardownPnlTracker(); }
+
       if (tokenChanged) {
         clearCache();
       }
@@ -3833,49 +4204,33 @@
     }
   }
 
-  function updateObserverTarget() {
-    if (!observer) return;
-    observer.disconnect();
+let currentObserverTarget = null; // Globale Variable hinzufügen, falls nicht vorhanden
 
-    if (isInventoryPage()) {
-      const cards = findItemCards();
-      const validCards = Array.from(cards.keys()).filter(card => card.offsetWidth >= 40);
-      if (validCards.length > 0) {
-        const firstCard = validCards[0];
-        let gridContainer = firstCard.parentElement;
-        while (gridContainer && gridContainer.tagName !== 'BODY') {
-          if (gridContainer.offsetWidth > 150) {
-            break;
-          }
-          gridContainer = gridContainer.parentElement;
-        }
-        if (gridContainer) {
-          log(`Observing inventory grid container:`, gridContainer);
-          observer.observe(gridContainer, { childList: true, subtree: true });
-          return;
-        }
-      }
-    } else if (isMarketPage()) {
-      const sellContainer = findMarketSellContainer();
-      if (sellContainer) {
-        log(`Observing market sell container:`, sellContainer);
-        observer.observe(sellContainer, { childList: true, subtree: true });
-        return;
-      }
-    }
-  }
+function updateObserverTarget() {
+    const target = document.getElementById('__next') || document.body;
+
+    // WICHTIG: Abbrechen, wenn wir das Ziel bereits beobachten!
+    if (currentObserverTarget === target) return;
+
+    observer.disconnect();
+    currentObserverTarget = target;
+    log('Observing stable root for rescans: ' + (target.id || target.tagName));
+
+    // Observer neu anhängen
+    observer.observe(target, { childList: true, subtree: true });
+}
 
   function initBootstrapObserver() {
     if (bootstrapObserver) {
       bootstrapObserver.disconnect();
       bootstrapObserver = null;
     }
-    
+
     // Check if cards exist immediately
     if (document.querySelector("[id^='item-code-selector-']") || findItemCards().size > 0) {
       return;
     }
-    
+
     bootstrapObserver = new MutationObserver((mutations, obs) => {
       if (document.querySelector("[id^='item-code-selector-']") || findItemCards().size > 0) {
         log('Bootstrap observer: cards detected in DOM');
@@ -3889,7 +4244,7 @@
         scanInventory(false);
       }
     });
-    
+
     bootstrapObserver.observe(document.body, { childList: true, subtree: true });
   }
 
@@ -3916,7 +4271,7 @@
 
     const startTime = Date.now();
     const rAF = typeof requestAnimationFrame !== 'undefined' ? requestAnimationFrame : (fn) => setTimeout(fn, 16);
-    
+
     const poll = () => {
       const cardsPoll = findItemCards();
       if (cardsPoll.size > 0 || document.querySelector("[id^='item-code-selector-']")) {
@@ -3951,7 +4306,7 @@
     lastInventoryCardTexts.clear();
     lastMktState = null;
     bypassNextScanDebounce = true;
-    
+
     if (routePollFrame) {
       const cancelAF = typeof cancelAnimationFrame !== 'undefined' ? cancelAnimationFrame : clearTimeout;
       cancelAF(routePollFrame);
@@ -3961,16 +4316,16 @@
       bootstrapObserver.disconnect();
       bootstrapObserver = null;
     }
-    
+
     if (isInventoryPage() || isMarketPage()) {
       updateObserverTarget();
       if (document.querySelector("[id^='item-code-selector-']") || findItemCards().size > 0) {
         log('Route change: cards exist immediately, scanning');
         if (isInventoryPage()) {
-          scanInventory(false);
+          guard('advisor', () => scanInventory(false));
         } else if (isMarketPage()) {
           scrapeMarketPrices();
-          scanInventory(false);
+          guard('advisor', () => scanInventory(false));
         }
       } else {
         initBootstrapObserver();
@@ -3978,15 +4333,22 @@
       }
     } else if (isBattlePage()) {
       observer.disconnect();
-      if (CONFIG.featBattleAdvisor) applyBattleAdvisory();
+      if (CONFIG.featBattleAdvisor) guard('battleAdvisor', applyBattleAdvisory);
     } else {
       teardownBattleAdvisory();
       observer.disconnect();
     }
-    
+
     if (CONFIG.featPillReminder) {
       setTimeout(tickPillReminder, 50);
     }
+
+    if (CONFIG.featPnlTracker) {
+      setTimeout(updatePnlUi, 50);
+    }
+
+    // Refresh feature health after the new route settles (keeps ampel honest).
+    if (CONFIG.debug && typeof runProbes === 'function') setTimeout(runProbes, 1500);
   }
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -4055,7 +4417,7 @@
       if (originalSvg) {
         const clonedSvg = originalSvg.cloneNode(true);
         clonedSvg.setAttribute('class', 'wia-compact-order-symbol');
-        
+
         let color = 'currentColor';
         if (typeof window !== 'undefined' && typeof window.getComputedStyle === 'function') {
           try {
@@ -4139,7 +4501,7 @@
           scheduleNotesScan();
         }
       }
-      if (CONFIG.featMarketGraph && isMarketPage()) {
+if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
         const found = findMarketGraph();
         if (found) {
           setupModalObserver(found.modal);
@@ -4441,7 +4803,7 @@
     if (parts.length !== 2) return now;
     const hrs = parseInt(parts[0], 10);
     const mins = parseInt(parts[1], 10);
-    
+
     let d = new Date(now);
     d.setHours(hrs, mins, 0, 0);
     if (d.getTime() < now) {
@@ -4465,7 +4827,7 @@
       if (parts.length === 2) {
         const hrs = parseInt(parts[0], 10);
         const mins = parseInt(parts[1], 10);
-        
+
         let d = new Date(target);
         d.setHours(hrs, mins, 0, 0);
         if (d.getTime() < target) {
@@ -4885,7 +5247,7 @@
             let m = text.match(/\b(?:(\d+)h\s*)?(?:(\d+)m\s*)?(\d+)s\b/i);
             let hrs = 0, mins = 0, secs = 0;
             let matchedUnit = false;
-            
+
             if (m) {
               hrs = parseInt(m[1] || '0', 10);
               mins = parseInt(m[2] || '0', 10);
@@ -5010,7 +5372,7 @@
     const hours = Math.floor(totalSecs / 3600);
     const minutes = Math.floor((totalSecs % 3600) / 60);
     const secs = totalSecs % 60;
-    
+
     if (hours > 0) {
       return `${hours}h ${minutes}m`;
     }
@@ -5092,7 +5454,7 @@
       if (hpNeeded > 0 && status.hpRegen > 0) hpTicks = Math.ceil(hpNeeded / status.hpRegen);
       if (hungerNeeded > 0 && status.hungerRegen > 0) hungerTicks = Math.ceil(hungerNeeded / status.hungerRegen);
       const totalTicks = Math.max(hpTicks, hungerTicks);
-      
+
       const debuffEnd = pillTakenAt > 0 ? (pillTakenAt + totalMs) : 0;
       const hAndHFullETA = totalTicks > 0
         ? now + status.nextTickMs + (totalTicks - 1) * 3600000
@@ -5145,9 +5507,9 @@
       return;
     }
 
-    const anchor = document.getElementById('layoutUserMenu') || 
-                   document.getElementById('avatar') || 
-                   document.querySelector('header nav') || 
+    const anchor = document.getElementById('layoutUserMenu') ||
+                   document.getElementById('avatar') ||
+                   document.querySelector('header nav') ||
                    document.querySelector('header');
     if (!anchor) return;
 
@@ -5177,7 +5539,7 @@
     if (hpNeeded > 0 && status.hpRegen > 0) hpTicks = Math.ceil(hpNeeded / status.hpRegen);
     if (hungerNeeded > 0 && status.hungerRegen > 0) hungerTicks = Math.ceil(hungerNeeded / status.hungerRegen);
     const totalTicks = Math.max(hpTicks, hungerTicks);
-    
+
     // 1. H&H Gate
     let hnhGatingStr = '';
     if (totalTicks > 0) {
@@ -5215,7 +5577,7 @@
       }
     }
 
-    const nextStr = info.nextTransitionLabel 
+    const nextStr = info.nextTransitionLabel
       ? `<div class="wia-pill-detail-item"><strong>${t('pillDetailNext')}:</strong> ${info.nextTransitionLabel} (${info.nextTransitionTime})</div>`
       : '';
 
@@ -5283,7 +5645,7 @@
           card.setAttribute('data-label', t('pillOverlayReady'));
         } else if (isGated) {
           card.classList.add('wia-cocain-gated-highlight');
-          
+
           let labelText = '';
           if (!isHnHReady) {
             const lowestPct = Math.round(Math.min(status.hpPercent, status.hungerPercent));
@@ -5362,22 +5724,22 @@
         const store = GM_getValue(KEYS.priceSeries, {}) || {};
         const maxWindow = CONFIG.priceSeriesWindowMs || 3 * 24 * 60 * 60 * 1000;
         const cutoff = nowMs - maxWindow;
-        
+
         let updated = false;
         for (const [itemCode, price] of Object.entries(prices)) {
           if (price == null || isNaN(price)) continue;
           if (!store[itemCode]) store[itemCode] = [];
-          
+
           store[itemCode].push({ t: nowMs, price: price });
           store[itemCode] = store[itemCode].filter(pt => pt.t >= cutoff);
           updated = true;
         }
-        
+
         if (updated) {
           GM_setValue(KEYS.priceSeries, store);
           GM_setValue(NS + 'lastSampleTime', nowMs);
           log('Price series sampler successfully updated.');
-          
+
           const found = findMarketGraph();
           if (found) {
             const code = getModalResourceCode(found.modal);
@@ -5398,7 +5760,7 @@
     const cacheKey = code + (cursor ? `_${cursor}` : '');
     if (resourceTxsInFlight[cacheKey]) return resourceTxsInFlight[cacheKey];
     if (isRateLimited()) return null;
-    
+
     resourceTxsInFlight[cacheKey] = (async () => {
       try {
         const url = 'https://gateway.warerastats.io/trpc/transaction.getPaginatedTransactions';
@@ -5419,7 +5781,7 @@
         });
         if (res.status === 429) { tripRateLimit(); return null; }
         if (res.status < 200 || res.status >= 300) return null;
-        
+
         const json = JSON.parse(res.text);
         const data = json?.result?.data || {};
         return {
@@ -5508,7 +5870,7 @@
     const pad = (n) => String(n).padStart(2, '0');
     const hh = pad(d.getHours());
     const mm = pad(d.getMinutes());
-    
+
     if (rangeType === '24h') {
       return `${hh}:${mm}`;
     } else {
@@ -5549,7 +5911,7 @@
     if (!freshSvg.isConnected) return;
 
     const maxSpanMs = range === '24h' ? 24 * 60 * 60 * 1000 : 72 * 60 * 60 * 1000;
-    
+
     suspendModalObserver();
     let overlaySvg, overlayG;
     try {
@@ -5563,7 +5925,7 @@
         overlaySvg.setAttribute('class', 'wia-mkt-overlay-svg');
         parent.insertBefore(overlaySvg, freshSvg.nextSibling);
       }
-      
+
       const svgRect = freshSvg.getBoundingClientRect();
       const parentRect = parent.getBoundingClientRect();
       const topOffset = svgRect.top - parentRect.top;
@@ -5580,7 +5942,7 @@
       overlaySvg.style.overflow = 'visible';
 
       overlaySvg.innerHTML = '';
-      
+
       overlayG = document.createElementNS('http://www.w3.org/2000/svg', 'g');
       overlayG.setAttribute('transform', 'translate(4,6)');
       overlaySvg.appendChild(overlayG);
@@ -5595,7 +5957,7 @@
         warnText.setAttribute('font-size', '10px');
         warnText.setAttribute('class', 'wia-mkt-warning');
         warnText.textContent = getLocale() === 'de' ? 'Intraday-Daten spärlich (lade...)' : 'Intraday data sparse (loading...)';
-        
+
         overlayG.appendChild(warnText);
         lastMktState = null;
         return;
@@ -5603,9 +5965,9 @@
     } finally {
       resumeModalObserver(freshModal);
     }
-    
+
     const sortedPoints = [...points].sort((a, b) => a.t - b.t);
-    
+
     const tMax = now();
     const tMin = tMax - maxSpanMs;
     const buckets = [];
@@ -5639,7 +6001,7 @@
       }
     }
     buckets.reverse();
-    
+
     sortedPoints.forEach(pt => {
       if (pt.t >= tMin && pt.t <= tMax) {
         const bucket = buckets.find(b => pt.t >= b.start && pt.t <= b.end);
@@ -5649,7 +6011,7 @@
         }
       }
     });
-    
+
     const plottedPoints = buckets
       .map((b) => {
         if (b.count > 0) {
@@ -5661,15 +6023,15 @@
         return null;
       })
       .filter(Boolean);
-      
+
     if (plottedPoints.length === 0) {
       lastMktState = null;
       return;
     }
-    
+
     const W = 420;
     const H = 48;
-    
+
     const prices = plottedPoints.map(p => p.price);
     const realMin = Math.min(...prices);
     const realMax = Math.max(...prices);
@@ -5683,23 +6045,23 @@
       yMin -= pad;
       yMax += pad;
     }
-    
+
     const getX = (pt) => {
       const pctX = (pt.t - tMin) / maxSpanMs;
       return pctX * W;
     };
-    
+
     const getY = (price) => {
       const pctY = (price - yMin) / (yMax - yMin);
       return H - pctY * H;
     };
-    
+
     suspendModalObserver();
     try {
       if (myGen !== renderGen) return;
 
       const threshold = range === '24h' ? 3 * 60 * 60 * 1000 : 10 * 60 * 60 * 1000;
-      
+
       const drawPath = (pathD, isGap) => {
         const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         pathEl.setAttribute('d', pathD);
@@ -5712,14 +6074,14 @@
         } else {
           pathEl.setAttribute('opacity', '1');
         }
-        
+
         const nativePath = freshSvg.querySelector('g[transform="translate(4,6)"] path[stroke="#A19638"]');
         if (nativePath) {
           const strokeWidth = nativePath.getAttribute('stroke-width') || '2';
           const strokeLinecap = nativePath.getAttribute('stroke-linecap') || 'round';
           const strokeLinejoin = nativePath.getAttribute('stroke-linejoin') || 'round';
           const filterVal = nativePath.getAttribute('filter');
-          
+
           pathEl.setAttribute('stroke-width', strokeWidth);
           pathEl.setAttribute('stroke-linecap', strokeLinecap);
           pathEl.setAttribute('stroke-linejoin', strokeLinejoin);
@@ -5734,7 +6096,7 @@
 
       const groups = [];
       let currentGroup = [];
-      
+
       plottedPoints.forEach((pt, index) => {
         if (index === 0) {
           currentGroup.push(pt);
@@ -5754,7 +6116,7 @@
 
       groups.forEach(g => {
         if (g.length < 2) return;
-        
+
         let pathD = `M ${getX(g[0]).toFixed(2)} ${getY(g[0].price).toFixed(2)}`;
         if (g.length === 2) {
           const pt0 = g[0], pt1 = g[1];
@@ -5771,18 +6133,18 @@
             const ptA = g[i];
             const ptB = g[i + 1];
             const ptNext = g[i + 2] || ptB;
-            
+
             const xA = getX(ptA), yA = getY(ptA.price);
             const xB = getX(ptB), yB = getY(ptB.price);
             const xPrev = getX(ptPrev), yPrev = getY(ptPrev.price);
             const xNext = getX(ptNext), yNext = getY(ptNext.price);
-            
+
             const tension = 0.15;
             const cpX1 = xA + (xB - xPrev) * tension;
             const cpY1 = yA + (yB - yPrev) * tension;
             const cpX2 = xB - (xNext - xA) * tension;
             const cpY2 = yB - (yNext - yPrev) * tension;
-            
+
             pathD += ` C ${cpX1.toFixed(2)} ${cpY1.toFixed(2)}, ${cpX2.toFixed(2)} ${cpY2.toFixed(2)}, ${xB.toFixed(2)} ${yB.toFixed(2)}`;
           }
         }
@@ -5797,17 +6159,17 @@
         const pathD = `M ${xA.toFixed(2)} ${yA.toFixed(2)} L ${xB.toFixed(2)} ${yB.toFixed(2)}`;
         drawPath(pathD, true);
       }
-      
+
       plottedPoints.forEach(pt => {
         const cx = getX(pt);
         const cy = getY(pt.price);
-        
+
         const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         circle.setAttribute('cx', cx.toFixed(2));
         circle.setAttribute('cy', cy.toFixed(2));
         circle.setAttribute('r', '2');
         circle.setAttribute('class', 'wia-mkt-point');
-        
+
         circle.onmouseenter = (e) => {
           const tooltip = getOrCreateTooltip();
           tooltip.innerHTML = `${formatHoverTime(pt.t, range)} · <span style="color: #f97316;">${t('marketGraphHoverPrice', { price: fmt(pt.price) })}</span>`;
@@ -5822,17 +6184,17 @@
           const tooltip = getOrCreateTooltip();
           tooltip.style.display = 'none';
         };
-        
+
         overlayG.appendChild(circle);
       });
-      
+
       const maxText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
       maxText.setAttribute('x', '418');
       maxText.setAttribute('y', '-4');
       maxText.setAttribute('class', 'wia-mkt-axis-label');
       maxText.setAttribute('text-anchor', 'end');
       maxText.textContent = fmt(realMax);
-      
+
       overlayG.appendChild(maxText);
 
       const formatXLabel = (timestamp) => {
@@ -5874,11 +6236,11 @@
       nowText.setAttribute('y', '52');
       nowText.setAttribute('class', 'wia-mkt-x-label');
       nowText.setAttribute('text-anchor', 'end');
-      
+
       const timeSpan = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
       timeSpan.textContent = formatXLabel(tMax) + " ";
       nowText.appendChild(timeSpan);
-      
+
       const latestPoint = plottedPoints[plottedPoints.length - 1];
       const latestPrice = latestPoint ? latestPoint.price : realMin;
       const priceSpan = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
@@ -5886,19 +6248,19 @@
       priceSpan.setAttribute('font-weight', 'bold');
       priceSpan.textContent = `(${fmt(latestPrice)})`;
       nowText.appendChild(priceSpan);
-      
+
       overlayG.appendChild(nowText);
     } finally {
       resumeModalObserver(freshModal);
     }
-    
+
     const fingerprint = getNativeSvgFingerprint(freshSvg);
     lastMktState = `${code}-${range}-${fingerprint}`;
   }
 
   async function renderIntradayLine(code, range) {
     const myGen = ++renderGen;
-    
+
     try {
       const foundStart = findMarketGraph();
       if (!foundStart || getModalResourceCode(foundStart.modal) !== code) return;
@@ -5908,7 +6270,7 @@
       try {
         const oldToggle = modal.querySelector('.wia-mkt-toggle-row');
         if (oldToggle) oldToggle.remove();
-        
+
         const innerG = svg.querySelector('g[transform="translate(4,6)"]');
         if (innerG) {
           const ourSvgEls = innerG.querySelectorAll('[class^="wia-mkt-"], [class*=" wia-mkt-"]');
@@ -5917,10 +6279,10 @@
       } finally {
         resumeModalObserver(modal);
       }
-      
+
       const innerG = svg.querySelector('g[transform="translate(4,6)"]');
       if (!innerG) return;
-      
+
       suspendModalObserver();
       try {
         const toggleRow = document.createElement('div');
@@ -5933,7 +6295,7 @@
             <span class="wia-legend-dot intraday"></span> <span class="wia-legend-text">${t('marketGraphLegendIntraday')}</span>
           </span>
         `;
-        
+
         const btns = toggleRow.querySelectorAll('.wia-mkt-toggle-btn');
         btns.forEach(btn => {
           btn.onclick = (e) => {
@@ -5949,7 +6311,7 @@
             }
           };
         });
-        
+
         const parent = svg.parentElement;
         if (parent) {
           if (parent.style.position !== 'relative') {
@@ -5960,64 +6322,64 @@
       } finally {
         resumeModalObserver(modal);
       }
-      
+
       const pollerStore = GM_getValue(KEYS.priceSeries, {}) || {};
       const samples = pollerStore[code] || [];
-      
+
       const cache = GM_getValue(KEYS.resourceTransactionsCache, {}) || {};
       const cachedEntry = cache[`${code}_${range}`];
       const cachedTxs = (cachedEntry && Array.isArray(cachedEntry.points)) ? cachedEntry.points : [];
-      
+
       const instantPoints = [];
       const seenTimes = new Set();
-      
+
       cachedTxs.forEach(tx => {
         if (!seenTimes.has(tx.t)) {
           seenTimes.add(tx.t);
           instantPoints.push({ t: tx.t, price: tx.price });
         }
       });
-      
+
       samples.forEach(pt => {
         if (!seenTimes.has(pt.t)) {
           seenTimes.add(pt.t);
           instantPoints.push({ t: pt.t, price: pt.price });
         }
       });
-      
+
       // Draw immediately using whatever cached/poller data we have
       drawIntradayGraph(foundStart, instantPoints, range, code, myGen);
-      
+
       // Async fetch fresh transaction points in background
       const maxSpanMs = range === '24h' ? 24 * 60 * 60 * 1000 : 72 * 60 * 60 * 1000;
       seedResourceTransactions(code, maxSpanMs, range).then(freshTxs => {
         if (myGen !== renderGen) return;
-        
+
         const foundAfter = findMarketGraph();
         if (!foundAfter || !foundAfter.svg.isConnected || getModalResourceCode(foundAfter.modal) !== code) return;
-        
+
         const finalPoints = [];
         const finalSeen = new Set();
-        
+
         freshTxs.forEach(tx => {
           if (!finalSeen.has(tx.t)) {
             finalSeen.add(tx.t);
             finalPoints.push({ t: tx.t, price: tx.price });
           }
         });
-        
+
         samples.forEach(pt => {
           if (!finalSeen.has(pt.t)) {
             finalSeen.add(pt.t);
             finalPoints.push({ t: pt.t, price: pt.price });
           }
         });
-        
+
         drawIntradayGraph(foundAfter, finalPoints, range, code, myGen);
       }).catch(err => {
         log('Background seedResourceTransactions error:', err);
       });
-      
+
     } catch (e) {
       log('renderIntradayLine error:', e);
     }
@@ -6028,26 +6390,36 @@
   function findMarketGraph() {
     const modal = document.querySelector('div[id^="headlessui-dialog-panel-"]');
     if (!modal) return null;
-    
+
     const titleEl = modal.querySelector('h2[id^="headlessui-dialog-title-"], div[id^="headlessui-dialog-title-"]');
     if (!titleEl) return null;
-    
+
     const titleText = titleEl.textContent.trim();
-    const isBuySell = titleText.includes('Buy order') || titleText.includes('Buy Order') || 
-                      titleText.includes('Kaufauftrag') || titleText.includes('Verkaufsangebot') || 
+    const isBuySell = titleText.includes('Buy order') || titleText.includes('Buy Order') ||
+                      titleText.includes('Kaufauftrag') || titleText.includes('Verkaufsangebot') ||
                       titleText.includes('Sell order') || titleText.includes('Sell Order');
     if (!isBuySell) return null;
 
-    const svg = modal.querySelector('svg[width="428"][height="60"]:not(.wia-mkt-overlay-svg)');
-    if (!svg) return null;
-    
-    return { modal, titleEl, svg };
+// Suchen wir das native SVG über die Farbe der Graphen-Linie statt über starre Pixel-Maße
+    const allSvgs = modal.querySelectorAll('svg:not(.wia-mkt-overlay-svg)');
+    let targetSvg = null;
+
+    for (const s of allSvgs) {
+      if (s.querySelector('path[stroke="#A19638"]')) {
+        targetSvg = s;
+        break;
+      }
+    }
+
+    if (!targetSvg) return null;
+
+    return { modal, titleEl, svg: targetSvg };
   }
 
   function getModalResourceCode(modal) {
     const img = modal.querySelector("img[src*='/images/items/']");
     if (!img) return null;
-    
+
     const src = img.getAttribute('src');
     if (src) {
       const match = src.match(/\/items\/([a-z0-9_-]+)\.(png|webp|gif|jpg)/i);
@@ -6056,26 +6428,26 @@
         if (!EXCLUDED_ALTS.has(code)) return code;
       }
     }
-    
+
     const alt = img.getAttribute('alt');
     if (alt) {
       const code = alt.trim().toLowerCase();
       if (!EXCLUDED_ALTS.has(code)) return code;
     }
-    
+
     return null;
   }
 
   function initMarketGraph() {
     teardownMarketGraph();
-    
+
     if (!samplerInterval) {
       tickPriceSampler();
       samplerInterval = setInterval(tickPriceSampler, 60000);
     }
-    
+
     initSharedBodyObserver();
-    
+
     const found = findMarketGraph();
     if (found) {
       setupModalObserver(found.modal);
@@ -6085,26 +6457,26 @@
 
   function setupModalObserver(modal) {
     if (modalObserver) return;
-    
+
     modalObserver = new MutationObserver((mutations) => {
       if (!CONFIG.featMarketGraph) return;
-      
+
       const onlyOurs = mutations.every(m => {
         const isOurTarget = m.target instanceof Element && m.target.closest('.wia-mkt-overlay-svg, .wia-mkt-toggle-row, .wia-mkt-tooltip');
         if (isOurTarget) return true;
-        
+
         if (m.type === 'childList') {
-          const onlyOurNodesAdded = Array.from(m.addedNodes).every(node => 
+          const onlyOurNodesAdded = Array.from(m.addedNodes).every(node =>
             node instanceof Element && (node.classList.contains('wia-mkt-overlay-svg') || node.classList.contains('wia-mkt-toggle-row'))
           );
-          const onlyOurNodesRemoved = Array.from(m.removedNodes).every(node => 
+          const onlyOurNodesRemoved = Array.from(m.removedNodes).every(node =>
             node instanceof Element && (node.classList.contains('wia-mkt-overlay-svg') || node.classList.contains('wia-mkt-toggle-row'))
           );
           return (m.addedNodes.length === 0 || onlyOurNodesAdded) && (m.removedNodes.length === 0 || onlyOurNodesRemoved);
         }
         return false;
       });
-      
+
       if (onlyOurs) return;
 
       const found = findMarketGraph();
@@ -6112,7 +6484,7 @@
         checkAndRenderGraph(found);
       }
     });
-    
+
     modalObserver.observe(modal, { childList: true, subtree: true });
   }
 
@@ -6123,14 +6495,14 @@
       lastMktState = null;
       return;
     }
-    
+
     const range = GM_getValue(KEYS.marketGraphRange, '24h');
     const fingerprint = getNativeSvgFingerprint(svg);
     const stateKey = `${code}-${range}-${fingerprint}`;
-    
+
     const overlayMissing = !svg.parentElement || !svg.parentElement.querySelector('.wia-mkt-overlay-svg');
     if (stateKey === lastMktState && !overlayMissing) return;
-    
+
     debouncedRenderIntraday(code, range);
   }
 
@@ -6189,7 +6561,41 @@
     if (scrapedStore[itemCode] != null) {
       return scrapedStore[itemCode].price;
     }
+    // Consumables (ammo/food/drugs) aren't in itemTrading.getPrices (materials only).
+    // Their unit price is shown in the in-game selector tiles — harvested into this cache.
+    const cp = readCache(KEYS.consumablePrices);
+    if (cp && cp[itemCode] != null) return cp[itemCode];
     return null;
+  }
+
+  // Harvest unit prices from any visible `#item-code-selector-<code>` tiles (Consume/
+  // Buffs/Ammo popovers). The coins-value sits next to the coins SVG (path starts with
+  // CONFIG.coinsIconPathPrefix). Persisted so the consumption-delta booking (which runs
+  // on the inventory page, where these popovers are closed) can price ammo/food/drugs.
+  function harvestSelectorPrices() {
+    const tiles = document.querySelectorAll('[id^="item-code-selector-"]');
+    if (!tiles.length) return;
+    const cache = { ...(readCache(KEYS.consumablePrices) || {}) };
+    let changed = false;
+    tiles.forEach((tile) => {
+      const code = tile.id.replace('item-code-selector-', '');
+      if (!code) return;
+      for (const svg of tile.querySelectorAll('svg')) {
+        const p = svg.querySelector('path');
+        if (p && (p.getAttribute('d') || '').startsWith(CONFIG.coinsIconPathPrefix)) {
+          // price text lives in the value wrapper = parent of the icon container
+          const wrap = svg.closest('.a6izou0')?.parentElement || svg.parentElement?.parentElement;
+          const txt = (wrap ? wrap.textContent : '').replace(/\s/g, '');
+          const m = txt.match(/(\d+(?:\.\d+)?)/);
+          if (m) {
+            const price = parseFloat(m[1]);
+            if (isFinite(price) && cache[code] !== price) { cache[code] = price; changed = true; }
+          }
+          break;
+        }
+      }
+    });
+    if (changed) writeCache(KEYS.consumablePrices, cache);
   }
 
   function getItemPriceRange(itemCode) {
@@ -6419,10 +6825,10 @@
         🔨 ${t('craftTitle')}
       </div>
       <div style="color: #c9d1d9; margin-bottom: 6px;">
-        ${t('craftResourceCost', { 
-          val: fmt(resourceCost), 
-          steelPrice: fmt(steelPrice), 
-          scrapsPrice: fmt(scrapsPrice) 
+        ${t('craftResourceCost', {
+          val: fmt(resourceCost),
+          steelPrice: fmt(steelPrice),
+          scrapsPrice: fmt(scrapsPrice)
         })}
       </div>
     `;
@@ -6476,7 +6882,7 @@
               • ${t('craftMarketRange', { min: fmt(range.minPrice), max: fmt(range.maxPrice) })}
             </div>
             <div>
-              • ${t('craftProfitSpecific', { 
+              • ${t('craftProfitSpecific', {
                 min: `<span style="color: ${minColor}; font-weight: bold;">${minProfit >= 0 ? '+' : ''}${fmt(minProfit)}</span>`,
                 max: `<span style="color: ${maxColor}; font-weight: bold;">${maxProfit >= 0 ? '+' : ''}${fmt(maxProfit)}</span>`
               })} Gold
@@ -6491,8 +6897,1116 @@
     panel.innerHTML = html;
   }
 
+  // ───────────────────────────────────────────────────────────────────────────
+  // Daily P&L Tracker module
+  // ───────────────────────────────────────────────────────────────────────────
+  let pnlInterval = null;
+  let pnlGoldObserver = null;
+  let pnlGoldObserverTarget = null;
+
+  function getPnlDayKey(time = Date.now()) {
+    const adjustedTime = time - (2 * 60 * 60 * 1000); // 02:00 local time offset
+    const d = new Date(adjustedTime);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  function createEmptyLedger(dayKey) {
+    return {
+      dayKey,
+      startedAt: Date.now(),
+      income: {},
+      expense: {},
+      capitalized: 0,
+      total: 0,
+      processedTxs: []
+    };
+  }
+
+  // Money formatter for the P&L UI: 2 decimals, locale-aware decimal separator.
+  // Avoids the German "7.265 looks like 7 thousand" confusion ('.' reads as thousands sep).
+  function fmtPnl(n) {
+    const a = Math.abs(Number(n) || 0);
+    let s;
+    if (a >= 1000000) s = (a / 1000000).toFixed(2) + 'M';   // compact so huge values never overflow the chip
+    else if (a >= 1000) s = (a / 1000).toFixed(2) + 'k';
+    else s = a.toFixed(2);
+    return getLocale() === 'de' ? s.replace('.', ',') : s;
+  }
+
+  function getGoldBalance() {
+    const moneyEl = document.getElementById('money') || (document.getElementById('layoutUserMenu') && document.getElementById('layoutUserMenu').querySelector('#money'));
+    if (!moneyEl) return null;
+    const txt = moneyEl.textContent.trim();
+    if (!txt) return null;
+    const match = txt.replace(/,/g, '.').match(/\d+(?:\.\d+)?/);
+    return match ? parseFloat(match[0]) : null;
+  }
+
+  function todayResetTime() {
+    const d = new Date();
+    d.setHours(2, 0, 0, 0);
+    if (Date.now() < d.getTime()) {
+      d.setDate(d.getDate() - 1);
+    }
+    return d.getTime();
+  }
+
+function processTransactionsList(items, userId) {
+    const todayStart = todayResetTime();
+    let ledger = readCache(KEYS.pnlLedger);
+    if (!ledger) ledger = createEmptyLedger(getPnlDayKey());
+
+    let costBasis = readCache(KEYS.pnlCostBasis) || {};
+    // NEU: Unser persistenter Speicher für Loot-IDs
+    const LOOT_CACHE_KEY = 'wia_pnl_known_loot';
+    let knownLoot = readCache(LOOT_CACHE_KEY) || {};
+
+    // Persistent, history-spanning dedup: each transaction _id is processed EXACTLY
+    // once, ever (survives day-reset). Without this, cost-basis qtyKnown re-accumulates
+    // on every fetch (the 6→7→8 inflation bug) and breakage re-subtracts repeatedly.
+    let seenArr = readCache(KEYS.pnlProcessedTxs) || [];
+    const seen = new Set(seenArr);
+    let seenChanged = false;
+
+    let ledgerChanged = false;
+    let costBasisChanged = false;
+    let knownLootChanged = false;
+
+    if (!ledger.income) ledger.income = {};
+    if (!ledger.expense) ledger.expense = {};
+    if (!ledger.todaySales) ledger.todaySales = {};
+
+    const sorted = [...items].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+    for (const tx of sorted) {
+      const txTime = new Date(tx.createdAt).getTime();
+      const isToday = txTime >= todayStart;
+
+      const money = tx.money != null ? parseFloat(tx.money) : 0;
+      const quantity = tx.quantity != null ? parseInt(tx.quantity, 10) : 1;
+      const type = tx.transactionType;
+
+      const isSellerMe = tx.sellerId === userId;
+      const isBuyerMe = tx.buyerId === userId;
+
+      const itemCode = tx.itemCode || tx.item?.code || tx.item?.itemCode || tx.item?.id;
+      const itemId = tx.item?._id; // Die eindeutige Datenbank-ID des Items
+
+      // Global dedup: skip any transaction we've already processed (ever).
+      const txId = tx._id || tx.id;
+      if (txId && seen.has(txId)) continue;
+
+      // --- NEU: Loot & Kisten registrieren ---
+      // Wenn wir ein Item kostenlos erhalten/craften, merken wir uns seine ID
+      if (['battleLoot', 'openCase', 'craftItem'].includes(type) && itemId) {
+        if (!knownLoot[itemId]) {
+          knownLoot[itemId] = true;
+          knownLootChanged = true;
+          // dbg('pnl', 'debug', `Loot registriert: ${itemCode} (${itemId})`);
+        }
+      }
+
+      // --- PHASE 1: Cost-Basis ---
+      if (isBuyerMe && itemCode && money > 0 && quantity > 0 && type !== 'dismantleItem') {
+        const newUnitPaid = money / quantity;
+        const existing = costBasis[itemCode];
+
+        if (existing && existing.qtyKnown > 0 && existing.unitPaid != null) {
+          const oldTotal = existing.qtyKnown * existing.unitPaid;
+          const newTotal = quantity * newUnitPaid;
+          const newQty = existing.qtyKnown + quantity;
+          const avgPrice = (oldTotal + newTotal) / newQty;
+
+          costBasis[itemCode] = { unitPaid: avgPrice, qtyKnown: newQty, updatedAt: txTime };
+          dbg('pnl', 'debug', `Cost-Basis Update [${itemCode}]: Bisher ${existing.qtyKnown}x à ${existing.unitPaid.toFixed(2)} | Neu: ${quantity}x à ${newUnitPaid.toFixed(2)} => Ø: ${avgPrice.toFixed(2)}`);
+        } else {
+          costBasis[itemCode] = { unitPaid: newUnitPaid, qtyKnown: quantity, updatedAt: txTime };
+          dbg('pnl', 'debug', `Cost-Basis Initial [${itemCode}]: ${quantity}x à ${newUnitPaid.toFixed(2)}`);
+        }
+        costBasisChanged = true;
+      }
+
+      if (isToday) {
+        let booked = false;
+
+        // --- PHASE 2: Income & Expense ---
+        if (type === 'trading' || type === 'itemMarket') {
+          if (isSellerMe && money > 0) {
+            ledger.income.Sales = (ledger.income.Sales || 0) + money;
+            if (itemCode && quantity > 0) {
+              ledger.todaySales[itemCode] = (ledger.todaySales[itemCode] || 0) + quantity;
+            }
+            dbg('pnl', 'debug', `Verkauf [${itemCode || 'Unbekannt'}]: +${money.toFixed(2)} (Sales). Menge: ${quantity}`);
+            booked = true;
+          } else if (isBuyerMe && money > 0) {
+            ledger.capitalized = (ledger.capitalized || 0) + money;
+            booked = true;
+          }
+        }
+        else if (type === 'dismantleItem') {
+          const realItemCode = tx.item?.code || itemCode;
+          const scrapCount = tx.quantity != null ? parseInt(tx.quantity, 10) : 0;
+          const itemState = tx.item?.state != null ? parseInt(tx.item.state, 10) : 100;
+
+          // 1. Schrott-Wert in Gold umrechnen
+          let scrapUnitPrice = null;
+          if (typeof getCachedPrice === 'function') {
+            scrapUnitPrice = getCachedPrice('scraps');
+          } else {
+            const pc = readCache(KEYS.priceCache);
+            if (pc && pc.data && pc.data['scraps'] != null) scrapUnitPrice = pc.data['scraps'];
+          }
+          if (scrapUnitPrice == null) scrapUnitPrice = 0;
+          const scrapValueInGold = scrapCount * scrapUnitPrice;
+
+          // 2. Cost-Basis aufräumen (ABER KEINEN VERLUST BUCHEN!)
+          // Der prozentuale Verlust (die restlichen 12% bis zum Bruch) wird vom Live-Equipment-Scanner übernommen!
+          if (realItemCode && realItemCode !== 'scraps') {
+            const basis = costBasis[realItemCode];
+            if (basis && basis.qtyKnown > 0) {
+              basis.qtyKnown -= 1;
+              costBasisChanged = true;
+              dbg('pnl', 'debug', `Breakage [${realItemCode}]: Item zerstört. Cost-Basis Menge um 1 reduziert. (Kosten-Abzug ignoriert -> Live-Scanner regelt Verschleiß).`);
+            }
+          }
+
+          // 3. Einnahme durch den Schrott (Income) verbuchen
+          if (scrapValueInGold > 0) {
+            ledger.income.Other = (ledger.income.Other || 0) + scrapValueInGold;
+            dbg('pnl', 'debug', `Breakage Scraps: +${scrapValueInGold.toFixed(2)} Gold (aus ${scrapCount}x Schrott) als Einnahme (Other) verbucht.`);
+            booked = true;
+          }
+        }
+        else if (type === 'wage') {
+          if (isSellerMe && money > 0) {
+            ledger.income.Wages = (ledger.income.Wages || 0) + money;
+            dbg('pnl', 'debug', `Lohn erhalten: +${money.toFixed(2)} (Wages).`);
+            booked = true;
+          } else if (isBuyerMe && money > 0) {
+            ledger.expense['Employee Wages'] = (ledger.expense['Employee Wages'] || 0) + money;
+            dbg('pnl', 'debug', `Lohn gezahlt: -${money.toFixed(2)} (Employee Wages).`);
+            booked = true;
+          }
+        } else if (type === 'donation') {
+          if (isBuyerMe && money > 0) {
+            ledger.expense.Other = (ledger.expense.Other || 0) + money;
+            dbg('pnl', 'debug', `Spende gesendet: -${money.toFixed(2)} (Other).`);
+            booked = true;
+          } else if (isSellerMe && money > 0) {
+            ledger.income.Other = (ledger.income.Other || 0) + money;
+            dbg('pnl', 'debug', `Spende erhalten: +${money.toFixed(2)} (Other).`);
+            booked = true;
+          }
+        } else if (type === 'repair') {
+          if (isBuyerMe && money > 0) {
+            ledger.expense.Repairs = (ledger.expense.Repairs || 0) + money;
+            dbg('pnl', 'debug', `Reparatur bezahlt: -${money.toFixed(2)} (Repairs).`);
+            booked = true;
+          }
+        } else {
+          if (money > 0) {
+            if (isSellerMe) {
+              ledger.income.Other = (ledger.income.Other || 0) + money;
+              dbg('pnl', 'debug', `Unbekannte Einnahme (${type}): +${money.toFixed(2)} (Other).`);
+              booked = true;
+            } else if (isBuyerMe) {
+              ledger.expense.Other = (ledger.expense.Other || 0) + money;
+              dbg('pnl', 'debug', `Unbekannte Ausgabe (${type}): -${money.toFixed(2)} (Other).`);
+              booked = true;
+            }
+          }
+        }
+
+        if (booked) ledgerChanged = true;
+      }
+
+      // Mark processed exactly once (history-spanning), regardless of booked/today.
+      if (txId) { seen.add(txId); seenChanged = true; }
+    }
+
+    if (costBasisChanged) writeCache(KEYS.pnlCostBasis, costBasis);
+    if (knownLootChanged) writeCache(LOOT_CACHE_KEY, knownLoot);
+    if (seenChanged) {
+      let arr = [...seen];
+      if (arr.length > 3000) arr = arr.slice(-3000); // keep newest; feed only returns latest 100
+      writeCache(KEYS.pnlProcessedTxs, arr);
+    }
+
+    if (ledgerChanged) {
+      let sumIncome = 0;
+      for (const val of Object.values(ledger.income)) sumIncome += val;
+      let sumExpense = 0;
+      for (const val of Object.values(ledger.expense)) sumExpense += val;
+      ledger.total = sumIncome - sumExpense;
+      writeCache(KEYS.pnlLedger, ledger);
+
+      dbg('pnl', 'debug', `Tagesabschluss — Ein: ${sumIncome.toFixed(2)} | Aus: ${sumExpense.toFixed(2)} | Profit: ${ledger.total.toFixed(2)}`);
+    }
+  }
+
+  async function fetchAndProcessTransactions() {
+    const userId = getCurrentUserId();
+    if (!userId) return;
+    try {
+      guard('pnl', async () => {
+      const url = 'https://gateway.warerastats.io/trpc/transaction.getPaginatedTransactions';
+      // The feed returns only the newest 100 per page. Between 30s polls a player +
+      // their employees can produce >100 tx (wages spam), so paginate until we reach
+      // already-processed territory (or a page cap). Dedup makes overlap harmless.
+      const seenSet = new Set(readCache(KEYS.pnlProcessedTxs) || []);
+      const MAX_PAGES = 10; // safety cap = up to 1000 tx/poll; first run pulls full history
+      let cursor = null;
+      let prevFirstId = null;
+      const all = [];
+      for (let page = 0; page < MAX_PAGES; page++) {
+        const body = JSON.stringify(cursor ? { limit: 100, userId, cursor } : { limit: 100, userId });
+        const res = await gmRequest({
+          method: 'POST', url,
+          headers: { 'Content-Type': 'application/json', 'X-API-Key': 'wia-userscript' },
+          data: body
+        });
+        if (res.status < 200 || res.status >= 300) break;
+        const data = JSON.parse(res.text)?.result?.data;
+        const items = data?.items || [];
+        if (!items.length) break;
+        const firstId = items[0]._id || items[0].id;
+        if (firstId && firstId === prevFirstId) break; // cursor didn't advance → stop
+        prevFirstId = firstId;
+        all.push(...items);
+        // Reached txs we've already processed → fully caught up, stop paginating.
+        if (items.some(it => seenSet.has(it._id || it.id))) break;
+        cursor = data?.nextCursor;
+        if (!cursor || items.length < 100) break;
+      }
+      if (all.length) processTransactionsList(all, userId);
+
+          updatePnlUi();
+          setHealth('pnl', 'ok');
+      });
+    } catch (e) {
+      log('fetchAndProcessTransactions failed:', e.message);
+    }
+  }
+
+  function parseCardQuantity(card) {
+    let qty = 1;
+    function walk(node) {
+      const isLeaf = node.nodeType === 3 || !node.childNodes || node.childNodes.length === 0;
+      if (isLeaf) {
+        const val = String(node.nodeValue || node.textContent || '').trim();
+        const m = val.match(/^x\s*(\d+)$/i) || val.match(/^(\d+)$/);
+        if (m) {
+          qty = parseInt(m[1], 10);
+        }
+      } else {
+        const cl = node.classList;
+        if (cl && (cl.contains('wia-badge') || cl.contains('wia-price-sub'))) return;
+        const text = String(node.textContent || '').trim();
+        const m = text.match(/^x\s*(\d+)$/i);
+        if (m) {
+          qty = parseInt(m[1], 10);
+          return;
+        }
+        if (node.childNodes && node.childNodes.length > 0) {
+          for (let i = 0; i < node.childNodes.length; i++) {
+            walk(node.childNodes[i]);
+          }
+        }
+      }
+    }
+    walk(card);
+    return qty;
+  }
+
+function getInventoryQuantities() {
+    const cards = (globalThis.findItemCards || findItemCards)(false);
+    const qtyMap = {};
+    const equipTypes = new Set(['weapon', 'helmet', 'chest', 'gloves', 'pants', 'boots']);
+
+    cards.forEach((img, card) => {
+      const { code, type } = detectType(img, card);
+      // Ignoriere Equipment komplett (es stackt nicht und nutzt Haltbarkeit statt Menge)
+      if (code && !equipTypes.has(type)) {
+        const qty = parseCardQuantity(card);
+        qtyMap[code] = (qtyMap[code] || 0) + qty;
+      }
+    });
+    return qtyMap;
+  }
+
+  function bookClickConsumption(code, qty = 1) {
+    let ledger = readCache(KEYS.pnlLedger);
+    if (!ledger) ledger = createEmptyLedger(getPnlDayKey());
+    if (!ledger.expense) ledger.expense = {};
+
+    const { unitPaid, isEstimated } = resolveUnitBasis(code);
+    const cost = unitPaid * qty;
+    if (cost > 0) {
+      ledger.expense.Consumption = (ledger.expense.Consumption || 0) + cost;
+      if (isEstimated) {
+        ledger.hasEstimatedConsumption = true;
+      }
+
+      if (!ledger.bookedConsumptionEvents) {
+        ledger.bookedConsumptionEvents = [];
+      }
+      ledger.bookedConsumptionEvents.push({
+        code,
+        qty,
+        timestamp: Date.now()
+      });
+
+      let sumIncome = 0;
+      for (const val of Object.values(ledger.income)) {
+        sumIncome += val;
+      }
+      let sumExpense = 0;
+      for (const val of Object.values(ledger.expense)) {
+        sumExpense += val;
+      }
+      ledger.total = sumIncome - sumExpense;
+      writeCache(KEYS.pnlLedger, ledger);
+      updatePnlUi();
+    }
+  }
+
+function checkInventoryDeltaConsumption() {
+    if (!isInventoryPage()) return;
+
+    let snapshots = readCache(KEYS.pnlSnapshots);
+    if (!snapshots) return;
+
+    const currentQts = getInventoryQuantities();
+
+    if (!snapshots.invQty_start || Object.keys(snapshots.invQty_start).length === 0) {
+      snapshots.invQty_start = currentQts;
+      writeCache(KEYS.pnlSnapshots, snapshots);
+      return;
+    }
+
+    let ledger = readCache(KEYS.pnlLedger);
+    if (!ledger) ledger = createEmptyLedger(getPnlDayKey());
+    if (!ledger.expense) ledger.expense = {};
+    if (!ledger.bookedConsumptionEvents) ledger.bookedConsumptionEvents = [];
+
+    let ledgerChanged = false;
+    let snapshotsChanged = false;
+
+    for (const [code, startQty] of Object.entries(snapshots.invQty_start)) {
+      const curQty = currentQts[code] || 0;
+      if (curQty < startQty) {
+        let remainingDelta = startQty - curQty;
+
+        if (ledger.bookedConsumptionEvents.length > 0) {
+          const nextEvents = [];
+          for (const evt of ledger.bookedConsumptionEvents) {
+            if (evt.code === code && remainingDelta > 0) {
+              const matched = Math.min(evt.qty, remainingDelta);
+              evt.qty -= matched;
+              remainingDelta -= matched;
+              if (evt.qty > 0) nextEvents.push(evt);
+            } else {
+              nextEvents.push(evt);
+            }
+          }
+          ledger.bookedConsumptionEvents = nextEvents;
+          ledgerChanged = true;
+        }
+
+        if (remainingDelta > 0 && ledger.todaySales && ledger.todaySales[code] > 0) {
+          const matchedSales = Math.min(ledger.todaySales[code], remainingDelta);
+          ledger.todaySales[code] -= matchedSales;
+          remainingDelta -= matchedSales;
+          ledgerChanged = true;
+        }
+
+        if (remainingDelta > 0) {
+          const costBasis = readCache(KEYS.pnlCostBasis) || {};
+          const itemBasis = costBasis[code];
+          let unitPaid = 0;
+          let isEstimated = false;
+          let logReason = '';
+
+          if (itemBasis && itemBasis.unitPaid != null) {
+            unitPaid = itemBasis.unitPaid;
+            logReason = 'Ø-Kaufpreis';
+          } else {
+            // --- VERBESSERTER FALLBACK ---
+            let price = null;
+            if (typeof getCachedPrice === 'function') price = getCachedPrice(code);
+            if (price == null) {
+              const pc = readCache(KEYS.priceCache);
+              if (pc && pc.data && pc.data[code] != null) price = pc.data[code];
+            }
+
+            if (price != null) {
+              unitPaid = price;
+              isEstimated = true;
+              logReason = 'Marktpreis-Fallback';
+            } else {
+              logReason = 'Unbekannter Preis';
+            }
+          }
+
+          if (!isFinite(unitPaid) || unitPaid > 10000) {
+              unitPaid = 0; // Guard gegen korrupte Daten (kein Verbrauch über 10k pro Stück)
+              logReason = 'Preis-Guard (Wert > 10k ignoriert)';
+          }
+
+          const cost = unitPaid * remainingDelta;
+          if (cost > 0) {
+            ledger.expense.Consumption = (ledger.expense.Consumption || 0) + cost;
+            if (isEstimated) ledger.hasEstimatedConsumption = true;
+            ledgerChanged = true;
+            dbg('pnl', 'debug', `Verbrauch [${code}]: ${remainingDelta}x konsumiert. Verlust: -${cost.toFixed(2)} Gold (${logReason}).`);
+          } else {
+            dbg('pnl', 'debug', `Verbrauch [${code}]: ${remainingDelta}x konsumiert, aber Kosten = 0 (${logReason}).`);
+          }
+        }
+
+        snapshots.invQty_start[code] = curQty;
+        snapshotsChanged = true;
+      } else if (curQty > startQty) {
+        snapshots.invQty_start[code] = curQty;
+        snapshotsChanged = true;
+      }
+    }
+
+    for (const [code, curQty] of Object.entries(currentQts)) {
+      if (snapshots.invQty_start[code] === undefined) {
+        snapshots.invQty_start[code] = curQty;
+        snapshotsChanged = true;
+      }
+    }
+
+    if (snapshotsChanged) writeCache(KEYS.pnlSnapshots, snapshots);
+
+    if (ledgerChanged) {
+      let sumIncome = 0;
+      for (const val of Object.values(ledger.income)) sumIncome += val;
+      let sumExpense = 0;
+      for (const val of Object.values(ledger.expense)) sumExpense += val;
+      ledger.total = sumIncome - sumExpense;
+      writeCache(KEYS.pnlLedger, ledger);
+      updatePnlUi();
+    }
+  }
+
+  // Resolve unit cost basis for an item code (paid price, else estimated market price).
+  // Mirrors the guard logic used by consumption booking. Returns { unitPaid, isEstimated }.
+  function resolveUnitBasis(code) {
+    const costBasis = readCache(KEYS.pnlCostBasis) || {};
+    const itemBasis = costBasis[code];
+    let unitPaid = 0;
+    let isEstimated = false;
+    if (itemBasis && itemBasis.unitPaid != null) {
+      unitPaid = itemBasis.unitPaid;
+    } else {
+      // Purchase not tracked → fall back to market value (we usually already have it).
+      let price = getCachedPrice(code);
+      if (price == null) {
+        const pc = readCache(KEYS.priceCache);
+        if (pc && pc.data && pc.data[code] != null) price = pc.data[code];
+      }
+      if (price != null) {
+        unitPaid = price;
+        isEstimated = true;
+      }
+    }
+    if (!isFinite(unitPaid) || unitPaid > 10000) unitPaid = 0; // guard against corrupted cost basis
+    return { unitPaid, isEstimated };
+  }
+
+  // Durability wear from inventory scan. Equipment is non-stacking — each instance
+  // carries its own durability. We snapshot a per-code multiset of durability values
+  // on every inventory visit and diff against the previous visit:
+  //   - same code, durability dropped  → wear; book (drop/100)*unitPaid to Repairs.
+  //   - new instance with HIGHER durability than any prior → freshly acquired (buy/craft/
+  //     chest already costed elsewhere) → no wear.
+  //   - prior instance vanished (no current match) → it broke; book its remaining
+  //     durability as full wear. (Gear is rarely sold/unequipped per usage pattern.)
+  // Single wear source — the equipment-API path is intentionally NOT booked, to avoid
+  // double-counting into Repairs.
+function checkInventoryDeltaWear() {
+    if (!isInventoryPage()) return;
+
+    // HIER: Wir holen uns roh ALLE Ausrüstungen (auch getragene/beschädigte!)
+    // über die neue Hilfsfunktion, die wir in Schritt 1 angelegt haben.
+    const curByCode = scanEquipmentDurability();
+
+    let snapshots = readCache(KEYS.pnlSnapshots);
+    if (!snapshots) return;
+
+    // First visit: seed baseline, book nothing.
+    if (!snapshots.equipDur_start || Object.keys(snapshots.equipDur_start).length === 0) {
+      snapshots.equipDur_start = curByCode;
+      writeCache(KEYS.pnlSnapshots, snapshots);
+      return;
+    }
+
+    let ledger = readCache(KEYS.pnlLedger);
+    if (!ledger) ledger = createEmptyLedger(getPnlDayKey());
+    if (!ledger.expense) ledger.expense = {};
+
+    let ledgerChanged = false;
+    const prevByCode = snapshots.equipDur_start;
+    const codes = new Set([...Object.keys(prevByCode), ...Object.keys(curByCode)]);
+
+    for (const code of codes) {
+      const prev = (prevByCode[code] || []).slice();
+      const cur = (curByCode[code] || []).slice();
+      if (!prev.length) continue; // only new acquisitions for this code → nothing wore
+
+      // Cancel unchanged instances (exact durability match), one-for-one.
+      const curRemaining = cur.slice().sort((a, b) => b - a);
+      const prevRemaining = [];
+      for (const p of prev.sort((a, b) => b - a)) {
+        const idx = curRemaining.indexOf(p);
+        if (idx !== -1) curRemaining.splice(idx, 1);
+        else prevRemaining.push(p);
+      }
+      // prevRemaining: instances that changed or vanished (desc).
+      // curRemaining: instances with new durability or newly acquired (desc).
+
+      let totalDurLost = 0;
+      // Match each remaining cur to the closest prior instance ABOVE it (wear lowered it).
+      const curNew = curRemaining.sort((a, b) => a - b); // asc: match smallest cur first
+      for (const c of curNew) {
+        // smallest prevRemaining that is > c
+        let bestIdx = -1;
+        for (let i = prevRemaining.length - 1; i >= 0; i--) { // prevRemaining is desc
+          if (prevRemaining[i] > c) { bestIdx = i; break; }
+        }
+        if (bestIdx !== -1) {
+          totalDurLost += prevRemaining[bestIdx] - c;
+          prevRemaining.splice(bestIdx, 1);
+        }
+        // else: cur instance higher than any prior → newly acquired, no wear.
+      }
+      // Vanished instances (prevRemaining) are NOT booked here: disposal is the
+      // transaction API's job (sell = income; dismantle = removed from cost basis).
+      // Their gradual wear was already booked while still present. Booking the
+      // residual here would double-count sells/dismantles.
+
+      if (totalDurLost > 0) {
+        const { unitPaid, isEstimated } = resolveUnitBasis(code);
+        const cost = unitPaid * (totalDurLost / 100);
+        if (cost > 0) {
+          log(`[WIA:pnl] Verschleiß [${code}]: -${totalDurLost.toFixed(1)}%. Verlust: -${cost.toFixed(2)} Gold${isEstimated ? ' (Schätzwert)' : ''}.`);
+          ledger.expense.Repairs = (ledger.expense.Repairs || 0) + cost;
+          if (isEstimated) ledger.hasEstimatedRepairs = true;
+          ledgerChanged = true;
+        }
+      }
+    }
+
+    // Advance baseline to current state (carries across days; only the ledger resets daily).
+    snapshots.equipDur_start = curByCode;
+    writeCache(KEYS.pnlSnapshots, snapshots);
+
+    if (ledgerChanged) {
+      let sumIncome = 0;
+      for (const val of Object.values(ledger.income)) sumIncome += val;
+      let sumExpense = 0;
+      for (const val of Object.values(ledger.expense)) sumExpense += val;
+      ledger.total = sumIncome - sumExpense;
+      writeCache(KEYS.pnlLedger, ledger);
+      updatePnlUi();
+    }
+  }
+
+  if (typeof document !== 'undefined') {
+    // Consume-items popover: each tile is a clickable item (img[alt]=bread/steak/
+    // cookedFish/cocain/…). A click consumes 1 of that item. We book it immediately
+    // (the transaction API never reports consumption). The inventory-delta backstop
+    // reconciles against these booked events so nothing double-counts.
+    document.addEventListener('click', (e) => {
+      if (!CONFIG.featPnlTracker) return;
+      harvestSelectorPrices(); // capture ammo/food/drug unit prices from any open selector tiles
+      const pop = document.getElementById('consume-food-popover');
+      if (!pop || !pop.contains(e.target)) return;
+      // Find the clicked tile = the LARGEST ancestor (within the popover) whose
+      // subtree contains exactly ONE img[alt]. Robust against dynamic class names.
+      let node = e.target;
+      let tileImg = null;
+      while (node && node !== pop) {
+        const imgs = node.querySelectorAll ? node.querySelectorAll('img[alt]') : [];
+        if (imgs.length === 1) tileImg = imgs[0];   // keep climbing — tile = biggest single-img ancestor
+        else if (imgs.length > 1) break;            // climbed into the multi-tile container → stop
+        node = node.parentElement;
+      }
+      if (tileImg) {
+        const code = tileImg.getAttribute('alt');
+        if (code) { dbg('pnl', 'debug', `Consume click: ${code}`); bookClickConsumption(code, 1); }
+      }
+    });
+  }
+
+  function checkPnlDayReset() {
+    const currentDayKey = getPnlDayKey();
+    let ledger = readCache(KEYS.pnlLedger);
+    if (!ledger || ledger.dayKey !== currentDayKey) {
+      log(`PnL: Day reset detected (old day=${ledger ? ledger.dayKey : 'none'}, new day=${currentDayKey})`);
+      if (ledger) {
+        writeCache(KEYS.pnlYesterday, ledger);
+      }
+      ledger = createEmptyLedger(currentDayKey);
+      writeCache(KEYS.pnlLedger, ledger);
+
+      const goldVal = getGoldBalance();
+      const snapshots = {
+        // null (not 0!) when gold isn't readable yet — else gold_start=0 makes the
+        // gold delta equal the entire balance. Backfilled lazily in updatePnlUi.
+        gold_start: goldVal !== null ? goldVal : null,
+        invQty_start: isInventoryPage() ? getInventoryQuantities() : {}
+      };
+      writeCache(KEYS.pnlSnapshots, snapshots);
+    }
+    return ledger;
+  }
+
+  function safeWritePnlUi(fn) {
+    if (pillBarObserver) {
+      pillBarObserver.disconnect();
+    }
+    try {
+      fn();
+    } finally {
+      if (pillBarObserver) {
+        const m = document.getElementById('layoutUserMenu');
+        if (m) {
+          pillBarObserver.takeRecords();
+          pillBarObserver.observe(m, PILL_OBS_OPTS);
+        }
+      }
+    }
+  }
+
+  const pnlTx = {
+    de: {
+      title: '📊 Tages-P&L Tracker',
+      resetMsg: 'Reset 02:00',
+      income: 'Einnahmen',
+      expense: 'Ausgaben',
+      sales: 'Verkäufe',
+      wages: 'Löhne',
+      empWages: 'Mitarbeiterlöhne',
+      consumption: 'Verbrauch',
+      repairs: 'Verschleiß/Rep.',
+      other: 'Sonstiges',
+      capitalized: 'In Käufe gebunden',
+      untracked: 'Unerfasst',
+      totalPnl: 'Gesamt P&L',
+      goldDelta: 'Gold Delta',
+      today: 'Heute',
+      yesterday: 'Gestern',
+      category: 'Kategorie',
+      footer: 'P&L = Einnahmen − Ausgaben (Käufe zählen erst beim Verbrauch). Gold Delta = Live-Gold − Start.'
+    },
+    en: {
+      title: '📊 Daily P&L Tracker',
+      resetMsg: 'Reset 02:00',
+      income: 'Income',
+      expense: 'Expense',
+      sales: 'Sales',
+      wages: 'Wages',
+      empWages: 'Employee Wages',
+      consumption: 'Consumption',
+      repairs: 'Wear/Repairs',
+      other: 'Other',
+      capitalized: 'Tied up in purchases',
+      untracked: 'Untracked',
+      totalPnl: 'Total P&L',
+      goldDelta: 'Gold Delta',
+      today: 'Today',
+      yesterday: 'Yesterday',
+      category: 'Category',
+      footer: 'P&L = Income − Expense (purchases count only when consumed). Gold Delta = Live Gold − Start.'
+    }
+  };
+
+  function findOrCreatePnlContainer() {
+    const menu = document.getElementById('layoutUserMenu');
+    if (!menu) return null;
+
+    let container = menu.querySelector('div[style*="bottom: -12px"]') ||
+                    menu.querySelector('div[style*="bottom:-12px"]') ||
+                    menu.querySelector('div._1dnmndyb36') ||
+                    menu.querySelector('.wia-pnl-secondary-row');
+
+    if (!container) {
+      container = document.createElement('div');
+      container.className = 'wia-pnl-secondary-row _1dnmndyb0j _1dnmndyayl _1dnmndyb36 _1dnmndyl3l _1dnmndylqi';
+      container.setAttribute('style', 'bottom: -12px; left: 8px; right: 8px; display: flex; gap: 8px; position: absolute; pointer-events: none;');
+      menu.appendChild(container);
+    }
+    return container;
+  }
+
+  function updatePnlUi() {
+    if (!CONFIG.featPnlTracker) {
+      teardownPnlUi();
+      return;
+    }
+
+    const container = findOrCreatePnlContainer();
+    if (!container) return;
+
+    let pnlBadge = document.getElementById('wia-pnl-tracker') || container.querySelector('#wia-pnl-tracker');
+    if (!pnlBadge) {
+      pnlBadge = document.createElement('div');
+      pnlBadge.id = 'wia-pnl-tracker';
+
+      const hoverEl = document.createElement('div');
+      hoverEl.className = 'wia-pnl-hover';
+      pnlBadge.appendChild(hoverEl);
+
+      safeWritePnlUi(() => {
+        container.insertBefore(pnlBadge, container.firstChild);
+      });
+    } else if (pnlBadge.parentElement !== container) {
+      safeWritePnlUi(() => {
+        container.insertBefore(pnlBadge, container.firstChild);
+      });
+    }
+
+    checkPnlDayReset();
+    let ledger = readCache(KEYS.pnlLedger);
+    if (!ledger) ledger = createEmptyLedger(getPnlDayKey());
+    if (!ledger.income) ledger.income = {};
+    if (!ledger.expense) ledger.expense = {};
+
+    const yesterday = readCache(KEYS.pnlYesterday);
+    const snapshots = readCache(KEYS.pnlSnapshots);
+
+    const currentGold = getGoldBalance();
+    let totalGoldDelta = 0;
+    if (currentGold !== null && snapshots) {
+      if (snapshots.gold_start === null || snapshots.gold_start === undefined) {
+        // Backfill a missed start snapshot once gold becomes readable (delta = 0 today).
+        snapshots.gold_start = currentGold;
+        writeCache(KEYS.pnlSnapshots, snapshots);
+      }
+      totalGoldDelta = currentGold - snapshots.gold_start;
+    }
+
+    let sumIncome = 0;
+    for (const val of Object.values(ledger.income || {})) {
+      sumIncome += val;
+    }
+    let sumExpense = 0;
+    for (const val of Object.values(ledger.expense || {})) {
+      sumExpense += val;
+    }
+    const capitalized = ledger.capitalized || 0;
+    const accrualNonCash = (ledger.expense.Consumption || 0) + (ledger.expense.Repairs || 0);
+    ledger.goldDelta = totalGoldDelta;
+    ledger.total = sumIncome - sumExpense;
+    // Reconciliation: gold = total + non-cash accrual − capitalized purchases + residual.
+    // So a clean ledger has residual ≈ 0; capitalized spend is NOT "untracked".
+    ledger.untracked = totalGoldDelta - ledger.total - accrualNonCash + capitalized;
+    writeCache(KEYS.pnlLedger, ledger);
+
+    const todaySign = ledger.total > 0.0001 ? '▲ +' : ledger.total < -0.0001 ? '▼ -' : '• ';
+    const todayValStr = fmtPnl(ledger.total);
+    const todayColor = ledger.total > 0.0001 ? '#3fb950' : ledger.total < -0.0001 ? '#f85149' : '#8b949e';
+
+    const yesterdayTotal = yesterday ? yesterday.total : 0;
+    const yesterdaySign = yesterdayTotal > 0.0001 ? '▲ +' : yesterdayTotal < -0.0001 ? '▼ -' : '• ';
+    const yesterdayValStr = fmtPnl(yesterdayTotal);
+
+    // Apply status tint styling classes
+    pnlBadge.className = 'wia-pnl-tracker';
+    if (ledger.total > 0.0001) {
+      pnlBadge.classList.add('is-positive');
+    } else if (ledger.total < -0.0001) {
+      pnlBadge.classList.add('is-negative');
+    } else {
+      pnlBadge.classList.add('is-neutral');
+    }
+
+    safeWritePnlUi(() => {
+      // Rebuild topbar badge text while keeping hoverEl
+      const hoverEl = pnlBadge.querySelector('.wia-pnl-hover');
+      pnlBadge.innerHTML = '';
+      if (hoverEl) {
+        pnlBadge.appendChild(hoverEl);
+      }
+
+      const loc = pnlTx[getLocale()];
+
+      const yesterdayDiv = document.createElement('div');
+      yesterdayDiv.style.fontSize = '8.5px';
+      yesterdayDiv.style.color = '#8b949e';
+      yesterdayDiv.style.opacity = '0.7';
+      yesterdayDiv.style.whiteSpace = 'nowrap';
+      yesterdayDiv.textContent = `${loc.yesterday.toLowerCase()}: ${yesterdaySign}${yesterdayValStr}`;
+      pnlBadge.appendChild(yesterdayDiv);
+
+      const todayDiv = document.createElement('div');
+      todayDiv.style.fontSize = '11px';
+      todayDiv.style.fontWeight = 'bold';
+      todayDiv.style.color = todayColor;
+      todayDiv.style.whiteSpace = 'nowrap';
+      todayDiv.textContent = `${loc.today.toLowerCase()}: ${todaySign}${todayValStr}`;
+      pnlBadge.appendChild(todayDiv);
+
+      if (hoverEl) {
+        // Income categories
+        const todaySales = ledger.income.Sales || 0;
+        const yesterdaySales = yesterday ? (yesterday.income.Sales || 0) : 0;
+        const todayWages = ledger.income.Wages || 0;
+        const yesterdayWages = yesterday ? (yesterday.income.Wages || 0) : 0;
+        const todayIncOther = ledger.income.Other || 0;
+        const yesterdayIncOther = yesterday ? (yesterday.income.Other || 0) : 0;
+
+        // Expenses (pass as negative to renderPnlRow)
+        const todayCons = -(ledger.expense.Consumption || 0);
+        const yesterdayCons = yesterday ? -(yesterday.expense.Consumption || 0) : 0;
+        const todayRep = -(ledger.expense.Repairs || 0);
+        const yesterdayRep = yesterday ? -(yesterday.expense.Repairs || 0) : 0;
+        const todayEmpWages = -(ledger.expense['Employee Wages'] || 0);
+        const yesterdayEmpWages = yesterday ? -(yesterday.expense['Employee Wages'] || 0) : 0;
+        const todayExpOther = -(ledger.expense.Other || 0);
+        const yesterdayExpOther = yesterday ? -(yesterday.expense.Other || 0) : 0;
+
+        const todayTotalVal = ledger.total || 0;
+        const yesterdayTotalVal = yesterday ? (yesterday.total || 0) : 0;
+
+        const todayGoldDeltaVal = ledger.goldDelta || 0;
+        const yesterdayGoldDeltaVal = yesterday ? (yesterday.goldDelta || 0) : 0;
+
+        const todayUntrackedVal = ledger.untracked || 0;
+        const yesterdayUntrackedVal = yesterday ? (yesterday.untracked || 0) : 0;
+
+        const todayCapital = -(ledger.capitalized || 0);
+        const yesterdayCapital = yesterday ? -(yesterday.capitalized || 0) : 0;
+
+        const formatRowVal = (val, est) => {
+          const absVal = Math.abs(val);
+          if (absVal <= 0.0001) return `<span style="color: #8b949e;">${fmtPnl(0)}</span>`;
+          const sign = val > 0 ? '+' : '-';
+          const color = val > 0 ? '#3fb950' : '#f85149';
+          const estChar = est ? '≈' : '';
+          return `<span style="color: ${color};">${estChar}${sign}${fmtPnl(val)}</span>`;
+        };
+
+        const renderPnlRow = (label, todayVal, yesterdayVal, estToday, estYesterday) => {
+          return `<tr style="border-bottom: 1px dashed rgba(255, 255, 255, 0.05); text-align: right;">
+            <td style="text-align: left; padding: 2px 0; color: #c9d1d9;">${label}</td>
+            <td style="padding: 2px 0;">${formatRowVal(todayVal, estToday)}</td>
+            <td style="padding: 2px 0; padding-left: 8px;">${formatRowVal(yesterdayVal, estYesterday)}</td>
+          </tr>`;
+        };
+
+        let html = `<div style="font-weight: bold; font-size: 12px; margin-bottom: 10px; color: #58a6ff; display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 6px;">`;
+        html += `<span>${loc.title}</span>`;
+        html += `<span style="font-size: 10px; color: #8b949e; font-weight: normal; margin-top: 2px;">${loc.resetMsg}</span>`;
+        html += `</div>`;
+
+        html += `<table style="width: 100%; border-collapse: collapse; font-family: monospace; font-size: 10px; margin-bottom: 6px;">`;
+        html += `<thead>`;
+        html += `<tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.15); color: #8b949e; text-align: right;">`;
+        html += `<th style="text-align: left; padding-bottom: 4px; font-weight: 500; color: #8b949e;">${loc.category}</th>`;
+        html += `<th style="padding-bottom: 4px; font-weight: 500; color: #8b949e;">${loc.today}</th>`;
+        html += `<th style="padding-bottom: 4px; padding-left: 8px; font-weight: 500; color: #8b949e;">${loc.yesterday}</th>`;
+        html += `</tr>`;
+        html += `</thead>`;
+        html += `<tbody>`;
+
+        // Income Header
+        html += `<tr style="color: #3fb950; font-weight: bold; font-size: 10px;"><td colspan="3" style="padding: 6px 0 2px 0; text-transform: uppercase;">${loc.income}</td></tr>`;
+        html += renderPnlRow(loc.sales, todaySales, yesterdaySales, false, false);
+        html += renderPnlRow(loc.wages, todayWages, yesterdayWages, false, false);
+        html += renderPnlRow(loc.other, todayIncOther, yesterdayIncOther, false, false);
+
+        // Expense Header
+        html += `<tr style="color: #f85149; font-weight: bold; font-size: 10px;"><td colspan="3" style="padding: 8px 0 2px 0; text-transform: uppercase;">${loc.expense}</td></tr>`;
+        html += renderPnlRow(loc.consumption, todayCons, yesterdayCons, ledger.hasEstimatedConsumption, yesterday ? yesterday.hasEstimatedConsumption : false);
+        html += renderPnlRow(loc.repairs, todayRep, yesterdayRep, ledger.hasEstimatedRepairs, yesterday ? yesterday.hasEstimatedRepairs : false);
+        html += renderPnlRow(loc.empWages, todayEmpWages, yesterdayEmpWages, false, false);
+        html += renderPnlRow(loc.other, todayExpOther, yesterdayExpOther, false, false);
+
+        const formatBold = (val) => {
+          const absVal = Math.abs(val);
+          if (absVal <= 0.0001) return `<span style="color: #8b949e;">${fmtPnl(0)}</span>`;
+          const sign = val > 0 ? '+' : '-';
+          const color = val > 0 ? '#3fb950' : '#f85149';
+          return `<span style="color: ${color};">${sign}${fmtPnl(val)}</span>`;
+        };
+
+        // Separator line
+        html += `<tr style="border-top: 1px solid rgba(255, 255, 255, 0.15);"><td colspan="3" style="padding: 4px 0 0 0;"></td></tr>`;
+
+        // Capitalized purchases (gold spent on assets — not a loss)
+        html += renderPnlRow(loc.capitalized, todayCapital, yesterdayCapital, false, false);
+
+        // Untracked/Sonstiges (true residual; should be ~0 when tracking is complete)
+        html += renderPnlRow(loc.untracked, todayUntrackedVal, yesterdayUntrackedVal, false, false);
+
+        // Total P&L (Highlight)
+        html += `<tr style="border-top: 1px dashed rgba(255, 255, 255, 0.15); font-weight: bold; text-align: right;">`;
+        html += `<td style="text-align: left; padding: 4px 0; color: #e8eef5;">${loc.totalPnl}</td>`;
+        html += `<td style="padding: 4px 0;">${formatBold(todayTotalVal)}</td>`;
+        html += `<td style="padding: 4px 0; padding-left: 8px;">${formatBold(yesterdayTotalVal)}</td>`;
+        html += `</tr>`;
+
+        // Gold Delta (Highlight)
+        html += `<tr style="border-top: 1px solid rgba(255, 255, 255, 0.15); font-weight: bold; text-align: right;">`;
+        html += `<td style="text-align: left; padding: 4px 0; color: #58a6ff;">${loc.goldDelta}</td>`;
+        html += `<td style="padding: 4px 0;">${formatBold(todayGoldDeltaVal)}</td>`;
+        html += `<td style="padding: 4px 0; padding-left: 8px;">${formatBold(yesterdayGoldDeltaVal)}</td>`;
+        html += `</tr>`;
+
+        html += `</tbody>`;
+        html += `</table>`;
+
+        html += `<div style="font-size: 9px; color: #8b949e; white-space: normal; line-height: 1.3; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 6px; font-style: italic;">`;
+        html += loc.footer;
+        html += `</div>`;
+
+        hoverEl.innerHTML = html;
+      }
+    });
+  }
+
+  function teardownPnlUi() {
+    const badge = document.getElementById('wia-pnl-tracker');
+    if (badge) {
+      safeWritePnlUi(() => {
+        badge.remove();
+      });
+    }
+    const customRow = document.querySelector('.wia-pnl-secondary-row');
+    if (customRow && customRow.childNodes.length === 0) {
+      safeWritePnlUi(() => {
+        customRow.remove();
+      });
+    }
+  }
+
+  // Bump when the ledger math/shape changes incompatibly. v2: fixed _id dedup double-count
+  // + capitalized tracking. v3: fixed gold_start=0 bogus delta + cost-basis sanity guard
+  // (corrupted ~gold-balance unitPaid had inflated wear/consumption into huge negatives).
+  const PNL_SCHEMA_VERSION = 7;
+
+  function migratePnlSchema() {
+    const stored = GM_getValue(KEYS.pnlSchemaVersion, 0);
+    if (stored === PNL_SCHEMA_VERSION) return;
+    // v7: cost-basis qtyKnown was inflated by the missing-dedup bug → wipe everything
+    // and let the persistent-dedup + paginated fetch rebuild it clean from history.
+    writeCache(KEYS.pnlLedger, null);
+    writeCache(KEYS.pnlYesterday, null);
+    writeCache(KEYS.pnlSnapshots, null);
+    writeCache(KEYS.pnlCostBasis, null);
+    writeCache(KEYS.pnlProcessedTxs, null);   // reset dedup → full re-pull rebuilds cost basis
+    writeCache('wia_pnl_known_loot', null);   // loot-id cache
+    GM_setValue(KEYS.pnlSchemaVersion, PNL_SCHEMA_VERSION);
+    log('PnL: schema migrated to v' + PNL_SCHEMA_VERSION + ' (stale caches cleared)');
+  }
+
+  function initPnlTracker() {
+    if (!CONFIG.featPnlTracker) {
+      teardownPnlTracker();
+      return;
+    }
+    migratePnlSchema();
+    checkPnlDayReset();
+    updatePnlUi();
+
+    fetchAndProcessTransactions().then(() => {
+      updatePnlUi();
+    });
+
+    if (pnlInterval) clearInterval(pnlInterval);
+    pnlInterval = setInterval(() => {
+      if (CONFIG.featPnlTracker) {
+        checkPnlDayReset();
+        attachPnlGoldObserver(); // re-attach if SPA replaced the #money node
+        fetchAndProcessTransactions().then(() => {
+          updatePnlUi();
+        });
+      }
+    }, 30000);
+
+    attachPnlGoldObserver();
+  }
+
+  // Live update: watch the gold balance (#money) for changes. ANY gold movement —
+  // Work, market buy/sell, consume — mutates this text. On change we refresh the chip
+  // instantly (cheap, goldDelta-only) and debounce a transaction fetch (~2.5s, to let the
+  // server register the new tx) to categorize the income/expense. One observer covers all
+  // money-moving actions, so we don't need a hook per button.
+  const debouncedPnlTxRefresh = debounce(() => {
+    if (!CONFIG.featPnlTracker) return;
+    checkPnlDayReset();
+    fetchAndProcessTransactions().then(() => updatePnlUi());
+  }, 2500);
+
+  function attachPnlGoldObserver() {
+    const target = document.getElementById('money') ||
+                   (document.getElementById('layoutUserMenu') && document.getElementById('layoutUserMenu').querySelector('#money'));
+    if (!target) return; // retried on next interval tick / route change
+    if (pnlGoldObserver && pnlGoldObserverTarget === target) return;
+    if (pnlGoldObserver) pnlGoldObserver.disconnect();
+    pnlGoldObserverTarget = target;
+    pnlGoldObserver = new MutationObserver(() => {
+      if (!CONFIG.featPnlTracker) return;
+      updatePnlUi();              // instant: chip + live gold delta
+      debouncedPnlTxRefresh();    // then categorize once the tx lands
+    });
+    pnlGoldObserver.observe(target, { childList: true, subtree: true, characterData: true });
+  }
+
+  function teardownPnlTracker() {
+    if (pnlInterval) {
+      clearInterval(pnlInterval);
+      pnlInterval = null;
+    }
+    if (pnlGoldObserver) {
+      pnlGoldObserver.disconnect();
+      pnlGoldObserver = null;
+      pnlGoldObserverTarget = null;
+    }
+    teardownPnlUi();
+  }
+    function scanEquipmentDurability() {
+  const cards = findItemCards(false);
+  const curByCode = {};
+
+  cards.forEach((img, card) => {
+    const { type, code } = detectType(img, card);
+
+    // Nur Ausrüstung (Waffen & Rüstung) erfassen
+    if (['weapon', 'helmet', 'chest', 'gloves', 'pants', 'boots'].includes(type) && code) {
+      const stats = parseStats(card, type);
+      if (stats && stats.durability != null) {
+        if (!curByCode[code]) curByCode[code] = [];
+        curByCode[code].push(stats.durability);
+      }
+    }
+  });
+
+  // Sortieren (absteigend), damit die Zuordnung alt/neu beim Diffen stabil bleibt
+  for (const c in curByCode) {
+    curByCode[c].sort((a, b) => b - a);
+  }
+
+  return curByCode;
+}
+
   function start() {
     migrateTransactionsCache();
+    CONFIG.debug = GM_getValue(KEYS.debug, false);
+    if (typeof location !== 'undefined' && /(?:^|[#&])wia-debug/.test(location.hash)) CONFIG.debug = true;
+    // Register all features so the registry/HUD knows about them up front.
+    regFeature('advisor', 'Item Advisor');
+    regFeature('pnl', 'P&L Tracker');
+    regFeature('marketGraph', 'Market Graph');
+    regFeature('battleAdvisor', 'Battle Advisor');
+    regFeature('pillReminder', 'Pill Reminder');
+    regFeature('notes', 'User Notes');
+    regFeature('api', 'API Layer');
     CONFIG.locale = GM_getValue(KEYS.locale, CONFIG.locale || 'de') || 'de';
     if (typeof window !== 'undefined') {
       window.__WIA_LOCALE__ = CONFIG.locale;
@@ -6504,27 +8018,34 @@
     CONFIG.alliedCountryCodes = GM_getValue(KEYS.alliedCountryCodes, CONFIG.alliedCountryCodes);
     CONFIG.featPillReminder = GM_getValue(KEYS.featPillReminder, false);
     CONFIG.featMarketGraph = GM_getValue(KEYS.featMarketGraph, false);
+    CONFIG.featPnlTracker = GM_getValue(KEYS.featPnlTracker, true);
     CONFIG.pillBuffH = GM_getValue(KEYS.pillBuffH, CONFIG.pillBuffH);
     CONFIG.pillKnifeH = GM_getValue(KEYS.pillKnifeH, CONFIG.pillKnifeH);
     CONFIG.pillDebuffH = GM_getValue(KEYS.pillDebuffH, CONFIG.pillDebuffH);
     CONFIG.pillPrefWindowFrom = GM_getValue(KEYS.pillPrefWindowFrom, CONFIG.pillPrefWindowFrom);
     CONFIG.pillPrefWindowTo = GM_getValue(KEYS.pillPrefWindowTo, CONFIG.pillPrefWindowTo);
     injectStyles();
-    if (CONFIG.featNotes) initNotes();
-    if (CONFIG.featBattleAdvisor && isBattlePage()) applyBattleAdvisory();
-    if (CONFIG.featPillReminder) initPillReminder();
-    if (CONFIG.featMarketGraph) initMarketGraph();
+    // Each entrypoint guarded → a crash in one feature can't abort the rest of start().
+    if (CONFIG.featNotes) guard('notes', initNotes); else setHealth('notes', 'idle', 'disabled in settings');
+    if (CONFIG.featBattleAdvisor) {
+      if (isBattlePage()) guard('battleAdvisor', applyBattleAdvisory);
+      else setHealth('battleAdvisor', 'idle', 'not on battle page');
+    } else setHealth('battleAdvisor', 'idle', 'disabled in settings');
+    if (CONFIG.featPillReminder) guard('pillReminder', initPillReminder); else setHealth('pillReminder', 'idle', 'disabled in settings');
+    if (CONFIG.featMarketGraph) guard('marketGraph', initMarketGraph); else setHealth('marketGraph', 'idle', 'disabled in settings');
+    if (CONFIG.featPnlTracker) guard('pnl', initPnlTracker); else setHealth('pnl', 'idle', 'disabled in settings');
     injectGear();
     refreshMenuCommands();
+    if (CONFIG.debug) { setTimeout(() => { runProbes(); updateDebugHud(); }, 1500); }
 
     observer = new MutationObserver(() => triggerScan(false));
     if (isInventoryPage() || isMarketPage()) {
       updateObserverTarget();
       if (isInventoryPage()) {
-        scanInventory(false);
+        guard('advisor', () => scanInventory(false));
       } else {
         scrapeMarketPrices();
-        scanInventory(false);
+        guard('advisor', () => scanInventory(false));
         renderScrapFlip().catch((e) => log('renderScrapFlip error:', e));
       }
       startRoutePolling();
@@ -6547,6 +8068,22 @@
 
     // Fallback interval check
     setInterval(handleRouteChange, 2000);
+
+    // Advisor self-heal heartbeat: if the grid re-rendered (new nodes / stripped badges)
+    // and nothing re-triggered a scan, re-attach the observer and rescan. hasInventoryChanged
+    // returns true after an in-place re-render (node identity differs, or a card lacks both
+    // a badge and the suppressed marker — see 2884) and false when everything is already
+    // badged/suppressed, so this is a no-op cost when the grid is stable.
+    setInterval(() => {
+      if (scanning) return;
+      if (!isInventoryPage() && !isMarketPage()) return;
+      const cards = findItemCards();
+      if (cards.size > 0 && hasInventoryChanged(cards)) {
+        log('Advisor heartbeat: grid changed without rescan → re-attach + rescan');
+        updateObserverTarget();      // revive observer in case its root went stale
+        guard('advisor', () => triggerScan(false));
+      }
+    }, 1500);
 
     // Trigger crafting advisor check once on startup if the modal is open
     triggerCraftingAdvisorCheck();

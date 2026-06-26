@@ -42,6 +42,13 @@ class MockElement {
     this.offsetHeight = 50;
   }
 
+  focus() {}
+  blur() {}
+
+  get childNodes() {
+    return this.children;
+  }
+
   get className() {
     return this._className;
   }
@@ -239,6 +246,9 @@ class MockElement {
     if (tag && this.tagName !== tag) return false;
     if (!rest) return true;
 
+    if (rest.startsWith('#')) {
+      return this.getAttribute('id') === rest.slice(1);
+    }
     if (rest.startsWith('.')) {
       return this.classList.contains(rest.slice(1));
     }
@@ -307,12 +317,14 @@ class MockElement {
   }
 
   get textContent() {
-    if (this.children.length === 0) return this._textContent || '';
-    return this.children.map(c => c.textContent).join(' ');
+    if (this.children.length === 0) {
+      return this._textContent !== undefined && this._textContent !== null ? String(this._textContent) : '';
+    }
+    return this.children.map(c => String(c.textContent)).join(' ');
   }
 
   set textContent(val) {
-    this._textContent = val;
+    this._textContent = val !== undefined && val !== null ? String(val) : '';
   }
 }
 
@@ -332,6 +344,12 @@ global.document = {
   addEventListener: () => {},
   removeEventListener: () => {},
   createElement: (tag) => new MockElement(tag),
+  createTextNode: (text) => {
+    const el = new MockElement('span');
+    el.nodeType = 3;
+    el.textContent = text;
+    return el;
+  },
   body: documentBody,
   querySelectorAll: (selector) => documentBody.querySelectorAll(selector),
   querySelector: (selector) => {
@@ -626,16 +644,18 @@ try {
   assert.ok(modalEl, 'Settings modal should be rendered');
 
   const hintBtns = bg.querySelectorAll('.wia-hint-toggle');
-  assert.strictEqual(hintBtns.length, 6, 'Should have exactly 6 hint toggle buttons (Notes, Battle, Live Offers, Scrap Flip, Pill Reminder, Market Graph)');
+  assert.strictEqual(hintBtns.length, 7, 'Should have exactly 7 hint toggle buttons (Notes, Battle, Live Offers, Scrap Flip, Pill Reminder, Market Graph, P&L Tracker)');
 
   const liveOffersCheckbox = bg.querySelector('.wia-live-offers');
   const scrapFlipCheckbox = bg.querySelector('.wia-scrap-flip');
   const featPillCheckbox = bg.querySelector('.wia-feat-pill');
   const featMarketGraphCheckbox = bg.querySelector('.wia-feat-market-graph');
+  const featPnlTrackerCheckbox = bg.querySelector('.wia-feat-pnl-tracker');
   assert.ok(liveOffersCheckbox, 'Live offers checkbox should be present');
   assert.ok(scrapFlipCheckbox, 'Scrap flip checkbox should be present');
   assert.ok(featPillCheckbox, 'Pill reminder checkbox should be present');
   assert.ok(featMarketGraphCheckbox, 'Market graph checkbox should be present');
+  assert.ok(featPnlTrackerCheckbox, 'P&L Tracker checkbox should be present');
 
   const highCritCheckbox = bg.querySelector('.wia-high-crit');
   assert.strictEqual(highCritCheckbox, null, 'High crit checkbox should be removed');
@@ -1265,8 +1285,511 @@ try {
   globalThis.fetchPrices = originalFetchPrices;
   console.log('scanInventory provisional rendering tests passed successfully.');
 
-  console.log('Success! The script loaded and initialized without throwing any runtime errors.');
-  process.exit(0);
+  console.log('--- Testing Daily P&L Tracker: Phase 1 ---');
+  
+  // Clean storage mock
+  globalThis.clearCache();
+  globalThis.CONFIG.featPnlTracker = true;
+  globalThis.GM_setValue('wia.pnl.ledger', null);
+  globalThis.GM_setValue('wia.pnl.yesterday', null);
+  globalThis.GM_setValue('wia.pnl.snapshots', null);
+  
+  // 1. Day key calculations
+  const timeA = new Date(2026, 5, 24, 1, 0, 0).getTime();
+  const dayKeyA = globalThis.getPnlDayKey(timeA);
+  assert.strictEqual(dayKeyA, '2026-06-23', 'PnL day key at 01:00 AM should belong to previous day');
+  
+  const timeB = new Date(2026, 5, 24, 3, 0, 0).getTime();
+  const dayKeyB = globalThis.getPnlDayKey(timeB);
+  assert.strictEqual(dayKeyB, '2026-06-24', 'PnL day key at 03:00 AM should belong to current day');
+  
+  // 2. Gold Balance parsing test
+  const testMenu = new MockElement('div');
+  testMenu.setAttribute('id', 'layoutUserMenu');
+  const goldContainer = new MockElement('div');
+  goldContainer.setAttribute('id', 'money');
+  const goldIcon = new MockElement('img');
+  goldIcon.setAttribute('src', '/images/items/gold.png');
+  goldIcon.setAttribute('alt', 'gold');
+  goldContainer.appendChild(goldIcon);
+  goldContainer.appendChild(global.document.createTextNode(' 108.517 '));
+  testMenu.appendChild(goldContainer);
+  
+  // Temporarily replace documentBody children or querySelector to point to our test menu
+  const oldBodyQuerySelector = global.document.querySelector;
+  const oldBodyGetElementById = global.document.getElementById;
+  global.document.getElementById = (id) => id === 'layoutUserMenu' ? testMenu : null;
+  global.document.querySelector = (sel) => {
+    if (sel === '#layoutUserMenu') return testMenu;
+    return testMenu.querySelector(sel);
+  };
+  
+  const goldParsed = globalThis.getGoldBalance();
+  assert.strictEqual(goldParsed, 108.517, 'Parsed gold balance should be 108.517');
+  
+  // 3. Reset and ledger initialization
+  const initialLedger = globalThis.checkPnlDayReset();
+  assert.ok(initialLedger, 'Ledger should be initialized');
+  assert.strictEqual(initialLedger.dayKey, globalThis.getPnlDayKey(), 'Ledger dayKey should match current day key');
+  
+  const snap = globalThis.GM_getValue('wia.pnl.snapshots');
+  assert.ok(snap, 'Snapshots should be saved');
+  assert.strictEqual(snap.gold_start, 108.517, 'Snapshot gold_start should be captured');
+  
+  // Test UI injection
+  globalThis.updatePnlUi();
+  const trackerBadge = testMenu.querySelector('#wia-pnl-tracker');
+  assert.ok(trackerBadge, 'P&L tracker badge should be injected');
+  
+  // If we change gold balance, UI update should show delta
+  goldContainer.children = [];
+  goldContainer.appendChild(goldIcon);
+  goldContainer.appendChild(global.document.createTextNode(' 110.117 ')); // +1.600 gold
+  
+  console.log('--- Testing Daily P&L Tracker: Phase 2 ---');
+  
+  // Clean mock storage and initialize
+  globalThis.clearCache();
+  globalThis.CONFIG.featPnlTracker = true;
+  globalThis.GM_setValue('wia.pnl.ledger', null);
+  globalThis.GM_setValue('wia.pnl.yesterday', null);
+  globalThis.GM_setValue('wia.pnl.snapshots', null);
+  globalThis.GM_setValue('wia.pnl.costBasis', null);
+  
+  // Let's mock todayResetTime to return a fixed time: 2026-06-24 02:00:00 (local reset)
+  const fixedResetTime = new Date(2026, 5, 24, 2, 0, 0).getTime();
+  const oldTodayResetTime = globalThis.todayResetTime;
+  globalThis.todayResetTime = () => fixedResetTime;
+  
+  // Let's create mock transactions
+  const mockUserId = 'my-user-id';
+  
+  const mockTxs = [
+    // 1. Purchase before today's reset -> should update cost basis, but NOT ledger today
+    {
+      id: 'tx-old-buy',
+      transactionType: 'trading',
+      money: '50.000',
+      quantity: 5,
+      sellerId: 'other-user-id',
+      buyerId: mockUserId,
+      itemCode: 'food_bread',
+      createdAt: new Date(2026, 5, 24, 1, 0, 0).toISOString() // 1:00 AM
+    },
+    // 2. Purchase today -> should update cost basis, and capitalized (NOT expensed)
+    {
+      id: 'tx-today-buy',
+      transactionType: 'trading',
+      money: '120.000',
+      quantity: 10,
+      sellerId: 'other-user-id',
+      buyerId: mockUserId,
+      itemCode: 'food_bread',
+      createdAt: new Date(2026, 5, 24, 3, 0, 0).toISOString() // 3:00 AM
+    },
+    // 3. Sale today -> should add to Sales income today
+    {
+      id: 'tx-today-sell',
+      transactionType: 'trading',
+      money: '200.000',
+      quantity: 4,
+      sellerId: mockUserId,
+      buyerId: 'other-user-id',
+      itemCode: 'steel',
+      createdAt: new Date(2026, 5, 24, 4, 0, 0).toISOString() // 4:00 AM
+    },
+    // 4. Earned wage today -> should add to Wages income today
+    {
+      id: 'tx-today-wage-earn',
+      transactionType: 'wage',
+      money: '15.500',
+      quantity: 1,
+      sellerId: mockUserId,
+      buyerId: 'company-user-id',
+      createdAt: new Date(2026, 5, 24, 5, 0, 0).toISOString()
+    },
+    // 5. Paid employee wage today -> should add to Employee Wages expense today
+    {
+      id: 'tx-today-wage-pay',
+      transactionType: 'wage',
+      money: '8.000',
+      quantity: 1,
+      sellerId: 'employee-user-id',
+      buyerId: mockUserId,
+      createdAt: new Date(2026, 5, 24, 6, 0, 0).toISOString()
+    },
+    // 6. Spende (donation) today -> should add to Other expense today
+    {
+      id: 'tx-today-donation',
+      transactionType: 'donation',
+      money: '5.000',
+      sellerId: 'mu-id',
+      buyerId: mockUserId,
+      createdAt: new Date(2026, 5, 24, 7, 0, 0).toISOString()
+    }
+  ];
+  
+  // Initialize ledger
+  globalThis.checkPnlDayReset();
+  
+  // Process the transactions
+  globalThis.processTransactionsList(mockTxs, mockUserId);
+  
+  // Assertions
+  const costBasisResult = globalThis.GM_getValue('wia.pnl.costBasis');
+  assert.ok(costBasisResult, 'Cost basis should be populated');
+  // For food_bread, old purchase unit paid was 10 (50 / 5), new was 12 (120 / 10).
+  // Chronologically, the new one was processed last, so it should overwrite with 12.
+  assert.strictEqual(costBasisResult.food_bread.unitPaid, 12, 'Cost basis for food_bread should be 12 (newest transaction)');
+  
+  const ledgerResult = globalThis.GM_getValue('wia.pnl.ledger');
+  assert.ok(ledgerResult, 'Ledger should be updated');
+  
+  // Income verification
+  assert.strictEqual(ledgerResult.income.Sales, 200.000, 'Sales income should be 200.000');
+  assert.strictEqual(ledgerResult.income.Wages, 15.500, 'Wages income should be 15.500');
+  // Expense verification
+  assert.strictEqual(ledgerResult.expense['Employee Wages'], 8.000, 'Employee Wages expense should be 8.000');
+  assert.strictEqual(ledgerResult.expense.Other, 5.000, 'Donation should be mapped to Other expense (5.000)');
+  // Purchases (trading buy) should NOT be expensed (should be capitalized)
+  assert.strictEqual(ledgerResult.expense.Sales || 0, 0, 'Sales expense should be 0 (capitalized)');
+  
+  // Ledger total: (200 + 15.5) - (8 + 5) = 215.5 - 13 = 202.5
+  assert.strictEqual(ledgerResult.total, 202.500, 'Accrual total should be 202.500');
+  
+  // Clean up mockTodayResetTime
+  globalThis.todayResetTime = oldTodayResetTime;
+  
+  console.log('Daily P&L Tracker Phase 2 tests passed successfully.');
+
+  console.log('--- Testing Daily P&L Tracker: Phase 3 ---');
+  
+  // Clean mock storage and initialize
+  globalThis.clearCache();
+  globalThis.CONFIG.featPnlTracker = true;
+  global.location.pathname = '/user/my-user-id/inventory';
+  
+  // Set cost basis: food_bread = 12. pill_haste = 100 (estimated via priceCache)
+  globalThis.writeCache('wia.pnl.costBasis', {
+    food_bread: { unitPaid: 12, qtyKnown: 10 }
+  });
+  globalThis.writeCache('wia.priceCache', {
+    data: { pill_haste: 100 },
+    fetchedAt: Date.now()
+  });
+  
+  // 1. Parse quantity test
+  const cardA = new MockElement('div');
+  const qtySpan = new MockElement('span');
+  qtySpan.textContent = 'x5';
+  cardA.appendChild(qtySpan);
+  assert.strictEqual(globalThis.parseCardQuantity(cardA), 5, 'Should parse "x5" quantity as 5');
+  
+  const cardB = new MockElement('div');
+  const qtyDiv = new MockElement('div');
+  qtyDiv.textContent = ' 20 ';
+  cardB.appendChild(qtyDiv);
+  assert.strictEqual(globalThis.parseCardQuantity(cardB), 20, 'Should parse plain "20" text node quantity as 20');
+  
+  // 2. Click consumption test
+  globalThis.bookClickConsumption('food_bread', 2); // 2 * 12 = 24 expense
+  let clickLedger = globalThis.readCache('wia.pnl.ledger');
+  assert.strictEqual(clickLedger.expense.Consumption, 24, 'Click consumption of 2 bread should cost 24');
+  assert.strictEqual(clickLedger.bookedConsumptionEvents.length, 1, 'Should record click consumption event');
+  assert.strictEqual(clickLedger.bookedConsumptionEvents[0].code, 'food_bread');
+  assert.strictEqual(clickLedger.bookedConsumptionEvents[0].qty, 2);
+  
+  // 3. Fallback inventory-delta detection test (and matching click consumption / sales)
+  // Let's prepare a snapshot with starting quantities
+  const snapshotsMock = {
+    gold_start: 1000,
+    durability_start: {},
+    invQty_start: {
+      food_bread: 10,
+      pill_haste: 5,
+      steel: 10
+    }
+  };
+  globalThis.writeCache('wia.pnl.snapshots', snapshotsMock);
+  
+  // Let's mock findItemCards
+  const oldFindItemCards = globalThis.findItemCards;
+  
+  const breadCardPnl = new MockElement('div');
+  const breadImgPnl = new MockElement('img');
+  breadImgPnl.setAttribute('alt', 'food_bread');
+  breadCardPnl.appendChild(breadImgPnl);
+  const breadQtyPnl = new MockElement('span');
+  breadQtyPnl.textContent = 'x7';
+  breadCardPnl.appendChild(breadQtyPnl);
+  
+  const pillCardPnl = new MockElement('div');
+  const pillImgPnl = new MockElement('img');
+  pillImgPnl.setAttribute('alt', 'pill_haste');
+  pillCardPnl.appendChild(pillImgPnl);
+  const pillQtyPnl = new MockElement('span');
+  pillQtyPnl.textContent = 'x4';
+  pillCardPnl.appendChild(pillQtyPnl);
+  
+  const steelCardPnl = new MockElement('div');
+  const steelImgPnl = new MockElement('img');
+  steelImgPnl.setAttribute('alt', 'steel');
+  steelCardPnl.appendChild(steelImgPnl);
+  const steelQtyPnl = new MockElement('span');
+  steelQtyPnl.textContent = 'x8';
+  steelCardPnl.appendChild(steelQtyPnl);
+  
+  globalThis.findItemCards = () => {
+    const map = new Map();
+    map.set(breadCardPnl, breadImgPnl);
+    map.set(pillCardPnl, pillImgPnl);
+    map.set(steelCardPnl, steelImgPnl);
+    return map;
+  };
+  
+  // Also we had sales today! Process a sale transaction of 2 steel today
+  const currentLedger = globalThis.readCache('wia.pnl.ledger');
+  currentLedger.todaySales = { steel: 2 };
+  globalThis.writeCache('wia.pnl.ledger', currentLedger);
+  
+  // Run inventory delta check
+  globalThis.checkInventoryDeltaConsumption();
+  
+  // Let's check the booked expense:
+  // - food_bread drop is 3. We had 2 click events for food_bread. So remaining delta is 1. Cost is 1 * 12 = 12.
+  // - pill_haste drop is 1. We had 0 click events. Cost is 1 * 100 (fallback cached price) = 100.
+  // - steel drop is 2. We had 2 sales for steel today. So remaining delta is 0. Cost is 0.
+  // Total Consumption today should be: 24 (from click) + 12 (from delta food_bread) + 100 (from delta pill_haste) = 136.
+  const finalLedger = globalThis.readCache('wia.pnl.ledger');
+  assert.strictEqual(finalLedger.expense.Consumption, 136, 'Consumption should be 136 (24 click + 12 bread delta + 100 pill delta)');
+  
+  // Restores
+  globalThis.findItemCards = oldFindItemCards;
+  console.log('Daily P&L Tracker Phase 3 tests passed successfully.');
+  // We wrap Phase 4 tests in an async IIFE to allow the use of await in this CommonJS environment
+  (async () => {
+    try {
+      console.log('--- Testing Daily P&L Tracker: Phase 4 ---');
+      
+      // Clean mock storage and initialize
+      globalThis.clearCache();
+      globalThis.CONFIG.featPnlTracker = true;
+      globalThis.CONFIG.minRequestIntervalMs = 0;
+      globalThis.CONFIG.debug = true;
+      // Set obfuscated token so internal getToken() decodes it correctly
+      const testXor = (str, pad) => {
+        let out = '';
+        for (let i = 0; i < str.length; i++) {
+          out += String.fromCharCode(str.charCodeAt(i) ^ pad.charCodeAt(i % pad.length));
+        }
+        return out;
+      };
+      const encodedToken = btoa(testXor('my-dummy-token', 'wareEra.advisor.v1'));
+      globalThis.writeCache('wia.token', encodedToken);
+      
+      // Set cost basis: chest3 (armor) = 500, helmet3 = 200 (estimated via priceCache)
+      globalThis.writeCache('wia.pnl.costBasis', {
+        chest3: { unitPaid: 500, qtyKnown: 1 }
+      });
+      globalThis.writeCache('wia.priceCache', {
+        data: { helmet3: 200 },
+        fetchedAt: Date.now()
+      });
+      
+      // 1. Mock GM_xmlhttpRequest to return equipment data
+      let currentMockEquipPayload = [
+        { slot: 'chest', itemCode: 'chest3', durability: 100 },
+        { slot: 'helmet', itemCode: 'helmet3', durability: 98 }
+      ];
+      const oldXmlHttpRequest = global.GM_xmlhttpRequest;
+      global.GM_xmlhttpRequest = (opts) => {
+        if (opts.url.includes('inventory.fetchCurrentEquipment')) {
+          opts.onload({
+            status: 200,
+            responseText: JSON.stringify([{
+              result: {
+                data: {
+                  json: currentMockEquipPayload
+                }
+              }
+            }])
+          });
+          return;
+        }
+        if (oldXmlHttpRequest) {
+          oldXmlHttpRequest(opts);
+        } else {
+          opts.onerror(new Error('not implemented'));
+        }
+      };
+      
+      // Initialize ledger and snapshots
+      globalThis.checkPnlDayReset();
+      
+      // Give the event loop a chance to resolve the async fetchStartingEquipmentSnapshot promise:
+      await new Promise(r => setTimeout(r, 0));
+      
+      const snapsAfterInit = globalThis.readCache('wia.pnl.snapshots');
+      assert.ok(snapsAfterInit.durability_start, 'Durability starting snapshots should be captured');
+      assert.strictEqual(snapsAfterInit.durability_start.chest.durability, 100, 'Chest start durability should be 100');
+      assert.strictEqual(snapsAfterInit.durability_start.helmet.durability, 98, 'Helmet start durability should be 98');
+      
+      // Now simulate durability drop:
+      // - chest: 100 -> 98 (2% drop) -> Cost is 2% * 500 = 10
+      // - helmet: 98 -> 93 (5% drop) -> Cost is 5% * 200 (fallback) = 10
+      // Total Repairs expense should be: 10 + 10 = 20
+      currentMockEquipPayload = [
+        { slot: 'chest', itemCode: 'chest3', durability: 98 },
+        { slot: 'helmet', itemCode: 'helmet3', durability: 93 }
+      ];
+      
+      await globalThis.checkDurabilityWear();
+      
+      const pnlLedgerResult = globalThis.readCache('wia.pnl.ledger');
+      assert.strictEqual(pnlLedgerResult.expense.Repairs, 20, 'Repairs expense should be 20 (10 chest wear + 10 helmet wear)');
+      
+      // Now simulate durability increase (repair) -> should update snapshots baseline but NOT add/subtract wear cost!
+      // - chest: 98 -> 100
+      // - helmet: 93 -> 98
+      currentMockEquipPayload = [
+        { slot: 'chest', itemCode: 'chest3', durability: 100 },
+        { slot: 'helmet', itemCode: 'helmet3', durability: 98 }
+      ];
+      
+      await globalThis.checkDurabilityWear();
+      
+      const postRepairLedger = globalThis.readCache('wia.pnl.ledger');
+      assert.strictEqual(postRepairLedger.expense.Repairs, 20, 'Repairs expense should remain 20 after repair (repaired jump is neutral)');
+      
+      // Check snapshot baseline was updated to 100 and 98
+      const snapsPostRepair = globalThis.readCache('wia.pnl.snapshots');
+      assert.strictEqual(snapsPostRepair.durability_start.chest.durability, 100, 'Snapshot chest baseline should update to 100');
+      assert.strictEqual(snapsPostRepair.durability_start.helmet.durability, 98, 'Snapshot helmet baseline should update to 98');
+      
+      // Restore GM_xmlhttpRequest mock
+      global.GM_xmlhttpRequest = oldXmlHttpRequest;
+      
+      console.log('Daily P&L Tracker Phase 4 tests passed successfully.');
+
+      console.log('--- Testing Daily P&L Tracker: Phase 5 ---');
+      
+      // Clean mock storage and initialize
+      globalThis.clearCache();
+      globalThis.CONFIG.featPnlTracker = true;
+      globalThis.CONFIG.locale = 'en'; // Force English locale for text assertions
+      
+      // Setup testMenu with goldContainer
+      const testMenuP5 = new MockElement('div');
+      testMenuP5.setAttribute('id', 'layoutUserMenu');
+      const goldContainerP5 = new MockElement('div');
+      goldContainerP5.setAttribute('id', 'money');
+      const goldIconP5 = new MockElement('img');
+      goldIconP5.setAttribute('src', '/images/items/gold.png');
+      goldIconP5.setAttribute('alt', 'gold');
+      goldContainerP5.appendChild(goldIconP5);
+      
+      // Starting gold is 100.000
+      const goldTextNode = global.document.createTextNode(' 100.000 ');
+      goldContainerP5.appendChild(goldTextNode);
+      testMenuP5.appendChild(goldContainerP5);
+      
+      // Mock getElementById and querySelector for UI update
+      global.document.getElementById = (id) => id === 'layoutUserMenu' ? testMenuP5 : null;
+      global.document.querySelector = (sel) => {
+        if (sel === '#layoutUserMenu') return testMenuP5;
+        return testMenuP5.querySelector(sel);
+      };
+      
+      // 1. Initialize today's reset snapshot with start gold = 100
+      globalThis.checkPnlDayReset();
+      
+      // 2. Set today's ledger values
+      let ledgerP5 = globalThis.readCache('wia.pnl.ledger');
+      ledgerP5.income = { Sales: 10.5, Wages: 0.12, Other: 0 };
+      ledgerP5.expense = { Consumption: 12.0, Repairs: 2.1, 'Employee Wages': 1.5, Other: 0 };
+      ledgerP5.hasEstimatedRepairs = true;
+      globalThis.writeCache('wia.pnl.ledger', ledgerP5);
+      
+      // 3. Set yesterday's ledger values
+      const yesterdayLedger = {
+        dayKey: '2026-06-22',
+        startedAt: Date.now() - 86400000,
+        income: { Sales: 5.2, Wages: 0.24, Other: 0 },
+        expense: { Consumption: 24.0, Repairs: 0, 'Employee Wages': 1.5, Other: 0.5 },
+        total: -21.0,
+        goldDelta: -21.44,
+        untracked: -0.44,
+        hasEstimatedConsumption: false,
+        hasEstimatedRepairs: false
+      };
+      globalThis.writeCache('wia.pnl.yesterday', yesterdayLedger);
+      
+      // 4. Change current gold balance to 95.000 (creates a live gold delta of -5.000 today)
+      goldTextNode.textContent = ' 95.000 ';
+      
+      // 5. Trigger UI update
+      globalThis.updatePnlUi();
+      
+      // 6. Assert UI elements
+      const badgeP5 = testMenuP5.querySelector('#wia-pnl-tracker');
+      assert.ok(badgeP5, 'P&L tracker badge should exist');
+      
+      // Verify badge text
+      const badgeContent = badgeP5.textContent;
+      assert.ok(badgeContent.includes('today: ▼ -4.98'), 'Badge text should display today\'s accrual P&L total');
+      assert.ok(badgeContent.includes('yesterday: ▼ -21.00'), 'Badge text should display yesterday\'s accrual P&L total');
+      
+      // Verify tooltip table breakdown content
+      const hoverElP5 = badgeP5.querySelector('.wia-pnl-hover');
+      assert.ok(hoverElP5, 'Tooltip hover element should exist');
+      const tooltipHtml = hoverElP5.innerHTML;
+      
+      // Check today's column values:
+      // Sales: +10.50
+      assert.ok(tooltipHtml.includes('+10.50'), 'Tooltip should show +10.50 Sales');
+      // Wages: +0.12
+      assert.ok(tooltipHtml.includes('+0.12'), 'Tooltip should show +0.12 Wages');
+      // Consumption: -12.00
+      assert.ok(tooltipHtml.includes('-12.00'), 'Tooltip should show -12.00 Consumption');
+      // Repairs: ≈-2.10 (estimated)
+      assert.ok(tooltipHtml.includes('≈-2.10'), 'Tooltip should show ≈-2.10 Repairs');
+      // Employee Wages: -1.50
+      assert.ok(tooltipHtml.includes('-1.50'), 'Tooltip should show -1.50 Employee Wages');
+      // Untracked (today): goldDelta(-5) - total(-4.98) - accrualNonCash(14.1) + capitalized(0) = -14.12
+      assert.ok(tooltipHtml.includes('-14.12'), 'Tooltip should show -14.12 Untracked residual');
+      // Total P&L (today): -4.98
+      assert.ok(tooltipHtml.includes('-4.98'), 'Tooltip should show -4.98 Total P&L');
+
+      // Check yesterday's column values:
+      // Sales: +5.20
+      assert.ok(tooltipHtml.includes('+5.20'), 'Tooltip should show +5.20 Sales yesterday');
+      // Wages: +0.24
+      assert.ok(tooltipHtml.includes('+0.24'), 'Tooltip should show +0.24 Wages yesterday');
+      // Consumption: -24.00
+      assert.ok(tooltipHtml.includes('-24.00'), 'Tooltip should show -24.00 Consumption yesterday');
+      // Untracked (yesterday, stored): -0.44
+      assert.ok(tooltipHtml.includes('-0.44'), 'Tooltip should show -0.44 Untracked yesterday');
+      // Total P&L: -21.00
+      assert.ok(tooltipHtml.includes('-21.00'), 'Tooltip should show -21.00 Total P&L yesterday');
+      // Gold Delta: -21.44
+      assert.ok(tooltipHtml.includes('-21.44'), 'Tooltip should show -21.44 Gold Delta yesterday');
+      
+      console.log('Daily P&L Tracker Phase 5 tests passed successfully.');
+ 
+      // Restore document mock functions
+      global.document.querySelector = oldBodyQuerySelector;
+      global.document.getElementById = oldBodyGetElementById;
+      
+      console.log('Daily P&L Tracker Phase 1 tests passed successfully.');
+
+      console.log('Success! The script loaded and initialized without throwing any runtime errors.');
+      process.exit(0);
+    } catch (err) {
+      console.error('Error during script load/execution:');
+      console.error(err.stack || err);
+      process.exit(1);
+    }
+  })();
 } catch (err) {
   console.error('Error during script load/execution:');
   console.error(err.stack || err);
