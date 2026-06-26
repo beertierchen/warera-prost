@@ -3473,7 +3473,6 @@
         font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         border-radius: 6px; padding: 2px 8px; cursor: pointer; user-select: none;
         z-index: 10000; min-height: 26px; box-sizing: border-box;
-        max-width: 200px; overflow: hidden;
         background: rgba(13, 17, 23, 0.45);
         border: 1px solid rgba(255, 255, 255, 0.08);
         box-shadow: 0 1px 3px rgba(0, 0, 0, .35);
