@@ -641,6 +641,7 @@
     pnlYesterday: NS + 'pnl.yesterday',
     pnlCostBasis: NS + 'pnl.costBasis',
     pnlSnapshots: NS + 'pnl.snapshots',
+    pnlSchemaVersion: NS + 'pnl.schemaVersion',
   };
 
   const memoryCache = {};
@@ -3468,13 +3469,13 @@
       /* ── Daily P&L Tracker styles ── */
       .wia-pnl-tracker {
         display: inline-flex; flex-direction: column; align-items: center; justify-content: center;
-        position: relative; margin: 0 4px;
+        position: relative; margin: 0 4px; top: 20px;
         font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         border-radius: 6px; padding: 2px 8px; cursor: pointer; user-select: none;
-        z-index: 10000; min-height: 28px; box-sizing: border-box;
-        background: rgba(13, 17, 23, 0.55);
-        border: 1px solid rgba(255, 255, 255, 0.10);
-        box-shadow: 0 1px 3px rgba(0, 0, 0, .4);
+        z-index: 10000; min-height: 26px; box-sizing: border-box;
+        background: rgba(13, 17, 23, 0.45);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        box-shadow: 0 1px 3px rgba(0, 0, 0, .35);
         line-height: 1.15;
         pointer-events: auto;
       }
@@ -3489,12 +3490,11 @@
       }
       .wia-pnl-hover {
         display: none; position: absolute; top: 100%; left: 0; margin-top: 8px;
-        width: 270px; background: rgba(13, 17, 23, .98);
-        border: 1px solid rgba(255, 255, 255, .15);
-        border-radius: 8px; padding: 10px 12px; box-shadow: 0 8px 24px rgba(0, 0, 0, .65);
-        color: #c9d1d9; font-weight: normal; text-align: left; font-size: 11px;
-        text-shadow: none; z-index: 10001; line-height: 1.4;
-        max-height: 350px; overflow-y: auto; overflow-x: hidden;
+        width: 248px; background: rgba(13, 17, 23, .92);
+        border: 1px solid rgba(255, 255, 255, .10);
+        border-radius: 8px; padding: 8px 10px; box-shadow: 0 6px 18px rgba(0, 0, 0, .5);
+        color: #c9d1d9; font-weight: normal; text-align: left; font-size: 10px;
+        text-shadow: none; z-index: 10001; line-height: 1.2;
         box-sizing: border-box;
       }
       .wia-pnl-hover::-webkit-scrollbar {
@@ -6606,9 +6606,17 @@
       startedAt: Date.now(),
       income: {},
       expense: {},
+      capitalized: 0,
       total: 0,
       processedTxs: []
     };
+  }
+
+  // Money formatter for the P&L UI: 2 decimals, locale-aware decimal separator.
+  // Avoids the German "7.265 looks like 7 thousand" confusion ('.' reads as thousands sep).
+  function fmtPnl(n) {
+    const s = Math.abs(Number(n) || 0).toFixed(2);
+    return getLocale() === 'de' ? s.replace('.', ',') : s;
   }
 
   function getGoldBalance() {
@@ -6683,7 +6691,10 @@
             ledger.income.Sales = (ledger.income.Sales || 0) + money;
             booked = true;
           } else if (isBuyerMe && money > 0) {
-            booked = true; // Capitalized, not expensed
+            // Capitalized: gold left the wallet but it's not a loss (asset acquired).
+            // Tracked so the reconciliation can explain the gold-delta gap.
+            ledger.capitalized = (ledger.capitalized || 0) + money;
+            booked = true;
           }
         } else if (type === 'wage') {
           if (isSellerMe && money > 0) {
@@ -7194,13 +7205,14 @@
       consumption: 'Verbrauch',
       repairs: 'Verschleiß/Rep.',
       other: 'Sonstiges',
-      untracked: 'Sonstiges/unerfasst',
+      capitalized: 'In Käufe gebunden',
+      untracked: 'Unerfasst',
       totalPnl: 'Gesamt P&L',
       goldDelta: 'Gold Delta',
       today: 'Heute',
       yesterday: 'Gestern',
       category: 'Kategorie',
-      footer: 'Accrual-Tracking aktiv. P&L = Einnahmen - Ausgaben. Gold Delta = Live Gold - Start.'
+      footer: 'P&L = Einnahmen − Ausgaben (Käufe zählen erst beim Verbrauch). Gold Delta = Live-Gold − Start.'
     },
     en: {
       title: '📊 Daily P&L Tracker',
@@ -7213,13 +7225,14 @@
       consumption: 'Consumption',
       repairs: 'Wear/Repairs',
       other: 'Other',
-      untracked: 'Other/Untracked',
+      capitalized: 'Tied up in purchases',
+      untracked: 'Untracked',
       totalPnl: 'Total P&L',
       goldDelta: 'Gold Delta',
       today: 'Today',
       yesterday: 'Yesterday',
       category: 'Category',
-      footer: 'Accrual tracking active. P&L = Income - Expense. Gold Delta = Live Gold - Start.'
+      footer: 'P&L = Income − Expense (purchases count only when consumed). Gold Delta = Live Gold − Start.'
     }
   };
 
@@ -7291,18 +7304,22 @@
     for (const val of Object.values(ledger.expense || {})) {
       sumExpense += val;
     }
+    const capitalized = ledger.capitalized || 0;
+    const accrualNonCash = (ledger.expense.Consumption || 0) + (ledger.expense.Repairs || 0);
     ledger.goldDelta = totalGoldDelta;
     ledger.total = sumIncome - sumExpense;
-    ledger.untracked = totalGoldDelta - ledger.total;
+    // Reconciliation: gold = total + non-cash accrual − capitalized purchases + residual.
+    // So a clean ledger has residual ≈ 0; capitalized spend is NOT "untracked".
+    ledger.untracked = totalGoldDelta - ledger.total - accrualNonCash + capitalized;
     writeCache(KEYS.pnlLedger, ledger);
-    
+
     const todaySign = ledger.total > 0.0001 ? '▲ +' : ledger.total < -0.0001 ? '▼ -' : '• ';
-    const todayValStr = Math.abs(ledger.total).toFixed(3);
+    const todayValStr = fmtPnl(ledger.total);
     const todayColor = ledger.total > 0.0001 ? '#3fb950' : ledger.total < -0.0001 ? '#f85149' : '#8b949e';
-    
+
     const yesterdayTotal = yesterday ? yesterday.total : 0;
     const yesterdaySign = yesterdayTotal > 0.0001 ? '▲ +' : yesterdayTotal < -0.0001 ? '▼ -' : '• ';
-    const yesterdayValStr = Math.abs(yesterdayTotal).toFixed(3);
+    const yesterdayValStr = fmtPnl(yesterdayTotal);
     
     // Apply status tint styling classes
     pnlBadge.className = 'wia-pnl-tracker';
@@ -7368,20 +7385,23 @@
         const todayUntrackedVal = ledger.untracked || 0;
         const yesterdayUntrackedVal = yesterday ? (yesterday.untracked || 0) : 0;
         
+        const todayCapital = -(ledger.capitalized || 0);
+        const yesterdayCapital = yesterday ? -(yesterday.capitalized || 0) : 0;
+
         const formatRowVal = (val, est) => {
           const absVal = Math.abs(val);
-          if (absVal <= 0.0001) return `<span style="color: #8b949e;">0.000</span>`;
+          if (absVal <= 0.0001) return `<span style="color: #8b949e;">${fmtPnl(0)}</span>`;
           const sign = val > 0 ? '+' : '-';
           const color = val > 0 ? '#3fb950' : '#f85149';
           const estChar = est ? '≈' : '';
-          return `<span style="color: ${color};">${estChar}${sign}${absVal.toFixed(3)}</span>`;
+          return `<span style="color: ${color};">${estChar}${sign}${fmtPnl(val)}</span>`;
         };
         
         const renderPnlRow = (label, todayVal, yesterdayVal, estToday, estYesterday) => {
           return `<tr style="border-bottom: 1px dashed rgba(255, 255, 255, 0.05); text-align: right;">
-            <td style="text-align: left; padding: 4px 0; color: #c9d1d9;">${label}</td>
-            <td style="padding: 4px 0;">${formatRowVal(todayVal, estToday)}</td>
-            <td style="padding: 4px 0; padding-left: 8px;">${formatRowVal(yesterdayVal, estYesterday)}</td>
+            <td style="text-align: left; padding: 2px 0; color: #c9d1d9;">${label}</td>
+            <td style="padding: 2px 0;">${formatRowVal(todayVal, estToday)}</td>
+            <td style="padding: 2px 0; padding-left: 8px;">${formatRowVal(yesterdayVal, estYesterday)}</td>
           </tr>`;
         };
         
@@ -7390,7 +7410,7 @@
         html += `<span style="font-size: 10px; color: #8b949e; font-weight: normal; margin-top: 2px;">${loc.resetMsg}</span>`;
         html += `</div>`;
         
-        html += `<table style="width: 100%; border-collapse: collapse; font-family: monospace; font-size: 11px; margin-bottom: 8px;">`;
+        html += `<table style="width: 100%; border-collapse: collapse; font-family: monospace; font-size: 10px; margin-bottom: 6px;">`;
         html += `<thead>`;
         html += `<tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.15); color: #8b949e; text-align: right;">`;
         html += `<th style="text-align: left; padding-bottom: 4px; font-weight: 500; color: #8b949e;">${loc.category}</th>`;
@@ -7415,16 +7435,19 @@
         
         const formatBold = (val) => {
           const absVal = Math.abs(val);
-          if (absVal <= 0.0001) return `<span style="color: #8b949e;">0.000</span>`;
+          if (absVal <= 0.0001) return `<span style="color: #8b949e;">${fmtPnl(0)}</span>`;
           const sign = val > 0 ? '+' : '-';
           const color = val > 0 ? '#3fb950' : '#f85149';
-          return `<span style="color: ${color};">${sign}${absVal.toFixed(3)}</span>`;
+          return `<span style="color: ${color};">${sign}${fmtPnl(val)}</span>`;
         };
 
         // Separator line
         html += `<tr style="border-top: 1px solid rgba(255, 255, 255, 0.15);"><td colspan="3" style="padding: 4px 0 0 0;"></td></tr>`;
-        
-        // Untracked/Sonstiges
+
+        // Capitalized purchases (gold spent on assets — not a loss)
+        html += renderPnlRow(loc.capitalized, todayCapital, yesterdayCapital, false, false);
+
+        // Untracked/Sonstiges (true residual; should be ~0 when tracking is complete)
         html += renderPnlRow(loc.untracked, todayUntrackedVal, yesterdayUntrackedVal, false, false);
         
         // Total P&L (Highlight)
@@ -7468,12 +7491,29 @@
     }
   }
 
+  // Bump when the ledger math/shape changes incompatibly. v2: fixed the _id dedup
+  // double-counting + added capitalized tracking — old caches are inflated garbage.
+  const PNL_SCHEMA_VERSION = 2;
+
+  function migratePnlSchema() {
+    const stored = GM_getValue(KEYS.pnlSchemaVersion, 0);
+    if (stored === PNL_SCHEMA_VERSION) return;
+    // Pre-v2 caches were polluted by the 30s re-booking bug → wipe and recompute clean.
+    writeCache(KEYS.pnlLedger, null);
+    writeCache(KEYS.pnlYesterday, null);
+    writeCache(KEYS.pnlSnapshots, null);
+    writeCache(KEYS.pnlCostBasis, null);
+    GM_setValue(KEYS.pnlSchemaVersion, PNL_SCHEMA_VERSION);
+    log('PnL: schema migrated to v' + PNL_SCHEMA_VERSION + ' (stale caches cleared)');
+  }
+
   function initPnlTracker() {
     if (!CONFIG.featPnlTracker) {
       teardownPnlTracker();
       return;
     }
-    
+
+    migratePnlSchema();
     checkPnlDayReset();
     updatePnlUi();
     

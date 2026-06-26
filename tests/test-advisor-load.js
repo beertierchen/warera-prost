@@ -1736,8 +1736,8 @@ try {
       
       // Verify badge text
       const badgeContent = badgeP5.textContent;
-      assert.ok(badgeContent.includes('today: ▼ -4.980'), 'Badge text should display today\'s accrual P&L total');
-      assert.ok(badgeContent.includes('yesterday: ▼ -21.000'), 'Badge text should display yesterday\'s accrual P&L total');
+      assert.ok(badgeContent.includes('today: ▼ -4.98'), 'Badge text should display today\'s accrual P&L total');
+      assert.ok(badgeContent.includes('yesterday: ▼ -21.00'), 'Badge text should display yesterday\'s accrual P&L total');
       
       // Verify tooltip table breakdown content
       const hoverElP5 = badgeP5.querySelector('.wia-pnl-hover');
@@ -1745,36 +1745,34 @@ try {
       const tooltipHtml = hoverElP5.innerHTML;
       
       // Check today's column values:
-      // Sales: +10.500
-      assert.ok(tooltipHtml.includes('+10.500'), 'Tooltip should show +10.500 Sales');
-      // Wages: +0.120
-      assert.ok(tooltipHtml.includes('+0.120'), 'Tooltip should show +0.120 Wages');
-      // Consumption: -12.000
-      assert.ok(tooltipHtml.includes('-12.000'), 'Tooltip should show -12.000 Consumption');
-      // Repairs: ≈-2.100 (estimated)
-      assert.ok(tooltipHtml.includes('≈-2.100'), 'Tooltip should show ≈-2.100 Repairs');
-      // Employee Wages: -1.500
-      assert.ok(tooltipHtml.includes('-1.500'), 'Tooltip should show -1.500 Employee Wages');
-      // Untracked (today): -0.020 (95 - 100 - (-4.980))
-      assert.ok(tooltipHtml.includes('-0.020'), 'Tooltip should show -0.020 Untracked delta');
-      // Total P&L (today): -4.980
-      assert.ok(tooltipHtml.includes('-4.980'), 'Tooltip should show -4.980 Total P&L');
-      
+      // Sales: +10.50
+      assert.ok(tooltipHtml.includes('+10.50'), 'Tooltip should show +10.50 Sales');
+      // Wages: +0.12
+      assert.ok(tooltipHtml.includes('+0.12'), 'Tooltip should show +0.12 Wages');
+      // Consumption: -12.00
+      assert.ok(tooltipHtml.includes('-12.00'), 'Tooltip should show -12.00 Consumption');
+      // Repairs: ≈-2.10 (estimated)
+      assert.ok(tooltipHtml.includes('≈-2.10'), 'Tooltip should show ≈-2.10 Repairs');
+      // Employee Wages: -1.50
+      assert.ok(tooltipHtml.includes('-1.50'), 'Tooltip should show -1.50 Employee Wages');
+      // Untracked (today): goldDelta(-5) - total(-4.98) - accrualNonCash(14.1) + capitalized(0) = -14.12
+      assert.ok(tooltipHtml.includes('-14.12'), 'Tooltip should show -14.12 Untracked residual');
+      // Total P&L (today): -4.98
+      assert.ok(tooltipHtml.includes('-4.98'), 'Tooltip should show -4.98 Total P&L');
+
       // Check yesterday's column values:
-      // Sales: +5.200
-      assert.ok(tooltipHtml.includes('+5.200'), 'Tooltip should show +5.200 Sales yesterday');
-      // Wages: +0.240
-      assert.ok(tooltipHtml.includes('+0.240'), 'Tooltip should show +0.240 Wages yesterday');
-      // Consumption: -24.000
-      assert.ok(tooltipHtml.includes('-24.000'), 'Tooltip should show -24.000 Consumption yesterday');
-      // Employee Wages: -1.500
-      assert.ok(tooltipHtml.includes('-1.500'), 'Tooltip should show -1.500 Employee Wages yesterday');
-      // Untracked: -0.440
-      assert.ok(tooltipHtml.includes('-0.440'), 'Tooltip should show -0.440 Untracked yesterday');
-      // Total P&L: -21.000
-      assert.ok(tooltipHtml.includes('-21.000'), 'Tooltip should show -21.000 Total P&L yesterday');
-      // Gold Delta: -21.440
-      assert.ok(tooltipHtml.includes('-21.440'), 'Tooltip should show -21.440 Gold Delta yesterday');
+      // Sales: +5.20
+      assert.ok(tooltipHtml.includes('+5.20'), 'Tooltip should show +5.20 Sales yesterday');
+      // Wages: +0.24
+      assert.ok(tooltipHtml.includes('+0.24'), 'Tooltip should show +0.24 Wages yesterday');
+      // Consumption: -24.00
+      assert.ok(tooltipHtml.includes('-24.00'), 'Tooltip should show -24.00 Consumption yesterday');
+      // Untracked (yesterday, stored): -0.44
+      assert.ok(tooltipHtml.includes('-0.44'), 'Tooltip should show -0.44 Untracked yesterday');
+      // Total P&L: -21.00
+      assert.ok(tooltipHtml.includes('-21.00'), 'Tooltip should show -21.00 Total P&L yesterday');
+      // Gold Delta: -21.44
+      assert.ok(tooltipHtml.includes('-21.44'), 'Tooltip should show -21.44 Gold Delta yesterday');
       
       console.log('Daily P&L Tracker Phase 5 tests passed successfully.');
  
