@@ -3473,6 +3473,7 @@
         font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         border-radius: 6px; padding: 2px 8px; cursor: pointer; user-select: none;
         z-index: 10000; min-height: 26px; box-sizing: border-box;
+        max-width: 200px; overflow: hidden;
         background: rgba(13, 17, 23, 0.45);
         border: 1px solid rgba(255, 255, 255, 0.08);
         box-shadow: 0 1px 3px rgba(0, 0, 0, .35);
@@ -3490,9 +3491,10 @@
       }
       .wia-pnl-hover {
         display: none; position: absolute; top: 100%; left: 0; margin-top: 8px;
-        width: 248px; background: rgba(13, 17, 23, .92);
-        border: 1px solid rgba(255, 255, 255, .10);
-        border-radius: 8px; padding: 8px 10px; box-shadow: 0 6px 18px rgba(0, 0, 0, .5);
+        width: 248px; background: rgba(9, 12, 17, .82);
+        backdrop-filter: blur(7px); -webkit-backdrop-filter: blur(7px);
+        border: 1px solid rgba(255, 255, 255, .07);
+        border-radius: 8px; padding: 8px 10px; box-shadow: 0 6px 18px rgba(0, 0, 0, .55);
         color: #c9d1d9; font-weight: normal; text-align: left; font-size: 10px;
         text-shadow: none; z-index: 10001; line-height: 1.2;
         box-sizing: border-box;
@@ -6617,7 +6619,11 @@
   // Money formatter for the P&L UI: 2 decimals, locale-aware decimal separator.
   // Avoids the German "7.265 looks like 7 thousand" confusion ('.' reads as thousands sep).
   function fmtPnl(n) {
-    const s = Math.abs(Number(n) || 0).toFixed(2);
+    const a = Math.abs(Number(n) || 0);
+    let s;
+    if (a >= 1000000) s = (a / 1000000).toFixed(2) + 'M';   // compact so huge values never overflow the chip
+    else if (a >= 1000) s = (a / 1000).toFixed(2) + 'k';
+    else s = a.toFixed(2);
     return getLocale() === 'de' ? s.replace('.', ',') : s;
   }
 
@@ -6847,6 +6853,7 @@
       }
     }
     
+    if (!isFinite(unitPaid) || unitPaid > 10000) unitPaid = 0; // guard: no item costs >10k; reject corrupted basis
     const cost = unitPaid * qty;
     if (cost > 0) {
       ledger.expense.Consumption = (ledger.expense.Consumption || 0) + cost;
@@ -6945,6 +6952,7 @@
             }
           }
           
+          if (!isFinite(unitPaid) || unitPaid > 10000) unitPaid = 0; // guard against corrupted cost basis
           const cost = unitPaid * remainingDelta;
           if (cost > 0) {
             ledger.expense.Consumption = (ledger.expense.Consumption || 0) + cost;
@@ -7111,6 +7119,7 @@
           }
         }
         
+        if (!isFinite(unitPaid) || unitPaid > 10000) unitPaid = 0; // guard against corrupted cost basis
         const cost = unitPaid * wearPercent;
         if (cost > 0) {
           ledger.expense.Repairs = (ledger.expense.Repairs || 0) + cost;
@@ -7167,7 +7176,9 @@
       
       const goldVal = getGoldBalance();
       const snapshots = {
-        gold_start: goldVal !== null ? goldVal : 0,
+        // null (not 0!) when gold isn't readable yet — else gold_start=0 makes the
+        // gold delta equal the entire balance. Backfilled lazily in updatePnlUi.
+        gold_start: goldVal !== null ? goldVal : null,
         durability_start: {},
         invQty_start: isInventoryPage() ? getInventoryQuantities() : {}
       };
@@ -7294,7 +7305,12 @@
     
     const currentGold = getGoldBalance();
     let totalGoldDelta = 0;
-    if (currentGold !== null && snapshots && snapshots.gold_start !== undefined) {
+    if (currentGold !== null && snapshots) {
+      if (snapshots.gold_start === null || snapshots.gold_start === undefined) {
+        // Backfill a missed start snapshot once gold becomes readable (delta = 0 today).
+        snapshots.gold_start = currentGold;
+        writeCache(KEYS.pnlSnapshots, snapshots);
+      }
       totalGoldDelta = currentGold - snapshots.gold_start;
     }
     
@@ -7493,9 +7509,10 @@
     }
   }
 
-  // Bump when the ledger math/shape changes incompatibly. v2: fixed the _id dedup
-  // double-counting + added capitalized tracking — old caches are inflated garbage.
-  const PNL_SCHEMA_VERSION = 2;
+  // Bump when the ledger math/shape changes incompatibly. v2: fixed _id dedup double-count
+  // + capitalized tracking. v3: fixed gold_start=0 bogus delta + cost-basis sanity guard
+  // (corrupted ~gold-balance unitPaid had inflated wear/consumption into huge negatives).
+  const PNL_SCHEMA_VERSION = 3;
 
   function migratePnlSchema() {
     const stored = GM_getValue(KEYS.pnlSchemaVersion, 0);
