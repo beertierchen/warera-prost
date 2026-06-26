@@ -6593,6 +6593,8 @@
   // Daily P&L Tracker module
   // ───────────────────────────────────────────────────────────────────────────
   let pnlInterval = null;
+  let pnlGoldObserver = null;
+  let pnlGoldObserverTarget = null;
 
   function getPnlDayKey(time = Date.now()) {
     const adjustedTime = time - (2 * 60 * 60 * 1000); // 02:00 local time offset
@@ -7525,17 +7527,51 @@
     pnlInterval = setInterval(() => {
       if (CONFIG.featPnlTracker) {
         checkPnlDayReset();
+        attachPnlGoldObserver(); // re-attach if SPA replaced the #money node
         fetchAndProcessTransactions().then(() => {
           updatePnlUi();
         });
       }
     }, 30000);
+
+    attachPnlGoldObserver();
+  }
+
+  // Live update: watch the gold balance (#money) for changes. ANY gold movement —
+  // Work, market buy/sell, consume — mutates this text. On change we refresh the chip
+  // instantly (cheap, goldDelta-only) and debounce a transaction fetch (~2.5s, to let the
+  // server register the new tx) to categorize the income/expense. One observer covers all
+  // money-moving actions, so we don't need a hook per button.
+  const debouncedPnlTxRefresh = debounce(() => {
+    if (!CONFIG.featPnlTracker) return;
+    checkPnlDayReset();
+    fetchAndProcessTransactions().then(() => updatePnlUi());
+  }, 2500);
+
+  function attachPnlGoldObserver() {
+    const target = document.getElementById('money') ||
+                   (document.getElementById('layoutUserMenu') && document.getElementById('layoutUserMenu').querySelector('#money'));
+    if (!target) return; // retried on next interval tick / route change
+    if (pnlGoldObserver && pnlGoldObserverTarget === target) return;
+    if (pnlGoldObserver) pnlGoldObserver.disconnect();
+    pnlGoldObserverTarget = target;
+    pnlGoldObserver = new MutationObserver(() => {
+      if (!CONFIG.featPnlTracker) return;
+      updatePnlUi();              // instant: chip + live gold delta
+      debouncedPnlTxRefresh();    // then categorize once the tx lands
+    });
+    pnlGoldObserver.observe(target, { childList: true, subtree: true, characterData: true });
   }
 
   function teardownPnlTracker() {
     if (pnlInterval) {
       clearInterval(pnlInterval);
       pnlInterval = null;
+    }
+    if (pnlGoldObserver) {
+      pnlGoldObserver.disconnect();
+      pnlGoldObserver = null;
+      pnlGoldObserverTarget = null;
     }
     teardownPnlUi();
   }
