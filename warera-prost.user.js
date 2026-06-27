@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.7.9
+// @version      0.7.10
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -657,7 +657,7 @@
     }
     const val = GM_getValue(key, null);
     let defaultVal = {};
-    if (key === KEYS.priceCache || key === KEYS.pnlLedger || key === KEYS.pnlYesterday || key === KEYS.pnlCostBasis || key === KEYS.pnlSnapshots) {
+    if (key === KEYS.priceCache || key === KEYS.pnlLedger || key === KEYS.pnlYesterday || key === KEYS.pnlCostBasis || key === KEYS.pnlSnapshots || key === KEYS.pnlProcessedTxs) {
       defaultVal = null;
     }
     const valWithDefault = (val === undefined || val === null) ? defaultVal : val;
@@ -2460,6 +2460,15 @@
 
   function buildTooltip(item, result) {
     const lines = [];
+    const itemId = findItemUniqueId(item.card);
+    if (itemId) {
+      const knownLoot = readCache('wia_pnl_known_loot') || {};
+      const lootInfo = knownLoot[itemId];
+      if (lootInfo) {
+        const typeStr = lootInfo.type === 'crafted' ? (getLocale() === 'de' ? 'HERGESTELLT' : 'CRAFTED') : (getLocale() === 'de' ? 'BEUTE' : 'LOOT');
+        lines.push(`💡 ${typeStr} (Ursprünglicher Wert: ${fmt(lootInfo.value)} Gold)`);
+      }
+    }
     const tierLabel = item.tier != null ? (CONFIG.tiers[item.tier] || {}).label || `T${item.tier}` : '—';
     lines.push(`${item.code || item.type} · ${tierLabel}${item.tier != null ? ` (T${item.tier})` : ''}`);
     if (item.type === 'weapon') {
@@ -3963,6 +3972,7 @@ async function scanInventory(force) {
           <details class="wia-health-details" style="margin-top: 6px;">
             <summary style="font-size: 11px; color: #8b949e; cursor: pointer; user-select: none; font-weight: bold; outline: none;">Feature-Health / Diagnose</summary>
             <button type="button" class="wia-health-btn" style="margin: 6px 0; font-size: 11px; padding: 3px 8px; cursor: pointer;">Aktualisieren</button>
+            <button type="button" class="wia-pnl-print-btn" style="margin: 6px 4px; font-size: 11px; padding: 3px 8px; cursor: pointer; color: #58a6ff; background: rgba(88,166,255,0.1); border: 1px solid rgba(88,166,255,0.2); border-radius: 3px;">P&L Kassenzettel (Konsole)</button>
             <div class="wia-health-panel"></div>
           </details>
         </div>
@@ -4040,6 +4050,10 @@ async function scanInventory(force) {
     }
     if (healthBtn && healthPanel) {
       healthBtn.onclick = (e) => { e.preventDefault(); runProbes(); renderHealthPanel(healthPanel); };
+    }
+    const printBtn = modal.querySelector('.wia-pnl-print-btn');
+    if (printBtn) {
+      printBtn.onclick = (e) => { e.preventDefault(); printPnlReceipt(); };
     }
     if (healthPanel) { runProbes(); renderHealthPanel(healthPanel); }   // initial fill = live truth
 
@@ -6904,10 +6918,45 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
   let pnlGoldObserver = null;
   let pnlGoldObserverTarget = null;
 
+  function normalizeItemCode(code) {
+    if (!code) return '';
+    const clean = code.toLowerCase().trim();
+    if (clean === 'bread') return 'food_bread';
+    if (clean === 'steak') return 'food_steak';
+    if (clean === 'cookedfish') return 'food_cookedfish';
+    return code;
+  }
+
+  function isConsumable(code) {
+    if (!code) return false;
+    const clean = normalizeItemCode(code).toLowerCase();
+    const whitelisted = new Set([
+      'heavyammo', 'ammo', 'lightammo',
+      'cocain', 'cookedfish', 'steak', 'bread',
+      'food_bread', 'food_steak', 'food_cookedfish'
+    ]);
+    if (whitelisted.has(clean)) return true;
+    if (clean.startsWith('food_') || clean.startsWith('pill_')) return true;
+    return false;
+  }
+
   function getPnlDayKey(time = Date.now()) {
     const adjustedTime = time - (2 * 60 * 60 * 1000); // 02:00 local time offset
     const d = new Date(adjustedTime);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  function addPnlLog(ledger, type, category, label, qty, amount, desc) {
+    if (!ledger.pnlLogs) ledger.pnlLogs = [];
+    ledger.pnlLogs.push({
+      type,       // 'income', 'expense', 'consumption', 'repair'
+      category,   // 'Sales', 'Wages', 'Loot', 'Consumption', 'Repairs', etc.
+      label,      // e.g. 'food_bread', 'Pistole', etc.
+      qty,
+      amount,
+      desc,       // 'Einkaufswert', 'Marktpreis-Fallback', 'Lohn', etc.
+      timestamp: Date.now()
+    });
   }
 
   function createEmptyLedger(dayKey) {
@@ -6918,7 +6967,8 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
       expense: {},
       capitalized: 0,
       total: 0,
-      processedTxs: []
+      processedTxs: [],
+      pnlLogs: []
     };
   }
 
@@ -6952,7 +7002,7 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
   }
 
 function processTransactionsList(items, userId) {
-    const todayStart = todayResetTime();
+    const todayStart = (globalThis.todayResetTime || todayResetTime)();
     let ledger = readCache(KEYS.pnlLedger);
     if (!ledger) ledger = createEmptyLedger(getPnlDayKey());
 
@@ -6960,6 +7010,26 @@ function processTransactionsList(items, userId) {
     // NEU: Unser persistenter Speicher für Loot-IDs
     const LOOT_CACHE_KEY = 'wia_pnl_known_loot';
     let knownLoot = readCache(LOOT_CACHE_KEY) || {};
+
+    function resolveTierFromCode(code) {
+      if (!code) return null;
+      const match = code.match(/(\d+)\s*$/);
+      if (match) return parseInt(match[1], 10);
+      const clean = code.replace(/\d+$/, '').trim().toLowerCase();
+      return CONFIG.weaponCodeToTier[clean] || null;
+    }
+
+    function getScrapUnitPrice() {
+      let price = null;
+      if (typeof getCachedPrice === 'function') {
+        price = getCachedPrice('scraps');
+      }
+      if (price == null) {
+        const pc = readCache(KEYS.priceCache);
+        if (pc && pc.data && pc.data['scraps'] != null) price = pc.data['scraps'];
+      }
+      return price || 0;
+    }
 
     // Persistent, history-spanning dedup: each transaction _id is processed EXACTLY
     // once, ever (survives day-reset). Without this, cost-basis qtyKnown re-accumulates
@@ -6996,13 +7066,48 @@ function processTransactionsList(items, userId) {
       const txId = tx._id || tx.id;
       if (txId && seen.has(txId)) continue;
 
-      // --- NEU: Loot & Kisten registrieren ---
-      // Wenn wir ein Item kostenlos erhalten/craften, merken wir uns seine ID
+      // --- Loot & Kisten registrieren ---
       if (['battleLoot', 'openCase', 'craftItem'].includes(type) && itemId) {
         if (!knownLoot[itemId]) {
-          knownLoot[itemId] = true;
-          knownLootChanged = true;
-          // dbg('pnl', 'debug', `Loot registriert: ${itemCode} (${itemId})`);
+          const lootCode = tx.item?.code || itemCode;
+          const lootTier = resolveTierFromCode(lootCode);
+          let estValue = 0;
+
+          if (type === 'craftItem') {
+            const scrapsQty = tx.itemCode === 'scraps' ? (tx.quantity || 0) : (CONFIG.scrapYieldByTier[lootTier] || 0);
+            const steelQty = lootTier != null ? Math.pow(2, lootTier - 1) : 0;
+            const scrapsPrice = getScrapUnitPrice();
+            let steelPrice = null;
+            if (typeof getCachedPrice === 'function') {
+              steelPrice = getCachedPrice('steel');
+            } else {
+              const pc = readCache(KEYS.priceCache);
+              if (pc && pc.data && pc.data['steel'] != null) steelPrice = pc.data['steel'];
+            }
+            if (steelPrice == null) steelPrice = 0;
+            estValue = (scrapsQty * scrapsPrice) + (steelQty * steelPrice);
+
+            knownLoot[itemId] = { value: estValue, code: lootCode, timestamp: txTime, type: 'crafted' };
+            knownLootChanged = true;
+          } else {
+            const scrapsPrice = getScrapUnitPrice();
+            const scrapYield = lootTier != null ? CONFIG.scrapYieldByTier[lootTier] ?? 0 : 0;
+            const scrapVal = scrapYield * scrapsPrice;
+            let marketVal = 0;
+            const pc = readCache(KEYS.priceCache);
+            if (pc && pc.data && pc.data[lootCode] != null) marketVal = pc.data[lootCode];
+            estValue = Math.max(scrapVal, marketVal);
+
+            knownLoot[itemId] = { value: estValue, code: lootCode, timestamp: txTime, type: 'loot' };
+            knownLootChanged = true;
+
+            if (isToday && estValue > 0) {
+              ledger.income.Loot = (ledger.income.Loot || 0) + estValue;
+              addPnlLog(ledger, 'income', 'Loot', lootCode, 1, estValue, 'Beute erhalten');
+              booked = true;
+              dbg('pnl', 'debug', `Loot erhalten [${lootCode}]: +${estValue.toFixed(2)} Gold (Loot-Erhalt).`);
+            }
+          }
         }
       }
 
@@ -7032,15 +7137,68 @@ function processTransactionsList(items, userId) {
         // --- PHASE 2: Income & Expense ---
         if (type === 'trading' || type === 'itemMarket') {
           if (isSellerMe && money > 0) {
-            ledger.income.Sales = (ledger.income.Sales || 0) + money;
+            let saleIncome = money;
+            let logMsg = `Verkauf [${itemCode || 'Unbekannt'}]: +${money.toFixed(2)} (Sales). Menge: ${quantity}`;
+
+            if (itemId && knownLoot[itemId]) {
+              const originalVal = knownLoot[itemId].value || 0;
+              saleIncome = Math.max(0, money - originalVal);
+              logMsg = `Verkauf Loot [${itemCode || 'Unbekannt'}]: +${saleIncome.toFixed(2)} (Sales - positive Differenz zu Loot-Wert ${originalVal.toFixed(2)}).`;
+            }
+
+            if (saleIncome > 0) {
+              ledger.income.Sales = (ledger.income.Sales || 0) + saleIncome;
+              addPnlLog(ledger, 'income', 'Sales', itemCode, quantity, saleIncome, 'Verkauf');
+            }
             if (itemCode && quantity > 0) {
               ledger.todaySales[itemCode] = (ledger.todaySales[itemCode] || 0) + quantity;
             }
-            dbg('pnl', 'debug', `Verkauf [${itemCode || 'Unbekannt'}]: +${money.toFixed(2)} (Sales). Menge: ${quantity}`);
+            dbg('pnl', 'debug', logMsg);
             booked = true;
           } else if (isBuyerMe && money > 0) {
             ledger.capitalized = (ledger.capitalized || 0) + money;
             booked = true;
+
+            // SOFORTKAUF KORREKTUR: Wenn dies ein Konsumgut ist und wir ausstehende Klick-Verbraucher haben
+            if (itemCode && isConsumable(itemCode)) {
+              const normCode = normalizeItemCode(itemCode);
+              if (ledger.bookedConsumptionEvents && ledger.bookedConsumptionEvents.length > 0) {
+                let matchedQty = 0;
+                let matchedCostBooked = 0;
+                const remainingEvents = [];
+                let needed = quantity;
+                for (const evt of ledger.bookedConsumptionEvents) {
+                  if (evt.code === normCode && needed > 0) {
+                    const match = Math.min(evt.qty, needed);
+                    const pct = match / evt.qty;
+                    matchedQty += match;
+                    matchedCostBooked += (evt.costBooked || 0) * pct;
+
+                    evt.qty -= match;
+                    evt.costBooked = (evt.costBooked || 0) - (evt.costBooked || 0) * pct;
+                    needed -= match;
+
+                    if (evt.qty > 0) {
+                      remainingEvents.push(evt);
+                    }
+                  } else {
+                    remainingEvents.push(evt);
+                  }
+                }
+                ledger.bookedConsumptionEvents = remainingEvents;
+
+                if (matchedQty > 0) {
+                  const unitPrice = quantity > 0 ? (money / quantity) : money;
+                  const actualCost = matchedQty * unitPrice;
+                  const diff = actualCost - matchedCostBooked;
+                  if (Math.abs(diff) > 0.001) {
+                    ledger.expense.Consumption = (ledger.expense.Consumption || 0) + diff;
+                    addPnlLog(ledger, 'consumption', 'Consumption', normCode, matchedQty, diff, 'Sofortkauf Korrektur');
+                    dbg('pnl', 'debug', `Klick-Verbrauch korrigiert [${normCode}]: ${matchedQty}x angepasst um ${diff.toFixed(2)} Gold (Vorher: ${matchedCostBooked.toFixed(2)}, Real: ${actualCost.toFixed(2)}).`);
+                  }
+                }
+              }
+            }
           }
         }
         else if (type === 'dismantleItem') {
@@ -7049,18 +7207,10 @@ function processTransactionsList(items, userId) {
           const itemState = tx.item?.state != null ? parseInt(tx.item.state, 10) : 100;
 
           // 1. Schrott-Wert in Gold umrechnen
-          let scrapUnitPrice = null;
-          if (typeof getCachedPrice === 'function') {
-            scrapUnitPrice = getCachedPrice('scraps');
-          } else {
-            const pc = readCache(KEYS.priceCache);
-            if (pc && pc.data && pc.data['scraps'] != null) scrapUnitPrice = pc.data['scraps'];
-          }
-          if (scrapUnitPrice == null) scrapUnitPrice = 0;
+          const scrapUnitPrice = getScrapUnitPrice();
           const scrapValueInGold = scrapCount * scrapUnitPrice;
 
           // 2. Cost-Basis aufräumen (ABER KEINEN VERLUST BUCHEN!)
-          // Der prozentuale Verlust (die restlichen 12% bis zum Bruch) wird vom Live-Equipment-Scanner übernommen!
           if (realItemCode && realItemCode !== 'scraps') {
             const basis = costBasis[realItemCode];
             if (basis && basis.qtyKnown > 0) {
@@ -7073,6 +7223,7 @@ function processTransactionsList(items, userId) {
           // 3. Einnahme durch den Schrott (Income) verbuchen
           if (scrapValueInGold > 0) {
             ledger.income.Other = (ledger.income.Other || 0) + scrapValueInGold;
+            addPnlLog(ledger, 'income', 'Other', 'Schrott (Brechen)', scrapCount, scrapValueInGold, 'Schrott erhalten');
             dbg('pnl', 'debug', `Breakage Scraps: +${scrapValueInGold.toFixed(2)} Gold (aus ${scrapCount}x Schrott) als Einnahme (Other) verbucht.`);
             booked = true;
           }
@@ -7080,37 +7231,55 @@ function processTransactionsList(items, userId) {
         else if (type === 'wage') {
           if (isSellerMe && money > 0) {
             ledger.income.Wages = (ledger.income.Wages || 0) + money;
+            addPnlLog(ledger, 'income', 'Wages', 'Arbeit', 1, money, 'Lohn erhalten');
             dbg('pnl', 'debug', `Lohn erhalten: +${money.toFixed(2)} (Wages).`);
             booked = true;
           } else if (isBuyerMe && money > 0) {
             ledger.expense['Employee Wages'] = (ledger.expense['Employee Wages'] || 0) + money;
+            addPnlLog(ledger, 'expense', 'Employee Wages', 'Mitarbeiter', 1, money, 'Lohn gezahlt');
             dbg('pnl', 'debug', `Lohn gezahlt: -${money.toFixed(2)} (Employee Wages).`);
             booked = true;
           }
         } else if (type === 'donation') {
           if (isBuyerMe && money > 0) {
             ledger.expense.Other = (ledger.expense.Other || 0) + money;
+            addPnlLog(ledger, 'expense', 'Other', tx.buyerId || 'Land/MU', 1, money, 'Spende gesendet');
             dbg('pnl', 'debug', `Spende gesendet: -${money.toFixed(2)} (Other).`);
             booked = true;
           } else if (isSellerMe && money > 0) {
             ledger.income.Other = (ledger.income.Other || 0) + money;
+            addPnlLog(ledger, 'income', 'Other', tx.sellerId || 'Spieler', 1, money, 'Spende erhalten');
             dbg('pnl', 'debug', `Spende erhalten: +${money.toFixed(2)} (Other).`);
             booked = true;
           }
         } else if (type === 'repair') {
           if (isBuyerMe && money > 0) {
             ledger.expense.Repairs = (ledger.expense.Repairs || 0) + money;
+            addPnlLog(ledger, 'expense', 'Repairs', 'Ausrüstung repariert', 1, money, 'Reparatur bezahlt');
             dbg('pnl', 'debug', `Reparatur bezahlt: -${money.toFixed(2)} (Repairs).`);
             booked = true;
           }
+        } else if (type === 'openCase') {
+          if (caseVal > 0) {
+            ledger.expense.Cases = (ledger.expense.Cases || 0) + caseVal;
+            addPnlLog(ledger, 'expense', 'Cases', tx.itemCode, 1, caseVal, 'Kiste geöffnet');
+            booked = true;
+            dbg('pnl', 'debug', `Kiste geöffnet [${tx.itemCode}]: -${caseVal.toFixed(2)} Gold (Kisten-Kosten).`);
+          }
+          const lootVal = knownLoot[itemId] ? knownLoot[itemId].value : 0;
+          ledger.casesOpened = (ledger.casesOpened || 0) + 1;
+          ledger.casesProfit = (ledger.casesProfit || 0) + (lootVal - caseVal);
+          booked = true;
         } else {
           if (money > 0) {
             if (isSellerMe) {
               ledger.income.Other = (ledger.income.Other || 0) + money;
+              addPnlLog(ledger, 'income', 'Other', type, 1, money, 'Unbekannte Einnahme');
               dbg('pnl', 'debug', `Unbekannte Einnahme (${type}): +${money.toFixed(2)} (Other).`);
               booked = true;
             } else if (isBuyerMe) {
               ledger.expense.Other = (ledger.expense.Other || 0) + money;
+              addPnlLog(ledger, 'expense', 'Other', type, 1, money, 'Unbekannte Ausgabe');
               dbg('pnl', 'debug', `Unbekannte Ausgabe (${type}): -${money.toFixed(2)} (Other).`);
               booked = true;
             }
@@ -7226,48 +7395,58 @@ function getInventoryQuantities() {
     cards.forEach((img, card) => {
       const { code, type } = detectType(img, card);
       // Ignoriere Equipment komplett (es stackt nicht und nutzt Haltbarkeit statt Menge)
-      if (code && !equipTypes.has(type)) {
-        const qty = parseCardQuantity(card);
-        qtyMap[code] = (qtyMap[code] || 0) + qty;
+      if (code && !equipTypes.has(type) && isConsumable(code)) {
+        const normCode = normalizeItemCode(code);
+        const qty = parseCardQuantity(getItemCell(card));
+        qtyMap[normCode] = (qtyMap[normCode] || 0) + qty;
       }
     });
     return qtyMap;
   }
 
   function bookClickConsumption(code, qty = 1) {
+    if (!code || !isConsumable(code)) return;
+    const normCode = normalizeItemCode(code);
     let ledger = readCache(KEYS.pnlLedger);
     if (!ledger) ledger = createEmptyLedger(getPnlDayKey());
     if (!ledger.expense) ledger.expense = {};
 
-    const { unitPaid, isEstimated } = resolveUnitBasis(code);
+    const { unitPaid, isEstimated } = resolveUnitBasis(normCode);
     const cost = unitPaid * qty;
+
+    if (!ledger.bookedConsumptionEvents) {
+      ledger.bookedConsumptionEvents = [];
+    }
+    ledger.bookedConsumptionEvents.push({
+      code: normCode,
+      qty,
+      costBooked: cost,
+      timestamp: Date.now()
+    });
+
     if (cost > 0) {
       ledger.expense.Consumption = (ledger.expense.Consumption || 0) + cost;
       if (isEstimated) {
         ledger.hasEstimatedConsumption = true;
       }
-
-      if (!ledger.bookedConsumptionEvents) {
-        ledger.bookedConsumptionEvents = [];
-      }
-      ledger.bookedConsumptionEvents.push({
-        code,
-        qty,
-        timestamp: Date.now()
-      });
-
-      let sumIncome = 0;
-      for (const val of Object.values(ledger.income)) {
-        sumIncome += val;
-      }
-      let sumExpense = 0;
-      for (const val of Object.values(ledger.expense)) {
-        sumExpense += val;
-      }
-      ledger.total = sumIncome - sumExpense;
-      writeCache(KEYS.pnlLedger, ledger);
-      updatePnlUi();
+      addPnlLog(ledger, 'consumption', 'Consumption', normCode, qty, cost, isEstimated ? 'Marktpreis-Fallback' : 'Einkaufswert');
+      dbg('pnl', 'debug', `Klick-Verbrauch [${normCode}]: ${qty}x konsumiert. Verlust: -${cost.toFixed(2)} Gold${isEstimated ? ' (Schätzwert)' : ''}.`);
+    } else {
+      addPnlLog(ledger, 'consumption', 'Consumption', normCode, qty, 0, 'Unbekannter Preis');
+      dbg('pnl', 'debug', `Klick-Verbrauch [${normCode}]: ${qty}x konsumiert, aber Kosten = 0 (Unbekannter Preis).`);
     }
+
+    let sumIncome = 0;
+    for (const val of Object.values(ledger.income)) {
+      sumIncome += val;
+    }
+    let sumExpense = 0;
+    for (const val of Object.values(ledger.expense)) {
+      sumExpense += val;
+    }
+    ledger.total = sumIncome - sumExpense;
+    writeCache(KEYS.pnlLedger, ledger);
+    updatePnlUi();
   }
 
 function checkInventoryDeltaConsumption() {
@@ -7293,6 +7472,7 @@ function checkInventoryDeltaConsumption() {
     let snapshotsChanged = false;
 
     for (const [code, startQty] of Object.entries(snapshots.invQty_start)) {
+      if (!isConsumable(code)) continue;
       const curQty = currentQts[code] || 0;
       if (curQty < startQty) {
         let remainingDelta = startQty - curQty;
@@ -7357,9 +7537,11 @@ function checkInventoryDeltaConsumption() {
           if (cost > 0) {
             ledger.expense.Consumption = (ledger.expense.Consumption || 0) + cost;
             if (isEstimated) ledger.hasEstimatedConsumption = true;
+            addPnlLog(ledger, 'consumption', 'Consumption', code, remainingDelta, cost, isEstimated ? 'Marktpreis-Fallback' : 'Einkaufswert');
             ledgerChanged = true;
             dbg('pnl', 'debug', `Verbrauch [${code}]: ${remainingDelta}x konsumiert. Verlust: -${cost.toFixed(2)} Gold (${logReason}).`);
           } else {
+            addPnlLog(ledger, 'consumption', 'Consumption', code, remainingDelta, 0, logReason);
             dbg('pnl', 'debug', `Verbrauch [${code}]: ${remainingDelta}x konsumiert, aber Kosten = 0 (${logReason}).`);
           }
         }
@@ -7395,18 +7577,19 @@ function checkInventoryDeltaConsumption() {
   // Resolve unit cost basis for an item code (paid price, else estimated market price).
   // Mirrors the guard logic used by consumption booking. Returns { unitPaid, isEstimated }.
   function resolveUnitBasis(code) {
+    const normCode = normalizeItemCode(code);
     const costBasis = readCache(KEYS.pnlCostBasis) || {};
-    const itemBasis = costBasis[code];
+    const itemBasis = costBasis[normCode];
     let unitPaid = 0;
     let isEstimated = false;
     if (itemBasis && itemBasis.unitPaid != null) {
       unitPaid = itemBasis.unitPaid;
     } else {
       // Purchase not tracked → fall back to market value (we usually already have it).
-      let price = getCachedPrice(code);
+      let price = getCachedPrice(normCode);
       if (price == null) {
         const pc = readCache(KEYS.priceCache);
-        if (pc && pc.data && pc.data[code] != null) price = pc.data[code];
+        if (pc && pc.data && pc.data[normCode] != null) price = pc.data[normCode];
       }
       if (price != null) {
         unitPaid = price;
@@ -7495,6 +7678,7 @@ function checkInventoryDeltaWear() {
           log(`[WIA:pnl] Verschleiß [${code}]: -${totalDurLost.toFixed(1)}%. Verlust: -${cost.toFixed(2)} Gold${isEstimated ? ' (Schätzwert)' : ''}.`);
           ledger.expense.Repairs = (ledger.expense.Repairs || 0) + cost;
           if (isEstimated) ledger.hasEstimatedRepairs = true;
+          addPnlLog(ledger, 'repair', 'Repairs', code, totalDurLost, cost, isEstimated ? 'Schätzwert' : 'Einkaufswert');
           ledgerChanged = true;
         }
       }
@@ -7601,7 +7785,9 @@ function checkInventoryDeltaWear() {
       today: 'Heute',
       yesterday: 'Gestern',
       category: 'Kategorie',
-      footer: 'P&L = Einnahmen − Ausgaben (Käufe zählen erst beim Verbrauch). Gold Delta = Live-Gold − Start.'
+        caseLuck: 'Kisten-Glück',
+      casesOpened: '{qty}x geöffnet',
+      footer: 'P&L = Einnahmen − Ausgaben (Käufe zählen erst beim Verbrauch). Gold Delta = Live-Gold − Start. * Kisten-Glück zeigt die Differenz zwischen Loot-Wert und Kisten-Wert beim Öffnen. Der Gewinn/Verlust fließt erst beim tatsächlichen Verkauf der gezogenen Items auf dem Markt in die Gesamtrechnung ein.'
     },
     en: {
       title: '📊 Daily P&L Tracker',
@@ -7621,7 +7807,9 @@ function checkInventoryDeltaWear() {
       today: 'Today',
       yesterday: 'Yesterday',
       category: 'Category',
-      footer: 'P&L = Income − Expense (purchases count only when consumed). Gold Delta = Live Gold − Start.'
+      caseLuck: 'Case Luck',
+      casesOpened: '{qty}x opened',
+      footer: 'P&L = Income − Expense (purchases count only when consumed). Gold Delta = Live Gold − Start. * Case Luck shows the difference between loot value and case value at the time of opening. The profit/loss is only factored into the main total P&L once the items are sold on the market.'
     }
   };
 
@@ -7757,6 +7945,8 @@ function checkInventoryDeltaWear() {
         const yesterdaySales = yesterday ? (yesterday.income.Sales || 0) : 0;
         const todayWages = ledger.income.Wages || 0;
         const yesterdayWages = yesterday ? (yesterday.income.Wages || 0) : 0;
+        const todayLoot = ledger.income.Loot || 0;
+        const yesterdayLoot = yesterday ? (yesterday.income.Loot || 0) : 0;
         const todayIncOther = ledger.income.Other || 0;
         const yesterdayIncOther = yesterday ? (yesterday.income.Other || 0) : 0;
 
@@ -7765,6 +7955,8 @@ function checkInventoryDeltaWear() {
         const yesterdayCons = yesterday ? -(yesterday.expense.Consumption || 0) : 0;
         const todayRep = -(ledger.expense.Repairs || 0);
         const yesterdayRep = yesterday ? -(yesterday.expense.Repairs || 0) : 0;
+        const todayCases = -(ledger.expense.Cases || 0);
+        const yesterdayCases = yesterday ? -(yesterday.expense.Cases || 0) : 0;
         const todayEmpWages = -(ledger.expense['Employee Wages'] || 0);
         const yesterdayEmpWages = yesterday ? -(yesterday.expense['Employee Wages'] || 0) : 0;
         const todayExpOther = -(ledger.expense.Other || 0);
@@ -7818,12 +8010,18 @@ function checkInventoryDeltaWear() {
         html += `<tr style="color: #3fb950; font-weight: bold; font-size: 10px;"><td colspan="3" style="padding: 6px 0 2px 0; text-transform: uppercase;">${loc.income}</td></tr>`;
         html += renderPnlRow(loc.sales, todaySales, yesterdaySales, false, false);
         html += renderPnlRow(loc.wages, todayWages, yesterdayWages, false, false);
+        if (todayLoot > 0 || yesterdayLoot > 0) {
+          html += renderPnlRow(getLocale() === 'de' ? 'Beute-Wert' : 'Loot Value', todayLoot, yesterdayLoot, false, false);
+        }
         html += renderPnlRow(loc.other, todayIncOther, yesterdayIncOther, false, false);
 
         // Expense Header
         html += `<tr style="color: #f85149; font-weight: bold; font-size: 10px;"><td colspan="3" style="padding: 8px 0 2px 0; text-transform: uppercase;">${loc.expense}</td></tr>`;
         html += renderPnlRow(loc.consumption, todayCons, yesterdayCons, ledger.hasEstimatedConsumption, yesterday ? yesterday.hasEstimatedConsumption : false);
         html += renderPnlRow(loc.repairs, todayRep, yesterdayRep, ledger.hasEstimatedRepairs, yesterday ? yesterday.hasEstimatedRepairs : false);
+        if (todayCases < 0 || yesterdayCases < 0) {
+          html += renderPnlRow(getLocale() === 'de' ? 'Kisten-Kosten' : 'Case Costs', todayCases, yesterdayCases, false, false);
+        }
         html += renderPnlRow(loc.empWages, todayEmpWages, yesterdayEmpWages, false, false);
         html += renderPnlRow(loc.other, todayExpOther, yesterdayExpOther, false, false);
 
@@ -7843,6 +8041,18 @@ function checkInventoryDeltaWear() {
 
         // Untracked/Sonstiges (true residual; should be ~0 when tracking is complete)
         html += renderPnlRow(loc.untracked, todayUntrackedVal, yesterdayUntrackedVal, false, false);
+
+        // Case Luck Row (Kisten-Glück)
+        if (ledger.casesOpened) {
+          const profitSign = ledger.casesProfit > 0.0001 ? '+' : '';
+          const profitColor = ledger.casesProfit > 0.0001 ? '#3fb950' : ledger.casesProfit < -0.0001 ? '#f85149' : '#8b949e';
+          html += `<tr style="border-top: 1px dashed rgba(255, 255, 255, 0.1); text-align: right; color: #8b949e; font-size: 9.5px;">`;
+          html += `<td style="text-align: left; padding: 4px 0;">${loc.caseLuck}</td>`;
+          html += `<td colspan="2" style="padding: 4px 0; color: ${profitColor};">`;
+          html += `${loc.casesOpened.replace('{qty}', ledger.casesOpened)} (Gewinn/Verlust: ${profitSign}${fmtPnl(ledger.casesProfit)} Gold*)`;
+          html += `</td>`;
+          html += `</tr>`;
+        }
 
         // Total P&L (Highlight)
         html += `<tr style="border-top: 1px dashed rgba(255, 255, 255, 0.15); font-weight: bold; text-align: right;">`;
@@ -7869,6 +8079,141 @@ function checkInventoryDeltaWear() {
       }
     });
   }
+
+  function printPnlReceipt() {
+    const ledger = readCache(KEYS.pnlLedger);
+    if (!ledger) {
+      console.log('%c--- KEINE TAGES-P&L DATEN VORHANDEN ---', 'color: #ff7b72; font-weight: bold;');
+      return;
+    }
+    
+    const logs = ledger.pnlLogs || [];
+    
+    // Group logs
+    const repairs = [];
+    const consumptions = {};
+    const wages = { count: 0, total: 0 };
+    const empWages = { count: 0, total: 0 };
+    const donations = [];
+    const sales = [];
+    const cases = [];
+    const loot = [];
+    const other = [];
+
+    logs.forEach(log => {
+      if (log.category === 'Repairs') {
+        repairs.push(log);
+      } else if (log.category === 'Consumption') {
+        const key = log.label;
+        if (!consumptions[key]) consumptions[key] = { qty: 0, cost: 0, desc: log.desc };
+        consumptions[key].qty += log.qty;
+        consumptions[key].cost += log.amount;
+      } else if (log.category === 'Wages') {
+        wages.count += log.qty || 1;
+        wages.total += log.amount;
+      } else if (log.category === 'Employee Wages') {
+        empWages.count += log.qty || 1;
+        empWages.total += log.amount;
+      } else if (log.category === 'Cases') {
+        cases.push(log);
+      } else if (log.category === 'Loot') {
+        loot.push(log);
+      } else if (log.category === 'Sales') {
+        sales.push(log);
+      } else if (log.category === 'Other') {
+        if (log.type === 'expense') donations.push(log);
+        else other.push(log);
+      }
+    });
+
+    const formatItemLabel = (lbl) => {
+      if (!lbl) return 'Unbekannt';
+      return lbl.replace(/^food_/, '').replace(/^pill_/, '');
+    };
+
+    let s = `\n%c========================================\n`;
+    s += `      🧾 WAREERA P&L BELEG (HEUTE)       \n`;
+    s += `========================================\n\n`;
+    
+    // 1. Einnahmen
+    s += `--- EINNAHMEN ---\n`;
+    let hasInc = false;
+    if (sales.length > 0) {
+      hasInc = true;
+      const salesSum = sales.reduce((a, b) => a + b.amount, 0);
+      s += `  Verkäufe: insg. +${salesSum.toFixed(2)}g\n`;
+    }
+    if (wages.total > 0) {
+      hasInc = true;
+      s += `  Arbeit: ${wages.count}x gearbeitet, insg. +${wages.total.toFixed(2)}g Lohn\n`;
+    }
+    if (loot.length > 0) {
+      hasInc = true;
+      const lootSum = loot.reduce((a, b) => a + b.amount, 0);
+      s += `  Beute: ${loot.length}x Beute, insg. +${lootSum.toFixed(2)}g\n`;
+    }
+    if (other.length > 0) {
+      hasInc = true;
+      const otherSum = other.reduce((a, b) => a + b.amount, 0);
+      s += `  Sonstiges: insg. +${otherSum.toFixed(2)}g\n`;
+    }
+    if (!hasInc) s += `  Keine Einnahmen verzeichnet\n`;
+
+    // 2. Ausgaben
+    s += `\n--- AUSGABEN ---\n`;
+    let hasExp = false;
+    // 2a. Verschleiß
+    if (repairs.length > 0) {
+      hasExp = true;
+      s += `  Verschleiß:\n`;
+      const repGroup = {};
+      repairs.forEach(r => {
+        if (!repGroup[r.label]) repGroup[r.label] = { dur: 0, cost: 0, desc: r.desc };
+        repGroup[r.label].dur += r.qty;
+        repGroup[r.label].cost += r.amount;
+      });
+      for (const [code, r] of Object.entries(repGroup)) {
+        s += `    • ${formatItemLabel(code)}: -${r.dur.toFixed(1)}% Durability = -${r.cost.toFixed(2)}g (${r.desc})\n`;
+      }
+    }
+    // 2b. Verbrauch
+    if (Object.keys(consumptions).length > 0) {
+      hasExp = true;
+      s += `  Verbrauch:\n`;
+      for (const [code, c] of Object.entries(consumptions)) {
+        s += `    • ${formatItemLabel(code)}: ${c.qty}x = -${c.cost.toFixed(2)}g (${c.desc})\n`;
+      }
+    }
+    // 2c. Mitarbeiter
+    if (empWages.total > 0) {
+      hasExp = true;
+      s += `  Mitarbeiter-Lohn: ${empWages.count}x gezahlt, insg. -${empWages.total.toFixed(2)}g\n`;
+    }
+    // 2d. Kisten
+    if (cases.length > 0) {
+      hasExp = true;
+      const casesSum = cases.reduce((a, b) => a + b.amount, 0);
+      s += `  Kisten-Kosten: ${cases.length}x geöffnet, insg. -${casesSum.toFixed(2)}g\n`;
+    }
+    // 2e. Spenden
+    if (donations.length > 0) {
+      hasExp = true;
+      s += `  Spenden:\n`;
+      donations.forEach(d => {
+        s += `    • an ${d.label}: -${d.amount.toFixed(2)}g\n`;
+      });
+    }
+    if (!hasExp) s += `  Keine Ausgaben verzeichnet\n`;
+
+    // 3. Bilanz
+    s += `\n========================================\n`;
+    s += `  GESAMT-BILANZ (P&L): ${ledger.total > 0 ? '+' : ''}${ledger.total.toFixed(2)}g\n`;
+    s += `========================================`;
+
+    const color = ledger.total > 0 ? '#3fb950' : ledger.total < 0 ? '#f85149' : '#8b949e';
+    console.log(s, `color: ${color}; font-weight: bold; font-family: monospace; line-height: 1.4;`);
+  }
+  globalThis.printPnlReceipt = printPnlReceipt;
 
   function teardownPnlUi() {
     const badge = document.getElementById('wia-pnl-tracker');
@@ -7971,12 +8316,11 @@ function checkInventoryDeltaWear() {
     teardownPnlUi();
   }
     function scanEquipmentDurability() {
-  const cards = findItemCards(false);
+  const cards = (globalThis.findItemCards || findItemCards)(false);
   const curByCode = {};
 
   cards.forEach((img, card) => {
     const { type, code } = detectType(img, card);
-
     // Nur Ausrüstung (Waffen & Rüstung) erfassen
     if (['weapon', 'helmet', 'chest', 'gloves', 'pants', 'boots'].includes(type) && code) {
       const stats = parseStats(card, type);

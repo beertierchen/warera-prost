@@ -1439,8 +1439,8 @@ try {
   const costBasisResult = globalThis.GM_getValue('wia.pnl.costBasis');
   assert.ok(costBasisResult, 'Cost basis should be populated');
   // For food_bread, old purchase unit paid was 10 (50 / 5), new was 12 (120 / 10).
-  // Chronologically, the new one was processed last, so it should overwrite with 12.
-  assert.strictEqual(costBasisResult.food_bread.unitPaid, 12, 'Cost basis for food_bread should be 12 (newest transaction)');
+  // With weighted average: (5 * 10 + 10 * 12) / 15 = 11.333
+  assert.ok(Math.abs(costBasisResult.food_bread.unitPaid - 11.3333) < 0.001, 'Cost basis for food_bread should be weighted average ~11.333');
   
   const ledgerResult = globalThis.GM_getValue('wia.pnl.ledger');
   assert.ok(ledgerResult, 'Ledger should be updated');
@@ -1499,6 +1499,38 @@ try {
   assert.strictEqual(clickLedger.bookedConsumptionEvents[0].code, 'food_bread');
   assert.strictEqual(clickLedger.bookedConsumptionEvents[0].qty, 2);
   
+  // 2.b Sofortkauf (on-the-fly purchase) cost correction test
+  // Simulate click consumption of an item we don't know the price of (e.g. food_steak)
+  globalThis.bookClickConsumption('food_steak', 1); // price is unknown, books 0 expense
+  let steakLedger = globalThis.readCache('wia.pnl.ledger');
+  assert.strictEqual(steakLedger.bookedConsumptionEvents.find(e => e.code === 'food_steak').costBooked, 0, 'Should book 0 cost for untracked item');
+  
+  // Now process a purchase transaction for 1 food_steak at 15.000 gold
+  const mockSteakTx = [{
+    id: 'tx-steak-buy',
+    transactionType: 'trading',
+    money: '15.000',
+    quantity: 1,
+    sellerId: 'other-user-id',
+    buyerId: 'my-user-id',
+    itemCode: 'food_steak',
+    createdAt: new Date(2026, 5, 24, 8, 0, 0).toISOString()
+  }];
+  const oldTodayResetTimeP3 = globalThis.todayResetTime;
+  globalThis.todayResetTime = () => new Date(2026, 5, 24, 2, 0, 0).getTime();
+  globalThis.processTransactionsList(mockSteakTx, 'my-user-id');
+  globalThis.todayResetTime = oldTodayResetTimeP3;
+
+  let postSteakLedger = globalThis.readCache('wia.pnl.ledger');
+  // Click consumption cost should be corrected: 24 (bread) + 15 (steak) = 39
+  assert.strictEqual(postSteakLedger.expense.Consumption, 39, 'Steak consumption cost should be retrospectively corrected to 15');
+  // Click event for food_steak should be cleared
+  assert.strictEqual(postSteakLedger.bookedConsumptionEvents.some(e => e.code === 'food_steak'), false, 'Steak click event should be cleared after matching');
+
+  // Clean up steak test changes so we don't pollute the rest of Phase 3 tests
+  postSteakLedger.expense.Consumption = 24;
+  globalThis.writeCache('wia.pnl.ledger', postSteakLedger);
+
   // 3. Fallback inventory-delta detection test (and matching click consumption / sales)
   // Let's prepare a snapshot with starting quantities
   const snapshotsMock = {
@@ -1563,6 +1595,17 @@ try {
   const finalLedger = globalThis.readCache('wia.pnl.ledger');
   assert.strictEqual(finalLedger.expense.Consumption, 136, 'Consumption should be 136 (24 click + 12 bread delta + 100 pill delta)');
   
+  // 4. Test printPnlReceipt execution
+  const logLines = [];
+  const originalLog = console.log;
+  console.log = (...args) => { logLines.push(args.join(' ')); };
+  globalThis.printPnlReceipt();
+  console.log = originalLog;
+  
+  assert.ok(logLines.some(l => l.includes('🧾 WAREERA P&L BELEG')), 'Receipt header should be present in console output');
+  assert.ok(logLines.some(l => l.includes('Verbrauch:')), 'Consumption section should be present in receipt');
+  assert.ok(logLines.some(l => l.includes('bread')), 'bread should be present in receipt details (with food_ prefix stripped)');
+  
   // Restores
   globalThis.findItemCards = oldFindItemCards;
   console.log('Daily P&L Tracker Phase 3 tests passed successfully.');
@@ -1596,43 +1639,43 @@ try {
         fetchedAt: Date.now()
       });
       
-      // 1. Mock GM_xmlhttpRequest to return equipment data
+      // 1. Mock findItemCards to return equipment cards
       let currentMockEquipPayload = [
         { slot: 'chest', itemCode: 'chest3', durability: 100 },
         { slot: 'helmet', itemCode: 'helmet3', durability: 98 }
       ];
-      const oldXmlHttpRequest = global.GM_xmlhttpRequest;
-      global.GM_xmlhttpRequest = (opts) => {
-        if (opts.url.includes('inventory.fetchCurrentEquipment')) {
-          opts.onload({
-            status: 200,
-            responseText: JSON.stringify([{
-              result: {
-                data: {
-                  json: currentMockEquipPayload
-                }
-              }
-            }])
-          });
-          return;
-        }
-        if (oldXmlHttpRequest) {
-          oldXmlHttpRequest(opts);
-        } else {
-          opts.onerror(new Error('not implemented'));
-        }
+      global.location.pathname = '/user/my-user-id/inventory';
+      const oldFindItemCards = globalThis.findItemCards;
+      globalThis.findItemCards = () => {
+        const mockCardsMap = new Map();
+        currentMockEquipPayload.forEach(item => {
+          const card = new MockElement('div');
+          card.setAttribute('aria-haspopup', 'dialog');
+          
+          const img = new MockElement('img');
+          img.setAttribute('alt', item.itemCode);
+          card.appendChild(img);
+          img.parentElement = card;
+
+          const textSpan = new MockElement('span');
+          textSpan.textContent = ` ${item.durability}% `;
+          card.appendChild(textSpan);
+          textSpan.parentElement = card;
+          
+          mockCardsMap.set(card, img);
+        });
+        return mockCardsMap;
       };
       
       // Initialize ledger and snapshots
       globalThis.checkPnlDayReset();
-      
-      // Give the event loop a chance to resolve the async fetchStartingEquipmentSnapshot promise:
-      await new Promise(r => setTimeout(r, 0));
+      // First visit seeds baseline
+      globalThis.checkInventoryDeltaWear();
       
       const snapsAfterInit = globalThis.readCache('wia.pnl.snapshots');
-      assert.ok(snapsAfterInit.durability_start, 'Durability starting snapshots should be captured');
-      assert.strictEqual(snapsAfterInit.durability_start.chest.durability, 100, 'Chest start durability should be 100');
-      assert.strictEqual(snapsAfterInit.durability_start.helmet.durability, 98, 'Helmet start durability should be 98');
+      assert.ok(snapsAfterInit.equipDur_start, 'Durability starting snapshots should be captured');
+      assert.strictEqual(snapsAfterInit.equipDur_start.chest3[0], 100, 'Chest start durability should be 100');
+      assert.strictEqual(snapsAfterInit.equipDur_start.helmet3[0], 98, 'Helmet start durability should be 98');
       
       // Now simulate durability drop:
       // - chest: 100 -> 98 (2% drop) -> Cost is 2% * 500 = 10
@@ -1643,7 +1686,7 @@ try {
         { slot: 'helmet', itemCode: 'helmet3', durability: 93 }
       ];
       
-      await globalThis.checkDurabilityWear();
+      globalThis.checkInventoryDeltaWear();
       
       const pnlLedgerResult = globalThis.readCache('wia.pnl.ledger');
       assert.strictEqual(pnlLedgerResult.expense.Repairs, 20, 'Repairs expense should be 20 (10 chest wear + 10 helmet wear)');
@@ -1656,18 +1699,18 @@ try {
         { slot: 'helmet', itemCode: 'helmet3', durability: 98 }
       ];
       
-      await globalThis.checkDurabilityWear();
+      globalThis.checkInventoryDeltaWear();
       
       const postRepairLedger = globalThis.readCache('wia.pnl.ledger');
       assert.strictEqual(postRepairLedger.expense.Repairs, 20, 'Repairs expense should remain 20 after repair (repaired jump is neutral)');
       
       // Check snapshot baseline was updated to 100 and 98
       const snapsPostRepair = globalThis.readCache('wia.pnl.snapshots');
-      assert.strictEqual(snapsPostRepair.durability_start.chest.durability, 100, 'Snapshot chest baseline should update to 100');
-      assert.strictEqual(snapsPostRepair.durability_start.helmet.durability, 98, 'Snapshot helmet baseline should update to 98');
+      assert.strictEqual(snapsPostRepair.equipDur_start.chest3[0], 100, 'Snapshot chest baseline should update to 100');
+      assert.strictEqual(snapsPostRepair.equipDur_start.helmet3[0], 98, 'Snapshot helmet baseline should update to 98');
       
-      // Restore GM_xmlhttpRequest mock
-      global.GM_xmlhttpRequest = oldXmlHttpRequest;
+      // Restore findItemCards mock
+      globalThis.findItemCards = oldFindItemCards;
       
       console.log('Daily P&L Tracker Phase 4 tests passed successfully.');
 

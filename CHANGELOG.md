@@ -1,5 +1,25 @@
 # CHANGELOG
 
+## 2026-06-27 | Beute- & Herstellungs-Kennzeichnungen im Tooltip, genauerer P&L-Klick-Verbrauch und detaillierter Beleg (v0.7.10)
+
+**Geänderte Dateien:** `warera-prost.user.js`
+
+**Änderungen (Deutsch):**
+- **Tooltip-Kennzeichnungen**: Gegenstände im Inventar zeigen nun im Tooltip an, ob es sich um Beute (`💡 BEUTE`) oder selbst hergestellte Gegenstände (`💡 HERSTELLT`) handelt, inklusive des ursprünglichen Wertes.
+- **Präziseres P&L-Tracking**:
+  - **Beute- & Herstellungsverkäufe**: Beim Verkauf von Beute oder hergestellten Gegenständen wird nur noch der positive Gewinnüberschuss (Verkaufserlös abzüglich des ursprünglichen Werts) verbucht.
+  - **Klick-Verbrauch verbessert**: Der Verbrauch von Gegenständen durch Klicks (z. B. Essen von Brot) wird nun auch dann erfasst, wenn diese nicht im Inventar liegen (Sofortkauf im Kampf). Der Preis wird automatisch im Nachgang korrigiert, sobald die Transaktion vom Server geladen wird.
+  - **Keine Fehlbuchungen**: Nicht-Konsumgüter (wie Stahl, Schrott, concrete etc.) werden im Delta-Scanner und bei Klick-Aktionen nicht mehr fälschlicherweise als Verbrauch verbucht.
+- **P&L-Kassenzettel (Konsole)**: In den Einstellungen (unter Feature-Health / Diagnose) gibt es nun einen Button "P&L Kassenzettel (Konsole)". Klickt man darauf, wird ein detaillierter "Einkaufszettel" über alle heutigen Einnahmen, Ausgaben (Verbrauch & Verschleiß nach Gegenstand), Lohnzahlungen und Spenden in die Entwickler-Konsole gedruckt.
+
+**Changes (English):**
+- **Tooltip Indicators**: Inventory items now display in their hover tooltips whether they were obtained as loot (`💡 LOOT`) or crafted (`💡 CRAFTED`), including their original acquisition value.
+- **More Precise P&L Tracking**:
+  - **Loot & Crafted Sales**: Selling loot or crafted items now only books the net profit surplus (sales price minus the original acquisition value) to the ledger.
+  - **Improved Click Consumption**: Consuming items via clicks (e.g. eating bread) is now tracked even when they are not in your inventory (on-the-fly battle purchase). The cost is retrospectively corrected once the transaction is loaded.
+  - **No False Consumption**: Non-consumables (such as steel, scraps, concrete, etc.) are no longer falsely booked as consumption.
+- **P&L Receipt Printer (Console)**: Added a "P&L Kassenzettel (Konsole)" button in Settings (under Feature-Health / Diagnostics). Clicking it prints a detailed receipt of all today's income, detailed wear and consumption per item, wages, and donations to the developer console.
+
 ## 2026-06-27 | Diagnose-Modus, zuverlässigere Anzeige & genaueres P&L-Tracking (v0.7.9)
 
 **Geänderte Dateien:** `warera-prost.user.js`
