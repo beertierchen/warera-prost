@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.7.8
-// @description  PROST — Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
+// @version      0.7.9
+// @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
 // @supportURL   https://github.com/beertierchen/warera-prost/issues
@@ -41,7 +41,7 @@
   'use strict';
 
   // ───────────────────────────────────────────────────────────────────────────
-  // CONFIG — edit here when the game's markup changes
+  // CONFIG-edit here when the game's markup changes
   // ───────────────────────────────────────────────────────────────────────────
   const CONFIG = {
     // --- API ---
@@ -79,18 +79,18 @@
     itemImageSelector: "img[src*='/images/items/']",
     cardAncestorMaxClimb: 6,            // how many parents to walk up looking for the "card"
 
-    // SVG path "d" fingerprints — substring-match to identify the stat by its icon.
+    // SVG path "d" fingerprints-substring-match to identify the stat by its icon.
     // Confirmed from live DOM: attack (sword), crit (burst), armor (shield).
     // helmet/gloves/boots icons not yet sampled -> handled by the unknown-icon fallback.
     statSvgFingerprints: {
       attack: 'M18.8025 2.44L6.9025',
       crit:   'M4.35 21H21V4.35',
-      armor:  'M12,1L3,5V11C3,16.55', // mdi-shield — chest/pants "Armor" stat (bare integer)
+      armor:  'M12,1L3,5V11C3,16.55', // mdi-shield-chest/pants "Armor" stat (bare integer)
     },
 
     // Rarity TIERS 1-6 from the armor alt suffix (e.g. "chest3" -> tier 3).
     // Weapons are tiered unique codes (knife/gun/rifle/sniper/tank/jet).
-    // Tier 5-6 names/colors are ASSUMED — correct them if the game differs.
+    // Tier 5-6 names/colors are ASSUMED-correct them if the game differs.
     weaponCodeToTier: { knife: 1, gun: 2, rifle: 3, sniper: 4, tank: 5, jet: 6 },
     tiers: {
       1: { label: 'Common',    rgb: [136, 136, 136] }, // gray
@@ -103,7 +103,7 @@
     rarityColorMaxDistance: 90,         // max RGB euclidean distance for the color fallback
 
     // Scrap yield per tier. Confirmed 1-4 = 6/18/54/162 (x3 each); tiers 5-6
-    // extrapolated x3 (486/1458) — confirm in-game. scrapValue = yield * scrapPrice.
+    // extrapolated x3 (486/1458)-confirm in-game. scrapValue = yield * scrapPrice.
     scrapYieldByTier: { 1: 6, 2: 18, 3: 54, 4: 162, 5: 486, 6: 1458 },
 
     // alt-attribute keyword -> item type. Weapons get the score formula; the rest
@@ -242,7 +242,7 @@
         estNoOffers: 'Market value (est., no offers): {val}',
         scrapedFloor: 'Market value (scraped floor): {val}',
         marketRoll: 'Market value @ roll: {val} (floor {floor}, {offers} offers)',
-        stalePrices: '⚠ cached/stale prices — refresh in settings',
+        stalePrices: '⚠ cached/stale prices-refresh in settings',
         scrapeSuccess: '✓ {count} equipment prices scraped successfully!',
         notEquipment: 'not equipment',
         rangeLabelWeapon: 'score {score} >= {threshold} [90% of range {min} - {max}]',
@@ -294,11 +294,11 @@
         settingsAlliedCodesLabel: 'Allied country codes (comma-separated, e.g. de,pt)',
         settingsAlliedCodesPlaceholder: 'de,pt,...',
         settingsTitle: 'WareEra Inventory Advisor',
-        gearTitle: 'WareEra Inventory Advisor — Settings',
+        gearTitle: 'WareEra Inventory Advisor-Settings',
         settingsDesc: 'The Inventory Advisor gives a quick overview of whether items should be kept (KEEP/HOLD), sold (SELL), or salvaged (SCRAP).',
         settingsApiToken: 'API Token (api2.warera.io)',
         settingsTokenPlaceholder: 'Bearer token',
-        settingsTokenNote: 'Saved locally (GM_setValue, lightly obfuscated — not real encryption).',
+        settingsTokenNote: 'Saved locally (GM_setValue, lightly obfuscated-not real encryption).',
         settingsLiveOffersCheckbox: 'Fetch live offers via API (requires API Token)',
         settingsLiveOffersHint: 'Fetches live market listings from the official API to rank item stats against currently active listings.',
         settingsScrapFlipCheckbox: 'Scrap-Flip indicator (experimental)',
@@ -378,7 +378,7 @@
             </ul>
             <strong>Pill timer 💊:</strong>
             <ul>
-              <li>Counts down to your next pill — the latest of: <em>H&amp;H full</em>, <em>debuff ended</em>, and your <em>preferred window</em> start.</li>
+              <li>Counts down to your next pill-the latest of: <em>H&amp;H full</em>, <em>debuff ended</em>, and your <em>preferred window</em> start.</li>
               <li>Buff/debuff is detected from the pill icon on your own profile. "no pill anchor" just means none has been detected yet.</li>
             </ul>
             <strong>H&amp;H budget bars:</strong>
@@ -387,13 +387,13 @@
               <li>The bright segment above the floor is <em>free to spend</em> (attack / get eaten). <em>✕ 0 free</em> = don't spend, you need it all to refill in time.</li>
             </ul>`,
         settingsPriceFormat: 'Price format: [Scrap Value]/[Market Price]',
-        menuSettings: 'Inventory Advisor — Settings',
+        menuSettings: 'Inventory Advisor-Settings',
         menuClearRescan: 'Clear Cache + Rescan',
-        gearTooltipTitle: 'Inventory Advisor — Settings',
+        gearTooltipTitle: 'Inventory Advisor-Settings',
         gearTooltipScrapPrice: 'Scrap price: {price}/u ({age})',
         gearTooltipItemPrices: 'Item prices: {count} cached ({age})',
         gearTooltipTxHistory: 'Tx history: {count} items cached',
-        gearTooltipRateLimited: 'API limit — waiting {sec}s',
+        gearTooltipRateLimited: 'API limit-waiting {sec}s',
         dataStrip_scrapPrice: 'Scrap price:  {price} / unit   (fetched {age})\n',
         dataStrip_itemPrices: 'Item prices:  {count} cached         (fetched {age})\n',
         dataStrip_scrapedMkt: 'Scraped mkt:  {count} items stored    (visit Market -> Equipments to update)\n',
@@ -402,7 +402,7 @@
         status_rateLimited: 'RATE-LIMITED',
         status_stale: 'stale (past cache TTL)',
         status_fresh: 'fresh',
-        rateLimitBanner: '⚠ API limit reached! Backoff active ({sec}s) — displaying cached prices.',
+        rateLimitBanner: '⚠ API limit reached! Backoff active ({sec}s)-displaying cached prices.',
         marketGraph24h: '24h',
         marketGraph3d: '3d',
         marketGraphLegendNative: 'Daily avg',
@@ -429,7 +429,7 @@
         estNoOffers: 'Marktwert (geschätzt, keine Angebote): {val}',
         scrapedFloor: 'Marktwert (gescraptes Minimum): {val}',
         marketRoll: 'Marktwert für Roll: {val} (Minimum {floor}, {offers} Angebote)',
-        stalePrices: '⚠ Veraltete Preise — in den Einstellungen aktualisieren',
+        stalePrices: '⚠ Veraltete Preise-in den Einstellungen aktualisieren',
         scrapeSuccess: '✓ {count} Equipment-Preise erfolgreich gescannt!',
         notEquipment: 'keine Ausrüstung',
         rangeLabelWeapon: 'Score {score} >= {threshold} [90% des Bereichs {min} - {max}]',
@@ -481,11 +481,11 @@
         settingsAlliedCodesLabel: 'Verbündete Ländercodes (Komma-getrennt, z.B. de,pt)',
         settingsAlliedCodesPlaceholder: 'de,pt,...',
         settingsTitle: 'WareEra Inventory Advisor',
-        gearTitle: 'WareEra Inventory Advisor — Einstellungen',
+        gearTitle: 'WareEra Inventory Advisor-Einstellungen',
         settingsDesc: 'Der Inventory Advisor soll eine schnelle Übersicht geben, ob Items behalten (KEEP/HOLD), gewinnbringend verkauft (SELL) oder zerschreddert (SCRAP) werden sollten.',
         settingsApiToken: 'API-Token (api2.warera.io)',
         settingsTokenPlaceholder: 'Bearer-Token',
-        settingsTokenNote: 'Lokal gespeichert (GM_setValue, leicht verschleiert — keine echte Verschlüsselung).',
+        settingsTokenNote: 'Lokal gespeichert (GM_setValue, leicht verschleiert-keine echte Verschlüsselung).',
         settingsLiveOffersCheckbox: 'Live-Angebote über API abrufen (benötigt API-Token)',
         settingsLiveOffersHint: 'Ruft aktuelle Angebote über die offizielle API ab, um Gegenstandswerte mit derzeit aktiven Angeboten zu vergleichen.',
         settingsScrapFlipCheckbox: 'Scrap-Flip-Indikator (experimentell)',
@@ -565,7 +565,7 @@
             </ul>
             <strong>Pillentimer 💊:</strong>
             <ul>
-              <li>Zählt zur nächsten Pille runter — das Späteste aus: <em>H&amp;H voll</em>, <em>Debuff vorbei</em> und Beginn deines <em>Wunschfensters</em>.</li>
+              <li>Zählt zur nächsten Pille runter-das Späteste aus: <em>H&amp;H voll</em>, <em>Debuff vorbei</em> und Beginn deines <em>Wunschfensters</em>.</li>
               <li>Buff/Debuff wird am Pillen-Icon auf deinem eigenen Profil erkannt. „kein Pillen-Anker" heißt nur: noch keiner erkannt.</li>
             </ul>
             <strong>H&amp;H-Budget-Balken:</strong>
@@ -574,13 +574,13 @@
               <li>Der helle Abschnitt über dem Floor ist <em>frei verspielbar</em> (attacken / gegessen werden). <em>✕ 0 frei</em> = nicht anfassen, du brauchst alles zum Auffüllen.</li>
             </ul>`,
         settingsPriceFormat: 'Preisformat: [Schrottwert]/[Marktpreis]',
-        menuSettings: 'Inventory Advisor — Einstellungen',
+        menuSettings: 'Inventory Advisor-Einstellungen',
         menuClearRescan: 'Cache leeren + neu scannen',
-        gearTooltipTitle: 'Inventory Advisor — Einstellungen',
+        gearTooltipTitle: 'Inventory Advisor-Einstellungen',
         gearTooltipScrapPrice: 'Schrottpreis: {price}/Einh. ({age})',
         gearTooltipItemPrices: 'Item-Preise: {count} im Cache ({age})',
         gearTooltipTxHistory: 'Transaktions-Verlauf: {count} Items im Cache',
-        gearTooltipRateLimited: 'API-Limit — Wartezeit {sec}s',
+        gearTooltipRateLimited: 'API-Limit-Wartezeit {sec}s',
         dataStrip_scrapPrice: 'Schrottpreis:  {price} / Einh.   (geladen {age})\n',
         dataStrip_itemPrices: 'Item-Preise:  {count} im Cache   (geladen {age})\n',
         dataStrip_scrapedMkt: 'Gescrapter Markt: {count} Items   (besuche Markt -> Ausrüstung zum Updaten)\n',
@@ -589,7 +589,7 @@
         status_rateLimited: 'API-LIMITERREICHT',
         status_stale: 'veraltet (Cache TTL abgelaufen)',
         status_fresh: 'aktuell',
-        rateLimitBanner: '⚠ API-Limit erreicht! Wartezeit aktiv ({sec}s) — zeige zwischengespeicherte Preise.',
+        rateLimitBanner: '⚠ API-Limit erreicht! Wartezeit aktiv ({sec}s)-zeige zwischengespeicherte Preise.',
         marketGraph24h: '24h',
         marketGraph3d: '3d',
         marketGraphLegendNative: 'Tagesschnitt',
@@ -613,10 +613,10 @@
   const KEYS = {
     token: NS + 'token',
     locale: NS + 'locale',
-    priceCache: NS + 'priceCache',     // { data, fetchedAt } — materials map
-    scrapCache: NS + 'scrapCache',     // { price, fetchedAt } — legacy, unused
-    offersCache: NS + 'offersCache',   // { [itemCode]: { data, fetchedAt } } — equipment offers
-    transactionsCache: NS + 'transactionsCache', // { [itemCode]: { data, fetchedAt } } — equipment transactions
+    priceCache: NS + 'priceCache',     // { data, fetchedAt }-materials map
+    scrapCache: NS + 'scrapCache',     // { price, fetchedAt }-legacy, unused
+    offersCache: NS + 'offersCache',   // { [itemCode]: { data, fetchedAt } }-equipment offers
+    transactionsCache: NS + 'transactionsCache', // { [itemCode]: { data, fetchedAt } }-equipment transactions
     apiBase: NS + 'apiBase',
     rateLimitedUntil: NS + 'rlUntil',
     scrapedPrices: NS + 'scrapedPrices',
@@ -691,7 +691,7 @@
   let menuSettingsId = null;
   let menuClearId = null;
   let menuDebugId = null;
-  const OBF_KEY = 'wareEra.advisor.v1'; // XOR pad — obfuscation only, not encryption
+  const OBF_KEY = 'wareEra.advisor.v1'; // XOR pad-obfuscation only, not encryption
 
   function xor(str, pad) {
     let out = '';
@@ -844,7 +844,7 @@
   }
 
   // Console API. Open DevTools and use WIA.health() / WIA.logs() / WIA.debug(true).
-  // Must attach to unsafeWindow — the page console runs in the page realm, not the
+  // Must attach to unsafeWindow-the page console runs in the page realm, not the
   // Tampermonkey sandbox, so a plain `window.WIA` would be invisible there.
   const PAGE_WINDOW = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : (typeof window !== 'undefined' ? window : null);
   if (PAGE_WINDOW) {
@@ -876,7 +876,7 @@
     const rows = ids.map((id) => {
       const h = Health[id];
       const color = HEALTH_DOT[h.status] || HEALTH_DOT.idle;
-      const reason = h.reason ? ` — <span style="color:#8b949e;">${String(h.reason).replace(/</g, '&lt;')}</span>` : '';
+      const reason = h.reason ? `-<span style="color:#8b949e;">${String(h.reason).replace(/</g, '&lt;')}</span>` : '';
       const meta = `<span style="color:#6e7681; font-size:10px;">runs ${h.runs}, err ${h.errors}</span>`;
       return `<div style="display:flex; align-items:center; gap:8px; padding:3px 0; font-size:12px;">
         <span style="width:9px; height:9px; border-radius:50%; background:${color}; flex:0 0 auto; box-shadow:0 0 4px ${color};"></span>
@@ -1745,7 +1745,7 @@
     const src = (img.getAttribute('src') || '').toLowerCase();
     // sprite basename (chest.png -> "chest") is the clean TYPE key.
     const srcBase = (src.match(/\/images\/items\/([^/.?#]+)/) || [])[1] || '';
-    // itemCode = the full alt ("gloves6", "chest3", "sniper") — what the market API keys on.
+    // itemCode = the full alt ("gloves6", "chest3", "sniper")-what the market API keys on.
     const code = alt || srcBase || null;
     // tier 1-6 from the trailing digit of the code (armor); weapons have none.
     const tm = (code || '').match(/(\d+)\s*$/);
@@ -1874,7 +1874,7 @@
   }
 
   // Find the numeric text associated with a clean svg/path element. Climb until
-  // an ancestor's text contains exactly one number — that is the stat's own
+  // an ancestor's text contains exactly one number-that is the stat's own
   // value box. A multi-number ancestor means we climbed too far (it now spans
   // sibling stats), so return the last single-number result instead of grabbing
   // an unrelated figure.
@@ -1888,7 +1888,7 @@
       if (nums.length === 1) {
         return parseNum(nums[0]);
       } else if (nums.length > 1) {
-        break; // spans more than this stat — stop
+        break; // spans more than this stat-stop
       }
     }
     return null;
@@ -2628,7 +2628,7 @@
     let cards = findItemCards(false);
     if (!cards.size) {
       // Fallback: collect ONLY offer cards holding this item's image.
-      // Never query the generic .a6izou0 icon class — it exists site-wide
+      // Never query the generic .a6izou0 icon class-it exists site-wide
       // (chat, HUD, nav) and would stamp badges across the whole page.
       const root = document.querySelector('main') || document.body;
       const fallbackCards = new Map();
@@ -3388,7 +3388,7 @@ async function scanInventory(force) {
       .wia-locale-item:hover { background: #21262d; }
       .wia-flip-badge {
         /* Bottom ribbon pinned INSIDE the tile (where the inventory-quantity
-           banner — always "-" on the equipment market — normally sits), so the
+           banner-always "-" on the equipment market-normally sits), so the
            indicator never overflows the tile bounds. left+right constrain the
            width to the tile; overflow clips gracefully on tiny tiles. */
         position: absolute; left: 2px; right: 2px; bottom: 2px; z-index: 70;
@@ -3410,7 +3410,7 @@ async function scanInventory(force) {
       /* ── Pill Reminder module styles ── */
       /* Mimic WareEra's native top-bar chips: pill shape, dark translucent
          fill, hairline border, drop-shadowed glyph/text. Phase is carried by a
-         glowing status LED + border tint, NOT a saturated block fill — so the
+         glowing status LED + border tint, NOT a saturated block fill-so the
          badge reads as "another game indicator", not a foreign widget. */
       #wia-pill-badge {
         display: inline-flex; align-items: center; justify-content: center;
@@ -4378,7 +4378,7 @@ function updateObserverTarget() {
     if (defCode && allied.has(defCode)) return 'defender';
     if (atkCode && allied.has(atkCode)) return 'attacker';
 
-    // Fallback: structural — check both defender and attacker parents independently for orders (country or MU)
+    // Fallback: structural-check both defender and attacker parents independently for orders (country or MU)
     const defParent = defBtn.parentElement?.parentElement;
     const atkParent = atkBtn.parentElement?.parentElement;
 
@@ -4389,7 +4389,7 @@ function updateObserverTarget() {
     if (defHasOrders && !atkHasOrders) return 'defender';
     if (atkHasOrders && !defHasOrders) return 'attacker';
 
-    return null; // unknown — never highlight a guess
+    return null; // unknown-never highlight a guess
   }
 
   function injectCompactOrders(btnEl) {
@@ -4455,7 +4455,7 @@ function updateObserverTarget() {
     const defBtn = document.querySelector('#defender-hit-button');
     const atkBtn = document.querySelector('#attacker-hit-button');
     if (!defBtn || !atkBtn) {
-      // Buttons not yet in DOM — retry shortly (SPA lazy-load)
+      // Buttons not yet in DOM-retry shortly (SPA lazy-load)
       setTimeout(applyBattleAdvisory, 400);
       return;
     }
@@ -4467,7 +4467,7 @@ function updateObserverTarget() {
     injectCompactOrders(atkBtn);
 
     const side = detectAllySide();
-    if (!side) return; // unknown side — leave highlighting untouched
+    if (!side) return; // unknown side-leave highlighting untouched
 
     const allyBtn  = side === 'defender' ? defBtn : atkBtn;
     const enemyBtn = side === 'defender' ? atkBtn : defBtn;
@@ -4483,7 +4483,7 @@ function updateObserverTarget() {
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // Notes module (ported from warera-notes.user.js — reuses same GM keys/selectors
+  // Notes module (ported from warera-notes.user.js-reuses same GM keys/selectors
   // so notes saved by the standalone script remain visible here too)
   // ───────────────────────────────────────────────────────────────────────────
   const NOTES_LINK_SEL  = "a[href*='/user/']";
@@ -4861,7 +4861,7 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
     if (!track) return;
 
     // The native track is already position:absolute + overflow:hidden (a proper
-    // containing block) — only add positioning if it's somehow static. Never
+    // containing block)-only add positioning if it's somehow static. Never
     // override its absolute layout: forcing relative pops it into normal flow
     // and doubles the bar row's height.
     if (getComputedStyle(track).position === 'static') track.style.position = 'relative';
@@ -6562,7 +6562,7 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
       return scrapedStore[itemCode].price;
     }
     // Consumables (ammo/food/drugs) aren't in itemTrading.getPrices (materials only).
-    // Their unit price is shown in the in-game selector tiles — harvested into this cache.
+    // Their unit price is shown in the in-game selector tiles-harvested into this cache.
     const cp = readCache(KEYS.consumablePrices);
     if (cp && cp[itemCode] != null) return cp[itemCode];
     return null;
@@ -7140,7 +7140,7 @@ function processTransactionsList(items, userId) {
       ledger.total = sumIncome - sumExpense;
       writeCache(KEYS.pnlLedger, ledger);
 
-      dbg('pnl', 'debug', `Tagesabschluss — Ein: ${sumIncome.toFixed(2)} | Aus: ${sumExpense.toFixed(2)} | Profit: ${ledger.total.toFixed(2)}`);
+      dbg('pnl', 'debug', `Tagesabschluss-Ein: ${sumIncome.toFixed(2)} | Aus: ${sumExpense.toFixed(2)} | Profit: ${ledger.total.toFixed(2)}`);
     }
   }
 
@@ -7417,7 +7417,7 @@ function checkInventoryDeltaConsumption() {
     return { unitPaid, isEstimated };
   }
 
-  // Durability wear from inventory scan. Equipment is non-stacking — each instance
+  // Durability wear from inventory scan. Equipment is non-stacking-each instance
   // carries its own durability. We snapshot a per-code multiset of durability values
   // on every inventory visit and diff against the previous visit:
   //   - same code, durability dropped  → wear; book (drop/100)*unitPaid to Repairs.
@@ -7425,7 +7425,7 @@ function checkInventoryDeltaConsumption() {
   //     chest already costed elsewhere) → no wear.
   //   - prior instance vanished (no current match) → it broke; book its remaining
   //     durability as full wear. (Gear is rarely sold/unequipped per usage pattern.)
-  // Single wear source — the equipment-API path is intentionally NOT booked, to avoid
+  // Single wear source-the equipment-API path is intentionally NOT booked, to avoid
   // double-counting into Repairs.
 function checkInventoryDeltaWear() {
     if (!isInventoryPage()) return;
@@ -7531,7 +7531,7 @@ function checkInventoryDeltaWear() {
       let tileImg = null;
       while (node && node !== pop) {
         const imgs = node.querySelectorAll ? node.querySelectorAll('img[alt]') : [];
-        if (imgs.length === 1) tileImg = imgs[0];   // keep climbing — tile = biggest single-img ancestor
+        if (imgs.length === 1) tileImg = imgs[0];   // keep climbing-tile = biggest single-img ancestor
         else if (imgs.length > 1) break;            // climbed into the multi-tile container → stop
         node = node.parentElement;
       }
@@ -7555,7 +7555,7 @@ function checkInventoryDeltaWear() {
 
       const goldVal = getGoldBalance();
       const snapshots = {
-        // null (not 0!) when gold isn't readable yet — else gold_start=0 makes the
+        // null (not 0!) when gold isn't readable yet-else gold_start=0 makes the
         // gold delta equal the entire balance. Backfilled lazily in updatePnlUi.
         gold_start: goldVal !== null ? goldVal : null,
         invQty_start: isInventoryPage() ? getInventoryQuantities() : {}
@@ -7838,7 +7838,7 @@ function checkInventoryDeltaWear() {
         // Separator line
         html += `<tr style="border-top: 1px solid rgba(255, 255, 255, 0.15);"><td colspan="3" style="padding: 4px 0 0 0;"></td></tr>`;
 
-        // Capitalized purchases (gold spent on assets — not a loss)
+        // Capitalized purchases (gold spent on assets-not a loss)
         html += renderPnlRow(loc.capitalized, todayCapital, yesterdayCapital, false, false);
 
         // Untracked/Sonstiges (true residual; should be ~0 when tracking is complete)
@@ -7933,7 +7933,7 @@ function checkInventoryDeltaWear() {
   }
 
   // Live update: watch the gold balance (#money) for changes. ANY gold movement —
-  // Work, market buy/sell, consume — mutates this text. On change we refresh the chip
+  // Work, market buy/sell, consume-mutates this text. On change we refresh the chip
   // instantly (cheap, goldDelta-only) and debounce a transaction fetch (~2.5s, to let the
   // server register the new tx) to categorize the income/expense. One observer covers all
   // money-moving actions, so we don't need a hook per button.
@@ -8072,7 +8072,7 @@ function checkInventoryDeltaWear() {
     // Advisor self-heal heartbeat: if the grid re-rendered (new nodes / stripped badges)
     // and nothing re-triggered a scan, re-attach the observer and rescan. hasInventoryChanged
     // returns true after an in-place re-render (node identity differs, or a card lacks both
-    // a badge and the suppressed marker — see 2884) and false when everything is already
+    // a badge and the suppressed marker-see 2884) and false when everything is already
     // badged/suppressed, so this is a no-op cost when the grid is stable.
     setInterval(() => {
       if (scanning) return;

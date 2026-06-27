@@ -1,5 +1,25 @@
 # CHANGELOG
 
+## 2026-06-27 | Diagnose-Modus, zuverlässigere Anzeige & genaueres P&L-Tracking (v0.7.9)
+
+**Geänderte Dateien:** `warera-prost.user.js`
+
+**Änderungen (Deutsch):**
+- **Diagnose-Modus (Debug)**: In den Einstellungen lässt sich ein Debug-Modus einschalten. Er zeigt pro Funktion eine Ampel (grün/gelb/rot) mit Begründung an — so ist sofort sichtbar, ob z. B. der Item-Ratgeber oder das P&L-Tracking gerade arbeitet und, falls nicht, warum. Optional erscheint zusätzlich eine kleine Anzeige direkt im Spiel.
+- **Zuverlässigere Ratgeber-Anzeige**: Die Empfehlungs-Badges auf den Gegenständen blieben bisher oft aus, weil das Spiel das Inventar im Hintergrund neu aufbaut. Die Erkennung wurde so umgebaut, dass die Badges nach jedem Neuaufbau (Aus-/Anlegen von Ausrüstung, Verbrauchen, Tab-Wechsel) sofort wieder erscheinen.
+- **Genaueres P&L (Gewinn & Verlust)**:
+  - **Verbrauch wird erfasst**: Gegessenes (Steak/Brot/Fisch), Pillen und verschossene Munition werden nun als Ausgabe verbucht — auch für Dinge ohne hinterlegten Kaufpreis, dann über den Marktwert.
+  - **Korrekte Durchschnittskosten**: Kaufpreise werden als gleitender Durchschnitt geführt; eine Transaktion wird nur noch genau einmal gezählt (vorher wurden Werte bei jedem Abgleich fälschlich aufaddiert).
+  - **Nichts geht verloren**: Bei viel Aktivität (eigene Käufe/Verkäufe oder arbeitende Mitarbeiter) werden ältere Einträge nun nachgeladen, statt nur die letzten 100 zu sehen.
+
+**Changes (English):**
+- **Diagnostics (Debug) Mode**: A debug mode can be toggled in Settings. It shows a per-feature traffic light (green/yellow/red) with a reason, so you can instantly see whether the item advisor, P&L tracker, etc. are working — and if not, why. An optional small on-screen panel is available too.
+- **More Reliable Advisor Display**: Recommendation badges on items frequently went missing because the game re-renders the inventory in the background. Detection was reworked so badges reappear immediately after every re-render (equipping/unequipping, consuming, switching tabs).
+- **More Accurate P&L (Profit & Loss)**:
+  - **Consumption is tracked**: Food (steak/bread/fish), pills, and fired ammo are now booked as expenses — including items with no recorded purchase price, which fall back to market value.
+  - **Correct Average Cost**: Purchase prices use a weighted moving average, and each transaction is counted exactly once (previously values were wrongly re-accumulated on every refresh).
+  - **Nothing Slips Through**: During heavy activity (your own trades or working employees), older entries are now paged in instead of only seeing the latest 100.
+
 ## 2026-06-24 | Fehlerbehebung bei Latenzzeiten und Layout-Verschiebungen (v0.7.7)
 
 **Geänderte Dateien:** `warera-prost.user.js`
