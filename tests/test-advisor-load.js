@@ -10,8 +10,20 @@ let code = fs.readFileSync(scriptPath, 'utf8');
 // Mock Tampermonkey / Browser environment
 global.GM_addStyle = () => {};
 const mockStorage = { 'wia.locale': 'en' };
-global.GM_getValue = (key, def) => (key in mockStorage ? mockStorage[key] : def);
-global.GM_setValue = (key, val) => { mockStorage[key] = val; };
+global.GM_setValue = (key, val) => {
+  if (val != null && (typeof val === 'object' || Array.isArray(val))) {
+    mockStorage[key] = JSON.stringify(val);
+  } else {
+    mockStorage[key] = val;
+  }
+};
+global.GM_getValue = (key, def) => {
+  const val = key in mockStorage ? mockStorage[key] : def;
+  if (typeof val === 'string' && (val.startsWith('{') || val.startsWith('['))) {
+    try { return JSON.parse(val); } catch (e) {}
+  }
+  return val;
+};
 global.GM_registerMenuCommand = () => {};
 global.Node = { TEXT_NODE: 3, ELEMENT_NODE: 1 };
 
@@ -1350,6 +1362,12 @@ try {
   
   // Clean mock storage and initialize
   globalThis.clearCache();
+  globalThis.writeCache('wia.priceCache', {
+    fetchedAt: Date.now(),
+    data: {
+      case1: 15.000
+    }
+  });
   globalThis.CONFIG.featPnlTracker = true;
   globalThis.GM_setValue('wia.pnl.ledger', null);
   globalThis.GM_setValue('wia.pnl.yesterday', null);
@@ -1426,13 +1444,54 @@ try {
       sellerId: 'mu-id',
       buyerId: mockUserId,
       createdAt: new Date(2026, 5, 24, 7, 0, 0).toISOString()
+    },
+    // 7. Object-based Mongo ID wage transaction (should be correctly deduped)
+    {
+      _id: { $oid: '64a5cdef1234567890abcdef' },
+      transactionType: 'wage',
+      money: '1.900',
+      quantity: 1,
+      sellerId: mockUserId,
+      buyerId: 'company-user-id',
+      createdAt: new Date(2026, 5, 24, 9, 0, 0).toISOString()
+    },
+    // 8. openCase transaction (should resolve caseVal from priceCache)
+    {
+      id: 'tx-today-opencase',
+      transactionType: 'openCase',
+      itemCode: 'case1',
+      quantity: 1,
+      buyerId: mockUserId,
+      createdAt: new Date(2026, 5, 24, 10, 0, 0).toISOString()
+    },
+    // 9. Wage earned yesterday -> should NOT add to Wages income today
+    {
+      id: 'tx-yesterday-wage',
+      transactionType: 'wage',
+      money: '50.000',
+      quantity: 1,
+      sellerId: mockUserId,
+      buyerId: 'company-user-id',
+      createdAt: new Date(2026, 5, 24, 1, 30, 0).toISOString() // 1:30 AM (before 2:00 AM reset)
+    },
+    // 10. Donation yesterday -> should NOT add to Other expense today
+    {
+      id: 'tx-yesterday-donation',
+      transactionType: 'donation',
+      money: '100.000',
+      sellerId: 'mu-id',
+      buyerId: mockUserId,
+      createdAt: new Date(2026, 5, 24, 1, 45, 0).toISOString() // 1:45 AM (before 2:00 AM reset)
     }
   ];
   
   // Initialize ledger
   globalThis.checkPnlDayReset();
   
-  // Process the transactions
+  // Process the transactions (First time)
+  globalThis.processTransactionsList(mockTxs, mockUserId);
+  
+  // Process the transactions again (Second time - should be completely deduped!)
   globalThis.processTransactionsList(mockTxs, mockUserId);
   
   // Assertions
@@ -1447,15 +1506,16 @@ try {
   
   // Income verification
   assert.strictEqual(ledgerResult.income.Sales, 200.000, 'Sales income should be 200.000');
-  assert.strictEqual(ledgerResult.income.Wages, 15.500, 'Wages income should be 15.500');
+  assert.strictEqual(ledgerResult.income.Wages, 17.400, 'Wages income should be 17.400 (15.5 + 1.9, no duplicate added)');
   // Expense verification
   assert.strictEqual(ledgerResult.expense['Employee Wages'], 8.000, 'Employee Wages expense should be 8.000');
   assert.strictEqual(ledgerResult.expense.Other, 5.000, 'Donation should be mapped to Other expense (5.000)');
+  assert.strictEqual(ledgerResult.expense.Cases, 15.000, 'Cases expense should be 15.000');
   // Purchases (trading buy) should NOT be expensed (should be capitalized)
   assert.strictEqual(ledgerResult.expense.Sales || 0, 0, 'Sales expense should be 0 (capitalized)');
   
-  // Ledger total: (200 + 15.5) - (8 + 5) = 215.5 - 13 = 202.5
-  assert.strictEqual(ledgerResult.total, 202.500, 'Accrual total should be 202.500');
+  // Ledger total: (200 + 17.4) - (8 + 5 + 15) = 217.4 - 28 = 189.4
+  assert.strictEqual(ledgerResult.total, 189.400, 'Accrual total should be 189.400');
   
   // Clean up mockTodayResetTime
   globalThis.todayResetTime = oldTodayResetTime;
@@ -1594,6 +1654,53 @@ try {
   // Total Consumption today should be: 24 (from click) + 12 (from delta food_bread) + 100 (from delta pill_haste) = 136.
   const finalLedger = globalThis.readCache('wia.pnl.ledger');
   assert.strictEqual(finalLedger.expense.Consumption, 136, 'Consumption should be 136 (24 click + 12 bread delta + 100 pill delta)');
+
+  // --- Safeguard Tests ---
+  console.log('Testing delta consumption safeguards...');
+
+  // Mock document.querySelectorAll to simulate active search input filter
+  const originalQuerySelectorAll = global.document.querySelectorAll;
+  const mockSearchInput = new MockElement('input');
+  mockSearchInput.value = 'steak';
+
+  global.document.querySelectorAll = (sel) => {
+    if (sel.includes('input')) {
+      return [mockSearchInput];
+    }
+    return originalQuerySelectorAll.call(global.document, sel);
+  };
+
+  // With active search input, delta check should be skipped (Consumption remains 136)
+  globalThis.checkInventoryDeltaConsumption();
+  const postSearchLedger = globalThis.readCache('wia.pnl.ledger');
+  assert.strictEqual(postSearchLedger.expense.Consumption, 136, 'Consumption should remain 136 when search filter is active');
+
+  // Restore querySelectorAll
+  global.document.querySelectorAll = originalQuerySelectorAll;
+
+  // Mock findItemCards to return empty map (DOM empty / loading state)
+  globalThis.findItemCards = () => new Map();
+
+  // Run delta check - should skip since currentQts is empty and snapshots has items
+  globalThis.checkInventoryDeltaConsumption();
+  const postEmptyLedger = globalThis.readCache('wia.pnl.ledger');
+  assert.strictEqual(postEmptyLedger.expense.Consumption, 136, 'Consumption should remain 136 when DOM is completely empty during load');
+
+  // Mock a single item (lightammo) with high quantity dropping to 0
+  const snapshotsWithAmmo = {
+    gold_start: 1000,
+    durability_start: {},
+    invQty_start: {
+      lightammo: 1000
+    }
+  };
+  globalThis.writeCache('wia.pnl.snapshots', snapshotsWithAmmo);
+
+  // Run delta check with empty DOM (lightammo drops to 0)
+  // Since startQty (1000) > 50, it is flagged as suspicious and skipped
+  globalThis.checkInventoryDeltaConsumption();
+  const postAmmoDropLedger = globalThis.readCache('wia.pnl.ledger');
+  assert.strictEqual(postAmmoDropLedger.expense.Consumption, 136, 'Consumption should remain 136 when high quantity ammo drops to 0 (suspicious drop)');
   
   // 4. Test printPnlReceipt execution
   const logLines = [];
@@ -1817,6 +1924,54 @@ try {
       // Gold Delta: -21.44
       assert.ok(tooltipHtml.includes('-21.44'), 'Tooltip should show -21.44 Gold Delta yesterday');
       
+      // --- Testing Inventory Tab Visibility and Skip Delta Checks ---
+      console.log('--- Testing Inventory Tab Visibility and Skip Delta Checks ---');
+      
+      const oldQuerySelectorAll = global.document.querySelectorAll;
+      
+      // Test cases for active tabs
+      const tabTests = [
+        { tabText: 'Waffen', expectedTab: 'weapons', consVisible: false, equipVisible: true },
+        { tabText: 'Weapons', expectedTab: 'weapons', consVisible: false, equipVisible: true },
+        { tabText: 'Ausrüstung', expectedTab: 'equipment', consVisible: false, equipVisible: true },
+        { tabText: 'Verbrauchbares', expectedTab: 'consumables', consVisible: true, equipVisible: false },
+        { tabText: 'Consumables', expectedTab: 'consumables', consVisible: true, equipVisible: false },
+        { tabText: 'Alle', expectedTab: 'all', consVisible: true, equipVisible: true },
+        { tabText: 'All', expectedTab: 'all', consVisible: true, equipVisible: true },
+        { tabText: 'Sonstiges', expectedTab: 'other', consVisible: false, equipVisible: false },
+        { tabText: 'Other', expectedTab: 'other', consVisible: false, equipVisible: false }
+      ];
+
+      for (const tCase of tabTests) {
+        const mockTabButton = new MockElement('button');
+        mockTabButton.textContent = tCase.tabText;
+        mockTabButton.setAttribute('data-state', 'active'); // Mark as active
+
+        const mockOtherButton = new MockElement('button');
+        mockOtherButton.textContent = tCase.tabText === 'Waffen' ? 'Verbrauchbares' : 'Waffen';
+        mockOtherButton.setAttribute('data-state', 'inactive'); // Inactive
+
+        global.document.querySelectorAll = (sel) => {
+          if (sel === 'button, a, [role="tab"]') {
+            return [mockTabButton, mockOtherButton];
+          }
+          return [];
+        };
+
+        const activeTabInfo = globalThis.getActiveInventoryTab();
+        assert.strictEqual(activeTabInfo.tab, tCase.expectedTab, `Should detect tab ${tCase.expectedTab} for text ${tCase.tabText}`);
+        assert.strictEqual(globalThis.isConsumablesVisible(), tCase.consVisible, `isConsumablesVisible should be ${tCase.consVisible} on ${tCase.expectedTab} tab`);
+        assert.strictEqual(globalThis.isEquipmentVisible(), tCase.equipVisible, `isEquipmentVisible should be ${tCase.equipVisible} on ${tCase.expectedTab} tab`);
+      }
+
+      // Test fallback when no tabs are found
+      global.document.querySelectorAll = () => [];
+      assert.strictEqual(globalThis.isConsumablesVisible(), true, 'Fallback should allow consumables tracking');
+      assert.strictEqual(globalThis.isEquipmentVisible(), true, 'Fallback should allow equipment tracking');
+
+      global.document.querySelectorAll = oldQuerySelectorAll;
+      console.log('Inventory Tab Visibility and Skip Delta Checks tests passed successfully.');
+
       console.log('Daily P&L Tracker Phase 5 tests passed successfully.');
  
       // Restore document mock functions

@@ -1,5 +1,29 @@
 # CHANGELOG
 
+## 2026-06-27 | Zuverlässigeres P&L-Tracking, Fehlerbereinigungen für Mengen & Preise (v0.7.11)
+
+**Geänderte Dateien:** `warera-prost.user.js`
+
+**Änderungen (Deutsch):**
+- **Fehlerfreie Mengen beim P&L-Verbrauch**:
+  - **Mengen-Schutz**: Verhindert, dass beim Neuladen der Seite, Tab-Wechseln, Filtern oder Suchen im Inventar versehentlich riesige Mengen (z. B. 769x Munition) als verbraucht gebucht werden (durch intelligente DOM-Ladesperren und Plausibilitäts-Prüfungen).
+- **Fehlerfreie Preise beim P&L-Verbrauch**:
+  - **Groß-/Kleinschreibung & Präfix-Bereinigung**: Standardisiert alle Gegenstands-Codes intern einheitlich auf Kleinschreibung. Zuvor wurden z. B. `lightAmmo` (Transaktionen) und `lightammo` (Inventar) oder `cookedFish` und `food_cookedfish` getrennt behandelt, wodurch Preise oft als "Unbekannter Preis" (0.00g) endeten.
+- **Robustere Transaktionsverarbeitung**:
+  - **Keine doppelten Buchungen**: Fehler bei der Verarbeitung von Lohnzahlungen und Einkäufen durch MongoDB-ID-Normalisierung behoben.
+  - **Stabilität bei Fehlern**: Fehlerhafte Transaktionen blockieren nicht mehr das gesamte Skript, sondern werden isoliert und protokolliert.
+  - **Fehlerbehebung bei Ladezeiten**: Race Conditions beim Abfragen der Transaktionsdaten wurden behoben.
+
+**Changes (English):**
+- **Accurate P&L Consumption Quantities**:
+  - **Quantity Safeguards**: Prevents massive false consumption events (e.g., 769x Ammo) from being recorded when reloading, switching tabs, or filtering the inventory (using smart DOM loading checks and sanity limits).
+- **Accurate P&L Consumption Prices**:
+  - **Standardized Item Codes**: Unifies case-sensitive and prefixed item codes internally (e.g., standardizing `lightAmmo`/`lightammo` and `cookedFish`/`food_cookedfish`). This resolves the "Unknown Price" (-0.00g) issue for food, steak, and ammo.
+- **Robust Transaction Processing**:
+  - **No Duplicate Bookings**: Fixed Mongo DB ID normalization issues that previously caused duplicate wage or purchase entries.
+  - **Error Isolation**: Corrupt or buggy transactions are quarantined and logged instead of blocking the entire script initialization.
+  - **Race Condition Resolution**: Fixed timing issues when requesting transaction logs.
+
 ## 2026-06-27 | Beute- & Herstellungs-Kennzeichnungen im Tooltip, genauerer P&L-Klick-Verbrauch und detaillierter Beleg (v0.7.10)
 
 **Geänderte Dateien:** `warera-prost.user.js`

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.7.10
+// @version      0.7.11
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -647,6 +647,7 @@
     debug: NS + 'debug',
     consumablePrices: NS + 'consumablePrices', // { [code]: price } harvested from #item-code-selector-* tiles
     pnlProcessedTxs: NS + 'pnl.processedTxs',  // persistent (history-spanning) tx-id dedup for cost-basis + booking
+    pnlBadTx: NS + 'pnl.badTx',                // quarantine retry attempts mapping for bad transactions
   };
 
   const memoryCache = {};
@@ -657,17 +658,28 @@
     }
     const val = GM_getValue(key, null);
     let defaultVal = {};
-    if (key === KEYS.priceCache || key === KEYS.pnlLedger || key === KEYS.pnlYesterday || key === KEYS.pnlCostBasis || key === KEYS.pnlSnapshots || key === KEYS.pnlProcessedTxs) {
+    if (key === KEYS.priceCache || key === KEYS.pnlLedger || key === KEYS.pnlYesterday || key === KEYS.pnlCostBasis || key === KEYS.pnlSnapshots || key === KEYS.pnlProcessedTxs || key === KEYS.pnlBadTx) {
       defaultVal = null;
     }
-    const valWithDefault = (val === undefined || val === null) ? defaultVal : val;
+    let valWithDefault = (val === undefined || val === null) ? defaultVal : val;
+    if (typeof valWithDefault === 'string' && (valWithDefault.startsWith('{') || valWithDefault.startsWith('['))) {
+      try {
+        valWithDefault = JSON.parse(valWithDefault);
+      } catch (e) {
+        // Fallback if parsing fails
+      }
+    }
     memoryCache[key] = valWithDefault;
     return valWithDefault;
   }
 
   function writeCache(key, value) {
     memoryCache[key] = value;
-    GM_setValue(key, value);
+    if (value != null && (typeof value === 'object' || Array.isArray(value))) {
+      GM_setValue(key, JSON.stringify(value));
+    } else {
+      GM_setValue(key, value);
+    }
   }
 
   function getPersistedAdvice(itemId, statsHash, priceFetchedAt) {
@@ -706,7 +718,12 @@
   function getToken() {
     const raw = GM_getValue(KEYS.token, '');
     if (!raw) return '';
-    try { return xor(atob(raw), OBF_KEY); } catch (e) { return ''; }
+    try {
+      return xor(atob(raw), OBF_KEY);
+    } catch (e) {
+      setHealth('api', 'warn', 'token unreadable');
+      return '';
+    }
   }
   // fallback prices helper removed
   function clearCache() {
@@ -782,13 +799,67 @@
   // ───────────────────────────────────────────────────────────────────────────
   const Debug = { buf: [], max: 300 };   // ring buffer of recent log lines
 
+  const _logRepeat = new Map(); // key -> { count, windowStart, warned }
+  function _trackRepeat(feat, level, msg) {
+    const key = `${feat}:${level}:${String(msg).slice(0, 80)}`;
+    const t = Date.now(); const W = 3000, LIMIT = 15;
+    let r = _logRepeat.get(key);
+    if (!r || t - r.windowStart > W) { r = { count: 0, windowStart: t, warned: false }; _logRepeat.set(key, r); }
+    r.count++;
+    if (_logRepeat.size > 200) _logRepeat.delete(_logRepeat.keys().next().value); // bound
+    if (r.count > LIMIT) {
+      if (!r.warned) {            // surface ONCE per window
+        r.warned = true;
+        setHealth(feat, 'warn', `possible loop: "${String(msg).slice(0,60)}" ×${r.count} in ${W}ms`);
+        console.warn(`[WIA:${feat}] possible loop — "${String(msg).slice(0,60)}" repeated; suppressing`);
+      }
+      return true; // caller: suppress further console output for this key this window
+    }
+    return false;
+  }
+
   // 2 levels only: 'debug' | 'error'. dbg(featureId, level, ...msg)
   function dbg(feat, level, ...msg) {
-    if (!CONFIG.debug) return;
+    const isError = level === 'error';
+    if (!isError && !CONFIG.debug) return;
+
+    const msgStr = msg.map(m => (m && m.message) || (typeof m === 'object' ? JSON.stringify(m) : String(m))).join(' ');
+    const isRepeated = _trackRepeat(feat, level, msgStr);
+
     Debug.buf.push({ t: Date.now(), feat, level, msg });
     if (Debug.buf.length > Debug.max) Debug.buf.shift();
-    (level === 'error' ? console.error : console.log)(`[WIA:${feat}]`, ...msg);
+
+    if (isRepeated) return;
+
+    if (isError || CONFIG.debug) {
+      (level === 'error' ? console.error : console.log)(`[WIA:${feat}]`, ...msg);
+    }
   }
+
+  function reportError(feat, e, ctx, status = 'fail') {
+    const msg = (e && e.message) || String(e);
+    const fullMsg = ctx ? `${ctx}: ${msg}` : msg;
+    const isRepeated = _trackRepeat(feat, 'error', fullMsg);
+
+    Debug.buf.push({ t: Date.now(), feat, level: 'error', msg: [ctx, msg].filter(Boolean) });
+    if (Debug.buf.length > Debug.max) Debug.buf.shift();
+
+    setHealth(feat, status, fullMsg);
+
+    if (!isRepeated) {
+      console.error(`[WIA:${feat}]${ctx ? ' ' + ctx : ''}`, e);
+    }
+    return msg;
+  }
+
+  const _loopGuard = new Map();
+  function loopGuard(key, max = 20, windowMs = 5000) {
+    const t = Date.now(); let r = _loopGuard.get(key);
+    if (!r || t - r.start > windowMs) { r = { start: t, n: 0 }; _loopGuard.set(key, r); }
+    if (++r.n > max) { reportError('core', new Error('runaway'), `loopGuard ${key} ${r.n}/${windowMs}ms`); return true; }
+    return false;
+  }
+
   function log(...a) { dbg('core', 'debug', ...a); }   // back-compat alias
 
   // Health registry: id -> live status. status: 'ok'|'warn'|'fail'|'idle'.
@@ -821,8 +892,7 @@
       return r;
     } catch (e) {
       h.errors++;
-      setHealth(id, 'fail', (e && e.message) || String(e));
-      dbg(id, 'error', e);
+      reportError(id, e, 'guard');
       return undefined;
     }
   }
@@ -1155,7 +1225,7 @@
           renderRateLimitBanner();
           return map;
         } catch (e) {
-          log('fetchPrices failed, using fallback:', e.message);
+          reportError('api', e, 'fetchPrices failed, using fallback', 'warn');
           renderRateLimitBanner();
           return cache ? cache.data : {}; // graceful fallback to stale/empty
         } finally {
@@ -1181,15 +1251,19 @@
         const code = it.itemCode || it.code || it.item || it.id;
         if (code === '__proto__' || code === 'constructor' || code === 'prototype') continue;
         const price = it.price ?? it.avgPrice ?? it.value ?? it.lastPrice;
-        if (code != null && price != null) map[String(code)] = Number(price);
+        if (code != null && price != null) {
+          const normCode = normalizeItemCode(String(code));
+          map[normCode] = Number(price);
+        }
       }
     } else if (typeof payload === 'object') {
       for (const [k, v] of Object.entries(payload)) {
         if (k === '__proto__') continue; // never assign a proto key from untrusted JSON
-        if (typeof v === 'number') map[k] = v;
+        const normKey = normalizeItemCode(k);
+        if (typeof v === 'number') map[normKey] = v;
         else if (v && typeof v === 'object') {
           const p = v.price ?? v.avgPrice ?? v.value;
-          if (p != null && !isNaN(Number(p))) map[k] = Number(p); // keep legit 0, drop NaN
+          if (p != null && !isNaN(Number(p))) map[normKey] = Number(p); // keep legit 0, drop NaN
         }
       }
     }
@@ -1235,7 +1309,7 @@
         writeCache(KEYS.offersCache, next);
         return data;
       } catch (e) {
-        log('fetchItemOffers failed:', code, e.message);
+        reportError('api', e, 'fetchItemOffers failed for ' + code, 'warn');
         return cached ? cached.data : null;
       } finally {
         renderRateLimitBanner();
@@ -1349,7 +1423,7 @@
         writeCache(KEYS.transactionsCache, next);
         return mapped;
       } catch (e) {
-        log('fetchItemTransactions failed:', code, e.message);
+        reportError('api', e, 'fetchItemTransactions failed for ' + code, 'warn');
         return cached ? cached.data : null;
       } finally {
         renderRateLimitBanner();
@@ -1697,6 +1771,9 @@
     globalThis.findItemCards = findItemCards;
     globalThis.writeCache = writeCache;
     globalThis.readCache = readCache;
+    globalThis.getActiveInventoryTab = getActiveInventoryTab;
+    globalThis.isConsumablesVisible = isConsumablesVisible;
+    globalThis.isEquipmentVisible = isEquipmentVisible;
   }
 
   function getLocale() {
@@ -3249,7 +3326,7 @@ async function scanInventory(force) {
         checkInventoryDeltaWear();
       }
     } catch (e) {
-      log('scan error:', e);
+      reportError('advisor', e, 'scanInventory failed');
     } finally {
       scanning = false;
     }
@@ -4347,10 +4424,14 @@ function updateObserverTarget() {
       }
     } else if (isBattlePage()) {
       observer.disconnect();
-      if (CONFIG.featBattleAdvisor) guard('battleAdvisor', applyBattleAdvisory);
+      if (CONFIG.featBattleAdvisor) {
+        guard('battleAdvisor', applyBattleAdvisory);
+        initSharedBodyObserver();
+      }
     } else {
       teardownBattleAdvisory();
       observer.disconnect();
+      teardownSharedBodyObserver();
     }
 
     if (CONFIG.featPillReminder) {
@@ -4465,12 +4546,24 @@ function updateObserverTarget() {
     }
   }
 
-  function applyBattleAdvisory() {
+  let battleGen = 0;
+  let battleRetryTimer = null;
+
+  function applyBattleAdvisory(expectedPath) {
+    if (!isBattlePage()) return;
+    const currentPath = location.pathname;
+    if (expectedPath && expectedPath !== currentPath) return; // bailed due to URL change
+
     const defBtn = document.querySelector('#defender-hit-button');
     const atkBtn = document.querySelector('#attacker-hit-button');
     if (!defBtn || !atkBtn) {
-      // Buttons not yet in DOM-retry shortly (SPA lazy-load)
-      setTimeout(applyBattleAdvisory, 400);
+      if (battleRetryTimer) clearTimeout(battleRetryTimer);
+      const myGen = ++battleGen;
+      battleRetryTimer = setTimeout(() => {
+        if (myGen === battleGen) {
+          applyBattleAdvisory(currentPath);
+        }
+      }, 400);
       return;
     }
 
@@ -4528,13 +4621,24 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
           lastMktState = null;
         }
       }
+      if (CONFIG.featBattleAdvisor && isBattlePage()) {
+        const defBtn = document.querySelector('#defender-hit-button');
+        const atkBtn = document.querySelector('#attacker-hit-button');
+        if (defBtn && atkBtn) {
+          const hasPrimary = defBtn.classList.contains('wia-battle-primary') || atkBtn.classList.contains('wia-battle-primary');
+          const hasOrders = defBtn.querySelector('[data-wia-injected]') || atkBtn.querySelector('[data-wia-injected]');
+          if (!hasPrimary || !hasOrders) {
+            applyBattleAdvisory();
+          }
+        }
+      }
       triggerCraftingAdvisorCheck();
     });
     sharedBodyObserver.observe(document.body, { childList: true, subtree: true });
   }
 
   function teardownSharedBodyObserver() {
-    if (!CONFIG.featNotes && !CONFIG.featMarketGraph) {
+    if (!CONFIG.featNotes && !CONFIG.featMarketGraph && !CONFIG.featBattleAdvisor) {
       if (sharedBodyObserver) {
         sharedBodyObserver.disconnect();
         sharedBodyObserver = null;
@@ -5803,7 +5907,7 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
           nextCursor: data.nextCursor || null
         };
       } catch (e) {
-        log('fetchResourceTransactions failed:', code, e.message);
+        reportError('marketGraph', e, 'fetchResourceTransactions failed for ' + code);
         return null;
       } finally {
         renderRateLimitBanner();
@@ -5973,7 +6077,12 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
         warnText.textContent = getLocale() === 'de' ? 'Intraday-Daten spärlich (lade...)' : 'Intraday data sparse (loading...)';
 
         overlayG.appendChild(warnText);
-        lastMktState = null;
+        // Mark this state as rendered (overlay IS injected above) so checkAndRenderGraph's
+        // guard stops re-rendering on every modal mutation — otherwise an item with no
+        // intraday data re-runs on each mutation and spams the log. Legitimate updates
+        // still redraw: the async seedResourceTransactions call below redraws directly,
+        // the sampler resets lastMktState on new data, and a range toggle resets it too.
+        lastMktState = `${code}-${range}-${getNativeSvgFingerprint(freshSvg)}`;
         return;
       }
     } finally {
@@ -6391,11 +6500,11 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
 
         drawIntradayGraph(foundAfter, finalPoints, range, code, myGen);
       }).catch(err => {
-        log('Background seedResourceTransactions error:', err);
+        reportError('marketGraph', err, 'seedResourceTransactions failed');
       });
 
     } catch (e) {
-      log('renderIntradayLine error:', e);
+      reportError('marketGraph', e, 'renderIntradayLine failed');
     }
   }
 
@@ -6414,7 +6523,7 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
                       titleText.includes('Sell order') || titleText.includes('Sell Order');
     if (!isBuySell) return null;
 
-// Suchen wir das native SVG über die Farbe der Graphen-Linie statt über starre Pixel-Maße
+    // Suchen wir das native SVG über die Farbe der Graphen-Linie statt über starre Pixel-Maße
     const allSvgs = modal.querySelectorAll('svg:not(.wia-mkt-overlay-svg)');
     let targetSvg = null;
 
@@ -6425,7 +6534,25 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
       }
     }
 
-    if (!targetSvg) return null;
+    // Lockeres Matching-Fallback: Sucht nach einem größeren SVG mit Pfaden (typisch für den Graphen)
+    if (!targetSvg) {
+      for (const s of allSvgs) {
+        const box = typeof s.getBoundingClientRect === 'function' ? s.getBoundingClientRect() : { width: 0, height: 0 };
+        const wAttr = parseInt(s.getAttribute('width') || '0', 10);
+        const hAttr = parseInt(s.getAttribute('height') || '0', 10);
+        const hasSize = box.width > 100 || box.height > 50 || wAttr > 100 || hAttr > 50;
+        if (hasSize && s.querySelector('path')) {
+          targetSvg = s;
+          setHealth('marketGraph', 'warn', 'Graph per Fallback-Selector gefunden (Farb-Match missglückt)');
+          break;
+        }
+      }
+    }
+
+    if (!targetSvg) {
+      setHealth('marketGraph', 'warn', 'Markt-Graph SVG nicht gefunden');
+      return null;
+    }
 
     return { modal, titleEl, svg: targetSvg };
   }
@@ -6436,17 +6563,20 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
 
     const src = img.getAttribute('src');
     if (src) {
-      const match = src.match(/\/items\/([a-z0-9_-]+)\.(png|webp|gif|jpg)/i);
+      const match = src.match(/\/items\/([a-zA-Z0-9_-]+)\.(png|webp|gif|jpg)/i);
       if (match && match[1]) {
-        const code = match[1].toLowerCase();
-        if (!EXCLUDED_ALTS.has(code)) return code;
+        // Keep the canonical casing from the image filename — the price/transaction API
+        // keys on the exact itemCode (e.g. "lightAmmo"/"heavyAmmo"). Lowercasing turned
+        // those into "lightammo"/"heavyammo" → API returned nothing → empty-graph loop.
+        const code = match[1];
+        if (!EXCLUDED_ALTS.has(code.toLowerCase())) return code;
       }
     }
 
     const alt = img.getAttribute('alt');
     if (alt) {
-      const code = alt.trim().toLowerCase();
-      if (!EXCLUDED_ALTS.has(code)) return code;
+      const code = alt.trim();
+      if (!EXCLUDED_ALTS.has(code.toLowerCase())) return code;
     }
 
     return null;
@@ -6509,6 +6639,7 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
       lastMktState = null;
       return;
     }
+    if (loopGuard('mkt-render:' + code)) return;
 
     const range = GM_getValue(KEYS.marketGraphRange, '24h');
     const fingerprint = getNativeSvgFingerprint(svg);
@@ -6567,18 +6698,19 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
   }
 
   function getCachedPrice(itemCode) {
+    const normCode = normalizeItemCode(itemCode);
     const pc = readCache(KEYS.priceCache);
-    if (pc && pc.data && pc.data[itemCode] != null) {
-      return pc.data[itemCode];
+    if (pc && pc.data && pc.data[normCode] != null) {
+      return pc.data[normCode];
     }
     const scrapedStore = readCache(KEYS.scrapedPrices) || {};
-    if (scrapedStore[itemCode] != null) {
-      return scrapedStore[itemCode].price;
+    if (scrapedStore[normCode] != null) {
+      return scrapedStore[normCode].price;
     }
     // Consumables (ammo/food/drugs) aren't in itemTrading.getPrices (materials only).
     // Their unit price is shown in the in-game selector tiles-harvested into this cache.
     const cp = readCache(KEYS.consumablePrices);
-    if (cp && cp[itemCode] != null) return cp[itemCode];
+    if (cp && cp[normCode] != null) return cp[normCode];
     return null;
   }
 
@@ -6592,8 +6724,9 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
     const cache = { ...(readCache(KEYS.consumablePrices) || {}) };
     let changed = false;
     tiles.forEach((tile) => {
-      const code = tile.id.replace('item-code-selector-', '');
-      if (!code) return;
+      const rawCode = tile.id.replace('item-code-selector-', '');
+      if (!rawCode) return;
+      const code = normalizeItemCode(rawCode);
       for (const svg of tile.querySelectorAll('svg')) {
         const p = svg.querySelector('path');
         if (p && (p.getAttribute('d') || '').startsWith(CONFIG.coinsIconPathPrefix)) {
@@ -6921,10 +7054,10 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
   function normalizeItemCode(code) {
     if (!code) return '';
     const clean = code.toLowerCase().trim();
-    if (clean === 'bread') return 'food_bread';
-    if (clean === 'steak') return 'food_steak';
-    if (clean === 'cookedfish') return 'food_cookedfish';
-    return code;
+    if (clean === 'bread' || clean === 'food_bread') return 'food_bread';
+    if (clean === 'steak' || clean === 'food_steak') return 'food_steak';
+    if (clean === 'cookedfish' || clean === 'food_cookedfish') return 'food_cookedfish';
+    return clean;
   }
 
   function isConsumable(code) {
@@ -6984,8 +7117,24 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
   }
 
   function getGoldBalance() {
-    const moneyEl = document.getElementById('money') || (document.getElementById('layoutUserMenu') && document.getElementById('layoutUserMenu').querySelector('#money'));
-    if (!moneyEl) return null;
+    let moneyEl = document.getElementById('money') || (document.getElementById('layoutUserMenu') && document.getElementById('layoutUserMenu').querySelector('#money'));
+    if (!moneyEl && typeof document !== 'undefined') {
+      const svgs = document.querySelectorAll('svg');
+      for (const svg of svgs) {
+        const path = svg.querySelector('path');
+        if (path && (path.getAttribute('d') || '').startsWith('M12 5C7.031')) {
+          const parent = svg.parentElement;
+          if (parent) {
+            moneyEl = parent;
+            break;
+          }
+        }
+      }
+    }
+    if (!moneyEl) {
+      setHealth('pnl', 'warn', 'Gold-Balance-Element nicht gefunden');
+      return null;
+    }
     const txt = moneyEl.textContent.trim();
     if (!txt) return null;
     const match = txt.replace(/,/g, '.').match(/\d+(?:\.\d+)?/);
@@ -6999,6 +7148,13 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
       d.setDate(d.getDate() - 1);
     }
     return d.getTime();
+  }
+
+  function normalizeDbId(val) {
+    if (!val) return null;
+    if (typeof val === 'object' && val.$oid) return String(val.$oid);
+    if (typeof val === 'object') return JSON.stringify(val);
+    return String(val);
   }
 
 function processTransactionsList(items, userId) {
@@ -7037,6 +7193,9 @@ function processTransactionsList(items, userId) {
     let seenArr = readCache(KEYS.pnlProcessedTxs) || [];
     const seen = new Set(seenArr);
     let seenChanged = false;
+    let badTx = readCache(KEYS.pnlBadTx) || {};
+    let badTxChanged = false;
+    dbg('pnl', 'debug', `[seen-start] size: ${seen.size}, raw GM: ${typeof GM_getValue(KEYS.pnlProcessedTxs, null)}`);
 
     let ledgerChanged = false;
     let costBasisChanged = false;
@@ -7049,22 +7208,22 @@ function processTransactionsList(items, userId) {
     const sorted = [...items].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
     for (const tx of sorted) {
-      const txTime = new Date(tx.createdAt).getTime();
-      const isToday = txTime >= todayStart;
-
-      const money = tx.money != null ? parseFloat(tx.money) : 0;
-      const quantity = tx.quantity != null ? parseInt(tx.quantity, 10) : 1;
-      const type = tx.transactionType;
-
-      const isSellerMe = tx.sellerId === userId;
-      const isBuyerMe = tx.buyerId === userId;
-
-      const itemCode = tx.itemCode || tx.item?.code || tx.item?.itemCode || tx.item?.id;
-      const itemId = tx.item?._id; // Die eindeutige Datenbank-ID des Items
-
-      // Global dedup: skip any transaction we've already processed (ever).
-      const txId = tx._id || tx.id;
+      const txId = normalizeDbId(tx._id || tx.id);
       if (txId && seen.has(txId)) continue;
+
+      try {
+        const txTime = new Date(tx.createdAt).getTime();
+        const isToday = txTime >= todayStart;
+
+        const money = tx.money != null ? parseFloat(tx.money) : 0;
+        const quantity = tx.quantity != null ? parseInt(tx.quantity, 10) : 1;
+        const type = tx.transactionType;
+
+        const isSellerMe = normalizeDbId(tx.sellerId) === normalizeDbId(userId);
+        const isBuyerMe = normalizeDbId(tx.buyerId) === normalizeDbId(userId);
+
+        const itemCode = tx.itemCode || tx.item?.code || tx.item?.itemCode || tx.item?.id;
+        const itemId = normalizeDbId(tx.item?._id); // Die eindeutige Datenbank-ID des Items
 
       // --- Loot & Kisten registrieren ---
       if (['battleLoot', 'openCase', 'craftItem'].includes(type) && itemId) {
@@ -7113,8 +7272,9 @@ function processTransactionsList(items, userId) {
 
       // --- PHASE 1: Cost-Basis ---
       if (isBuyerMe && itemCode && money > 0 && quantity > 0 && type !== 'dismantleItem') {
+        const normCode = normalizeItemCode(itemCode);
         const newUnitPaid = money / quantity;
-        const existing = costBasis[itemCode];
+        const existing = costBasis[normCode];
 
         if (existing && existing.qtyKnown > 0 && existing.unitPaid != null) {
           const oldTotal = existing.qtyKnown * existing.unitPaid;
@@ -7122,11 +7282,11 @@ function processTransactionsList(items, userId) {
           const newQty = existing.qtyKnown + quantity;
           const avgPrice = (oldTotal + newTotal) / newQty;
 
-          costBasis[itemCode] = { unitPaid: avgPrice, qtyKnown: newQty, updatedAt: txTime };
-          dbg('pnl', 'debug', `Cost-Basis Update [${itemCode}]: Bisher ${existing.qtyKnown}x à ${existing.unitPaid.toFixed(2)} | Neu: ${quantity}x à ${newUnitPaid.toFixed(2)} => Ø: ${avgPrice.toFixed(2)}`);
+          costBasis[normCode] = { unitPaid: avgPrice, qtyKnown: newQty, updatedAt: txTime };
+          dbg('pnl', 'debug', `Cost-Basis Update [${normCode}]: Bisher ${existing.qtyKnown}x à ${existing.unitPaid.toFixed(2)} | Neu: ${quantity}x à ${newUnitPaid.toFixed(2)} => Ø: ${avgPrice.toFixed(2)}`);
         } else {
-          costBasis[itemCode] = { unitPaid: newUnitPaid, qtyKnown: quantity, updatedAt: txTime };
-          dbg('pnl', 'debug', `Cost-Basis Initial [${itemCode}]: ${quantity}x à ${newUnitPaid.toFixed(2)}`);
+          costBasis[normCode] = { unitPaid: newUnitPaid, qtyKnown: quantity, updatedAt: txTime };
+          dbg('pnl', 'debug', `Cost-Basis Initial [${normCode}]: ${quantity}x à ${newUnitPaid.toFixed(2)}`);
         }
         costBasisChanged = true;
       }
@@ -7137,64 +7297,69 @@ function processTransactionsList(items, userId) {
         // --- PHASE 2: Income & Expense ---
         if (type === 'trading' || type === 'itemMarket') {
           if (isSellerMe && money > 0) {
+            const normCode = normalizeItemCode(itemCode);
             let saleIncome = money;
-            let logMsg = `Verkauf [${itemCode || 'Unbekannt'}]: +${money.toFixed(2)} (Sales). Menge: ${quantity}`;
+            let logMsg = `Verkauf [${normCode || 'Unbekannt'}]: +${money.toFixed(2)} (Sales). Menge: ${quantity}`;
 
             if (itemId && knownLoot[itemId]) {
               const originalVal = knownLoot[itemId].value || 0;
               saleIncome = Math.max(0, money - originalVal);
-              logMsg = `Verkauf Loot [${itemCode || 'Unbekannt'}]: +${saleIncome.toFixed(2)} (Sales - positive Differenz zu Loot-Wert ${originalVal.toFixed(2)}).`;
+              logMsg = `Verkauf Loot [${normCode || 'Unbekannt'}]: +${saleIncome.toFixed(2)} (Sales - positive Differenz zu Loot-Wert ${originalVal.toFixed(2)}).`;
             }
 
-            if (saleIncome > 0) {
-              ledger.income.Sales = (ledger.income.Sales || 0) + saleIncome;
-              addPnlLog(ledger, 'income', 'Sales', itemCode, quantity, saleIncome, 'Verkauf');
+            if (isToday) {
+              if (saleIncome > 0) {
+                ledger.income.Sales = (ledger.income.Sales || 0) + saleIncome;
+                addPnlLog(ledger, 'income', 'Sales', normCode, quantity, saleIncome, 'Verkauf');
+              }
+              if (normCode && quantity > 0) {
+                ledger.todaySales[normCode] = (ledger.todaySales[normCode] || 0) + quantity;
+              }
+              dbg('pnl', 'debug', logMsg);
+              booked = true;
             }
-            if (itemCode && quantity > 0) {
-              ledger.todaySales[itemCode] = (ledger.todaySales[itemCode] || 0) + quantity;
-            }
-            dbg('pnl', 'debug', logMsg);
-            booked = true;
           } else if (isBuyerMe && money > 0) {
-            ledger.capitalized = (ledger.capitalized || 0) + money;
-            booked = true;
+            if (isToday) {
+              ledger.capitalized = (ledger.capitalized || 0) + money;
+              booked = true;
 
-            // SOFORTKAUF KORREKTUR: Wenn dies ein Konsumgut ist und wir ausstehende Klick-Verbraucher haben
-            if (itemCode && isConsumable(itemCode)) {
-              const normCode = normalizeItemCode(itemCode);
-              if (ledger.bookedConsumptionEvents && ledger.bookedConsumptionEvents.length > 0) {
-                let matchedQty = 0;
-                let matchedCostBooked = 0;
-                const remainingEvents = [];
-                let needed = quantity;
-                for (const evt of ledger.bookedConsumptionEvents) {
-                  if (evt.code === normCode && needed > 0) {
-                    const match = Math.min(evt.qty, needed);
-                    const pct = match / evt.qty;
-                    matchedQty += match;
-                    matchedCostBooked += (evt.costBooked || 0) * pct;
+              // SOFORTKAUF KORREKTUR: Wenn dies ein Konsumgut ist und wir ausstehende Klick-Verbraucher haben
+              if (itemCode && isConsumable(itemCode)) {
+                const normCode = normalizeItemCode(itemCode);
+                if (ledger.bookedConsumptionEvents && ledger.bookedConsumptionEvents.length > 0) {
+                  let matchedQty = 0;
+                  let matchedCostBooked = 0;
+                  const remainingEvents = [];
+                  let needed = quantity;
+                  for (const evt of ledger.bookedConsumptionEvents) {
+                    if (evt.code === normCode && needed > 0) {
+                      const match = Math.min(evt.qty, needed);
+                      const pct = match / evt.qty;
+                      matchedQty += match;
+                      matchedCostBooked += (evt.costBooked || 0) * pct;
 
-                    evt.qty -= match;
-                    evt.costBooked = (evt.costBooked || 0) - (evt.costBooked || 0) * pct;
-                    needed -= match;
+                      evt.qty -= match;
+                      evt.costBooked = (evt.costBooked || 0) - (evt.costBooked || 0) * pct;
+                      needed -= match;
 
-                    if (evt.qty > 0) {
+                      if (evt.qty > 0) {
+                        remainingEvents.push(evt);
+                      }
+                    } else {
                       remainingEvents.push(evt);
                     }
-                  } else {
-                    remainingEvents.push(evt);
                   }
-                }
-                ledger.bookedConsumptionEvents = remainingEvents;
+                  ledger.bookedConsumptionEvents = remainingEvents;
 
-                if (matchedQty > 0) {
-                  const unitPrice = quantity > 0 ? (money / quantity) : money;
-                  const actualCost = matchedQty * unitPrice;
-                  const diff = actualCost - matchedCostBooked;
-                  if (Math.abs(diff) > 0.001) {
-                    ledger.expense.Consumption = (ledger.expense.Consumption || 0) + diff;
-                    addPnlLog(ledger, 'consumption', 'Consumption', normCode, matchedQty, diff, 'Sofortkauf Korrektur');
-                    dbg('pnl', 'debug', `Klick-Verbrauch korrigiert [${normCode}]: ${matchedQty}x angepasst um ${diff.toFixed(2)} Gold (Vorher: ${matchedCostBooked.toFixed(2)}, Real: ${actualCost.toFixed(2)}).`);
+                  if (matchedQty > 0) {
+                    const unitPrice = quantity > 0 ? (money / quantity) : money;
+                    const actualCost = matchedQty * unitPrice;
+                    const diff = actualCost - matchedCostBooked;
+                    if (Math.abs(diff) > 0.001) {
+                      ledger.expense.Consumption = (ledger.expense.Consumption || 0) + diff;
+                      addPnlLog(ledger, 'consumption', 'Consumption', normCode, matchedQty, diff, 'Sofortkauf Korrektur');
+                      dbg('pnl', 'debug', `Klick-Verbrauch korrigiert [${normCode}]: ${matchedQty}x angepasst um ${diff.toFixed(2)} Gold (Vorher: ${matchedCostBooked.toFixed(2)}, Real: ${actualCost.toFixed(2)}).`);
+                    }
                   }
                 }
               }
@@ -7212,16 +7377,17 @@ function processTransactionsList(items, userId) {
 
           // 2. Cost-Basis aufräumen (ABER KEINEN VERLUST BUCHEN!)
           if (realItemCode && realItemCode !== 'scraps') {
-            const basis = costBasis[realItemCode];
+            const normCode = normalizeItemCode(realItemCode);
+            const basis = costBasis[normCode];
             if (basis && basis.qtyKnown > 0) {
               basis.qtyKnown -= 1;
               costBasisChanged = true;
-              dbg('pnl', 'debug', `Breakage [${realItemCode}]: Item zerstört. Cost-Basis Menge um 1 reduziert. (Kosten-Abzug ignoriert -> Live-Scanner regelt Verschleiß).`);
+              dbg('pnl', 'debug', `Breakage [${normCode}]: Item zerstört. Cost-Basis Menge um 1 reduziert. (Kosten-Abzug ignoriert -> Live-Scanner regelt Verschleiß).`);
             }
           }
 
           // 3. Einnahme durch den Schrott (Income) verbuchen
-          if (scrapValueInGold > 0) {
+          if (isToday && scrapValueInGold > 0) {
             ledger.income.Other = (ledger.income.Other || 0) + scrapValueInGold;
             addPnlLog(ledger, 'income', 'Other', 'Schrott (Brechen)', scrapCount, scrapValueInGold, 'Schrott erhalten');
             dbg('pnl', 'debug', `Breakage Scraps: +${scrapValueInGold.toFixed(2)} Gold (aus ${scrapCount}x Schrott) als Einnahme (Other) verbucht.`);
@@ -7229,57 +7395,75 @@ function processTransactionsList(items, userId) {
           }
         }
         else if (type === 'wage') {
-          if (isSellerMe && money > 0) {
-            ledger.income.Wages = (ledger.income.Wages || 0) + money;
-            addPnlLog(ledger, 'income', 'Wages', 'Arbeit', 1, money, 'Lohn erhalten');
-            dbg('pnl', 'debug', `Lohn erhalten: +${money.toFixed(2)} (Wages).`);
-            booked = true;
-          } else if (isBuyerMe && money > 0) {
-            ledger.expense['Employee Wages'] = (ledger.expense['Employee Wages'] || 0) + money;
-            addPnlLog(ledger, 'expense', 'Employee Wages', 'Mitarbeiter', 1, money, 'Lohn gezahlt');
-            dbg('pnl', 'debug', `Lohn gezahlt: -${money.toFixed(2)} (Employee Wages).`);
-            booked = true;
+          if (isToday) {
+            if (isSellerMe && money > 0) {
+              ledger.income.Wages = (ledger.income.Wages || 0) + money;
+              addPnlLog(ledger, 'income', 'Wages', 'Arbeit', 1, money, 'Lohn erhalten');
+              dbg('pnl', 'debug', `Lohn erhalten: +${money.toFixed(2)} (Wages).`);
+              booked = true;
+            } else if (isBuyerMe && money > 0) {
+              ledger.expense['Employee Wages'] = (ledger.expense['Employee Wages'] || 0) + money;
+              addPnlLog(ledger, 'expense', 'Employee Wages', 'Mitarbeiter', 1, money, 'Lohn gezahlt');
+              dbg('pnl', 'debug', `Lohn gezahlt: -${money.toFixed(2)} (Employee Wages).`);
+              booked = true;
+            }
           }
         } else if (type === 'donation') {
-          if (isBuyerMe && money > 0) {
-            ledger.expense.Other = (ledger.expense.Other || 0) + money;
-            addPnlLog(ledger, 'expense', 'Other', tx.buyerId || 'Land/MU', 1, money, 'Spende gesendet');
-            dbg('pnl', 'debug', `Spende gesendet: -${money.toFixed(2)} (Other).`);
-            booked = true;
-          } else if (isSellerMe && money > 0) {
-            ledger.income.Other = (ledger.income.Other || 0) + money;
-            addPnlLog(ledger, 'income', 'Other', tx.sellerId || 'Spieler', 1, money, 'Spende erhalten');
-            dbg('pnl', 'debug', `Spende erhalten: +${money.toFixed(2)} (Other).`);
-            booked = true;
+          if (isToday) {
+            if (isBuyerMe && money > 0) {
+              ledger.expense.Other = (ledger.expense.Other || 0) + money;
+              const recipient = tx.sellerId || tx.sellerMuId || tx.sellerCountryId || tx.sellerRegionId || 'Land/MU';
+              addPnlLog(ledger, 'expense', 'Other', recipient, 1, money, 'Spende gesendet');
+              dbg('pnl', 'debug', `Spende gesendet: -${money.toFixed(2)} (Other).`);
+              booked = true;
+            } else if (isSellerMe && money > 0) {
+              ledger.income.Other = (ledger.income.Other || 0) + money;
+              const sender = tx.buyerId || 'Spieler';
+              addPnlLog(ledger, 'income', 'Other', sender, 1, money, 'Spende erhalten');
+              dbg('pnl', 'debug', `Spende erhalten: +${money.toFixed(2)} (Other).`);
+              booked = true;
+            }
           }
         } else if (type === 'repair') {
-          if (isBuyerMe && money > 0) {
+          if (isToday && isBuyerMe && money > 0) {
             ledger.expense.Repairs = (ledger.expense.Repairs || 0) + money;
             addPnlLog(ledger, 'expense', 'Repairs', 'Ausrüstung repariert', 1, money, 'Reparatur bezahlt');
             dbg('pnl', 'debug', `Reparatur bezahlt: -${money.toFixed(2)} (Repairs).`);
             booked = true;
           }
         } else if (type === 'openCase') {
-          if (caseVal > 0) {
-            ledger.expense.Cases = (ledger.expense.Cases || 0) + caseVal;
-            addPnlLog(ledger, 'expense', 'Cases', tx.itemCode, 1, caseVal, 'Kiste geöffnet');
+          if (isToday) {
+            let caseVal = 0;
+            let normCode = '';
+            if (tx.itemCode) {
+              normCode = normalizeItemCode(tx.itemCode);
+              const pc = readCache(KEYS.priceCache);
+              if (pc && pc.data && pc.data[normCode] != null) {
+                caseVal = pc.data[normCode];
+              }
+            }
+            if (caseVal > 0) {
+              ledger.expense.Cases = (ledger.expense.Cases || 0) + caseVal;
+              addPnlLog(ledger, 'expense', 'Cases', normCode || tx.itemCode, 1, caseVal, 'Kiste geöffnet');
+              booked = true;
+              dbg('pnl', 'debug', `Kiste geöffnet [${normCode || tx.itemCode}]: -${caseVal.toFixed(2)} Gold (Kisten-Kosten).`);
+            }
+            const lootVal = knownLoot[itemId] ? knownLoot[itemId].value : 0;
+            ledger.casesOpened = (ledger.casesOpened || 0) + 1;
+            ledger.casesProfit = (ledger.casesProfit || 0) + (lootVal - caseVal);
             booked = true;
-            dbg('pnl', 'debug', `Kiste geöffnet [${tx.itemCode}]: -${caseVal.toFixed(2)} Gold (Kisten-Kosten).`);
           }
-          const lootVal = knownLoot[itemId] ? knownLoot[itemId].value : 0;
-          ledger.casesOpened = (ledger.casesOpened || 0) + 1;
-          ledger.casesProfit = (ledger.casesProfit || 0) + (lootVal - caseVal);
-          booked = true;
         } else {
-          if (money > 0) {
+          if (isToday && money > 0) {
+            const label = type === 'articleTip' ? 'Artikel Trinkgeld' : type;
             if (isSellerMe) {
               ledger.income.Other = (ledger.income.Other || 0) + money;
-              addPnlLog(ledger, 'income', 'Other', type, 1, money, 'Unbekannte Einnahme');
+              addPnlLog(ledger, 'income', 'Other', label, 1, money, 'Unbekannte Einnahme');
               dbg('pnl', 'debug', `Unbekannte Einnahme (${type}): +${money.toFixed(2)} (Other).`);
               booked = true;
             } else if (isBuyerMe) {
               ledger.expense.Other = (ledger.expense.Other || 0) + money;
-              addPnlLog(ledger, 'expense', 'Other', type, 1, money, 'Unbekannte Ausgabe');
+              addPnlLog(ledger, 'expense', 'Other', label, 1, money, 'Unbekannte Ausgabe');
               dbg('pnl', 'debug', `Unbekannte Ausgabe (${type}): -${money.toFixed(2)} (Other).`);
               booked = true;
             }
@@ -7291,13 +7475,27 @@ function processTransactionsList(items, userId) {
 
       // Mark processed exactly once (history-spanning), regardless of booked/today.
       if (txId) { seen.add(txId); seenChanged = true; }
+    } catch (e) {
+      reportError('pnl', e, 'tx ' + txId);
+      const n = (badTx[txId] = (badTx[txId] || 0) + 1);
+      badTxChanged = true;
+      if (n >= 3) {
+        if (txId) { seen.add(txId); seenChanged = true; } /* Quarantine: give up */
+        setHealth('pnl', 'warn', `tx ${txId} quarantäniert nach ${n} Fehlversuchen`);
+      } else {
+        setHealth('pnl', 'warn', `tx ${txId} übersprungen (Versuch ${n})`);
+      }
     }
+  }
+  dbg('pnl', 'debug', `[seen-end] seenChanged: ${seenChanged}, new size: ${seen.size}`);
 
-    if (costBasisChanged) writeCache(KEYS.pnlCostBasis, costBasis);
-    if (knownLootChanged) writeCache(LOOT_CACHE_KEY, knownLoot);
+  if (costBasisChanged) writeCache(KEYS.pnlCostBasis, costBasis);
+  if (knownLootChanged) writeCache(LOOT_CACHE_KEY, knownLoot);
+  if (badTxChanged) writeCache(KEYS.pnlBadTx, badTx);
     if (seenChanged) {
       let arr = [...seen];
       if (arr.length > 3000) arr = arr.slice(-3000); // keep newest; feed only returns latest 100
+      dbg('pnl', 'debug', `[seen-write] saving array of length ${arr.length} to key ${KEYS.pnlProcessedTxs}`);
       writeCache(KEYS.pnlProcessedTxs, arr);
     }
 
@@ -7313,47 +7511,57 @@ function processTransactionsList(items, userId) {
     }
   }
 
-  async function fetchAndProcessTransactions() {
-    const userId = getCurrentUserId();
-    if (!userId) return;
-    try {
-      guard('pnl', async () => {
-      const url = 'https://gateway.warerastats.io/trpc/transaction.getPaginatedTransactions';
-      // The feed returns only the newest 100 per page. Between 30s polls a player +
-      // their employees can produce >100 tx (wages spam), so paginate until we reach
-      // already-processed territory (or a page cap). Dedup makes overlap harmless.
-      const seenSet = new Set(readCache(KEYS.pnlProcessedTxs) || []);
-      const MAX_PAGES = 10; // safety cap = up to 1000 tx/poll; first run pulls full history
-      let cursor = null;
-      let prevFirstId = null;
-      const all = [];
-      for (let page = 0; page < MAX_PAGES; page++) {
-        const body = JSON.stringify(cursor ? { limit: 100, userId, cursor } : { limit: 100, userId });
-        const res = await gmRequest({
-          method: 'POST', url,
-          headers: { 'Content-Type': 'application/json', 'X-API-Key': 'wia-userscript' },
-          data: body
-        });
-        if (res.status < 200 || res.status >= 300) break;
-        const data = JSON.parse(res.text)?.result?.data;
-        const items = data?.items || [];
-        if (!items.length) break;
-        const firstId = items[0]._id || items[0].id;
-        if (firstId && firstId === prevFirstId) break; // cursor didn't advance → stop
-        prevFirstId = firstId;
-        all.push(...items);
-        // Reached txs we've already processed → fully caught up, stop paginating.
-        if (items.some(it => seenSet.has(it._id || it.id))) break;
-        cursor = data?.nextCursor;
-        if (!cursor || items.length < 100) break;
-      }
-      if (all.length) processTransactionsList(all, userId);
+  let isFetchingPnlTransactions = false;
 
-          updatePnlUi();
-          setHealth('pnl', 'ok');
+  async function fetchAndProcessTransactions() {
+    if (isFetchingPnlTransactions) return;
+    isFetchingPnlTransactions = true;
+    const userId = getCurrentUserId();
+    if (!userId) {
+      setHealth('pnl', 'warn', 'user id not found');
+      isFetchingPnlTransactions = false;
+      return;
+    }
+    try {
+      await guard('pnl', async () => {
+        const url = 'https://gateway.warerastats.io/trpc/transaction.getPaginatedTransactions';
+        // The feed returns only the newest 100 per page. Between 30s polls a player +
+        // their employees can produce >100 tx (wages spam), so paginate until we reach
+        // already-processed territory (or a page cap). Dedup makes overlap harmless.
+        const seenSet = new Set(readCache(KEYS.pnlProcessedTxs) || []);
+        const MAX_PAGES = 10; // safety cap = up to 1000 tx/poll; first run pulls full history
+        let cursor = null;
+        let prevFirstId = null;
+        const all = [];
+        for (let page = 0; page < MAX_PAGES; page++) {
+          const body = JSON.stringify(cursor ? { limit: 100, userId, cursor } : { limit: 100, userId });
+          const res = await gmRequest({
+            method: 'POST', url,
+            headers: { 'Content-Type': 'application/json', 'X-API-Key': 'wia-userscript' },
+            data: body
+          });
+          if (res.status < 200 || res.status >= 300) break;
+          const data = JSON.parse(res.text)?.result?.data;
+          const items = data?.items || [];
+          if (!items.length) break;
+          const firstId = normalizeDbId(items[0]._id || items[0].id);
+          if (firstId && firstId === prevFirstId) break; // cursor didn't advance → stop
+          prevFirstId = firstId;
+          all.push(...items);
+          // Reached txs we've already processed → fully caught up, stop paginating.
+          if (items.some(it => seenSet.has(normalizeDbId(it._id || it.id)))) break;
+          cursor = data?.nextCursor;
+          if (!cursor || items.length < 100) break;
+        }
+        if (all.length) processTransactionsList(all, userId);
+
+        updatePnlUi();
+        setHealth('pnl', 'ok');
       });
     } catch (e) {
-      log('fetchAndProcessTransactions failed:', e.message);
+      reportError('pnl', e, 'fetchAndProcessTransactions failed');
+    } finally {
+      isFetchingPnlTransactions = false;
     }
   }
 
@@ -7385,6 +7593,73 @@ function processTransactionsList(items, userId) {
     }
     walk(card);
     return qty;
+  }
+
+  function getActiveInventoryTab() {
+    if (typeof document === 'undefined') return { tab: null, found: false };
+    const elements = Array.from(document.querySelectorAll('button, a, [role="tab"]'));
+    const tabMap = {
+      'all': 'all',
+      'alle': 'all',
+      'equipment': 'equipment',
+      'ausrüstung': 'equipment',
+      'weapons': 'weapons',
+      'waffen': 'weapons',
+      'armor': 'armor',
+      'rüstung': 'armor',
+      'consumables': 'consumables',
+      'verbrauchbares': 'consumables',
+      'food': 'consumables',
+      'essen': 'consumables',
+      'drugs': 'consumables',
+      'drogen': 'consumables',
+      'pillen': 'consumables',
+      'pills': 'consumables',
+      'other': 'other',
+      'sonstiges': 'other'
+    };
+
+    let foundAnyTab = false;
+    for (const el of elements) {
+      const txt = (el.textContent || '').trim().toLowerCase();
+      const tabKey = tabMap[txt];
+      if (!tabKey) continue;
+
+      foundAnyTab = true;
+
+      const isActive = el.getAttribute('aria-selected') === 'true' ||
+                       el.getAttribute('data-state') === 'active' ||
+                       el.classList.contains('active') ||
+                       el.classList.contains('selected') ||
+                       el.classList.contains('_1dnmndy85w') ||
+                       el.getAttribute('aria-current') === 'page';
+
+      if (isActive) {
+        return { tab: tabKey, found: true };
+      }
+    }
+    return { tab: null, found: foundAnyTab };
+  }
+
+  function isConsumablesVisible() {
+    const { tab, found } = getActiveInventoryTab();
+    if (!found) return true; // fallback if no tabs detected
+    if (tab === null) {
+      setHealth('pnl', 'warn', 'tab-detection failed → fail-open');
+      return true;
+    }
+    return tab === 'all' || tab === 'consumables';
+  }
+
+  // Ref: https://app.warera.io/user/69fa68b7b1c4942142eb2942/inventory
+  function isEquipmentVisible() {
+    const { tab, found } = getActiveInventoryTab();
+    if (!found) return true; // fallback if no tabs detected
+    if (tab === null) {
+      setHealth('pnl', 'warn', 'tab-detection failed → fail-open');
+      return true;
+    }
+    return tab === 'all' || tab === 'equipment' || tab === 'weapons' || tab === 'armor';
   }
 
 function getInventoryQuantities() {
@@ -7451,11 +7726,38 @@ function getInventoryQuantities() {
 
 function checkInventoryDeltaConsumption() {
     if (!isInventoryPage()) return;
+    if (!isConsumablesVisible()) {
+      dbg('pnl', 'debug', 'checkInventoryDeltaConsumption: skipped (consumables hidden by active tab)');
+      return;
+    }
+
+    // Safeguard 1: Skip if search/filter input has text (active filter)
+    const searchInputs = document.querySelectorAll('input[type="text"], input[type="search"], input:not([type])');
+    for (const input of searchInputs) {
+      if (input.value && input.value.trim() !== '') {
+        dbg('pnl', 'debug', `checkInventoryDeltaConsumption: skipped (search input is active: "${input.value}")`);
+        return;
+      }
+    }
 
     let snapshots = readCache(KEYS.pnlSnapshots);
     if (!snapshots) return;
 
     const currentQts = getInventoryQuantities();
+
+    // Safeguard 2: Prevent false consumption bookings during loading/tab switches
+    if (Object.keys(currentQts).length === 0 && Object.keys(snapshots.invQty_start).length > 0) {
+      const startKeys = Object.keys(snapshots.invQty_start);
+      if (startKeys.length > 1) {
+        dbg('pnl', 'debug', 'checkInventoryDeltaConsumption: skipped (all consumable types disappeared, likely loading/tab-switch/filter)');
+        return;
+      }
+      const soleKey = startKeys[0];
+      if (snapshots.invQty_start[soleKey] > 5) {
+        dbg('pnl', 'debug', `checkInventoryDeltaConsumption: skipped (sole consumable ${soleKey} went from ${snapshots.invQty_start[soleKey]} to 0, likely loading/tab-switch/filter)`);
+        return;
+      }
+    }
 
     if (!snapshots.invQty_start || Object.keys(snapshots.invQty_start).length === 0) {
       snapshots.invQty_start = currentQts;
@@ -7474,6 +7776,17 @@ function checkInventoryDeltaConsumption() {
     for (const [code, startQty] of Object.entries(snapshots.invQty_start)) {
       if (!isConsumable(code)) continue;
       const curQty = currentQts[code] || 0;
+
+      // Safeguard 3: If a single item drops to 0, verify the drop is not suspicously large (transient/loading/filter)
+      if (curQty === 0 && startQty > 0) {
+        const isAmmo = code.includes('ammo');
+        const limit = isAmmo ? 50 : 2;
+        if (startQty > limit) {
+          dbg('pnl', 'debug', `checkInventoryDeltaConsumption: skipped item ${code} (went from ${startQty} to 0, likely transient/loading/filter)`);
+          continue;
+        }
+      }
+
       if (curQty < startQty) {
         let remainingDelta = startQty - curQty;
 
@@ -7596,7 +7909,15 @@ function checkInventoryDeltaConsumption() {
         isEstimated = true;
       }
     }
-    if (!isFinite(unitPaid) || unitPaid > 10000) unitPaid = 0; // guard against corrupted cost basis
+    if (!isFinite(unitPaid)) {
+      unitPaid = 0;
+    } else if (unitPaid > 10000) {
+      reportError('pnl', new Error(`unitPaid > 10k (${unitPaid}) verworfen für ${normCode}`), 'resolveUnitBasis');
+      unitPaid = 0;
+    }
+    if (unitPaid === 0) {
+      setHealth('pnl', 'warn', 'kein Preis für ' + normCode);
+    }
     return { unitPaid, isEstimated };
   }
 
@@ -7612,6 +7933,10 @@ function checkInventoryDeltaConsumption() {
   // double-counting into Repairs.
 function checkInventoryDeltaWear() {
     if (!isInventoryPage()) return;
+    if (!isEquipmentVisible()) {
+      dbg('pnl', 'debug', 'checkInventoryDeltaWear: skipped (equipment hidden by active tab)');
+      return;
+    }
 
     // HIER: Wir holen uns roh ALLE Ausrüstungen (auch getragene/beschädigte!)
     // über die neue Hilfsfunktion, die wir in Schritt 1 angelegt haben.
@@ -8131,6 +8456,14 @@ function checkInventoryDeltaWear() {
       return lbl.replace(/^food_/, '').replace(/^pill_/, '');
     };
 
+    const formatPayerLabel = (lbl) => {
+      if (!lbl) return 'Unbekannt';
+      if (/^[0-9a-fA-F]{24}$/.test(lbl)) {
+        return 'Spieler/MU (' + lbl.substring(0, 6) + '...)';
+      }
+      return lbl;
+    };
+
     let s = `\n%c========================================\n`;
     s += `      🧾 WAREERA P&L BELEG (HEUTE)       \n`;
     s += `========================================\n\n`;
@@ -8195,12 +8528,11 @@ function checkInventoryDeltaWear() {
       const casesSum = cases.reduce((a, b) => a + b.amount, 0);
       s += `  Kisten-Kosten: ${cases.length}x geöffnet, insg. -${casesSum.toFixed(2)}g\n`;
     }
-    // 2e. Spenden
     if (donations.length > 0) {
       hasExp = true;
       s += `  Spenden:\n`;
       donations.forEach(d => {
-        s += `    • an ${d.label}: -${d.amount.toFixed(2)}g\n`;
+        s += `    • an ${formatPayerLabel(d.label)}: -${d.amount.toFixed(2)}g\n`;
       });
     }
     if (!hasExp) s += `  Keine Ausgaben verzeichnet\n`;
@@ -8231,12 +8563,12 @@ function checkInventoryDeltaWear() {
   }
 
   // Bump when the ledger math/shape changes incompatibly. v2: fixed _id dedup double-count
-  // + capitalized tracking. v3: fixed gold_start=0 bogus delta + cost-basis sanity guard
-  // (corrupted ~gold-balance unitPaid had inflated wear/consumption into huge negatives).
-  const PNL_SCHEMA_VERSION = 7;
+  // + capitalized tracking. v3: fixed gold_start=0 bogus delta + cost-basis sanity guard.
+  // v8: standardized case-insensitive consumable keys to fix missing prices.
+  const PNL_SCHEMA_VERSION = 8;
 
   function migratePnlSchema() {
-    const stored = GM_getValue(KEYS.pnlSchemaVersion, 0);
+    const stored = parseInt(GM_getValue(KEYS.pnlSchemaVersion, 0), 10) || 0;
     if (stored === PNL_SCHEMA_VERSION) return;
     // v7: cost-basis qtyKnown was inflated by the missing-dedup bug → wipe everything
     // and let the persistent-dedup + paginated fetch rebuild it clean from history.
@@ -8245,6 +8577,7 @@ function checkInventoryDeltaWear() {
     writeCache(KEYS.pnlSnapshots, null);
     writeCache(KEYS.pnlCostBasis, null);
     writeCache(KEYS.pnlProcessedTxs, null);   // reset dedup → full re-pull rebuilds cost basis
+    writeCache(KEYS.pnlBadTx, null);
     writeCache('wia_pnl_known_loot', null);   // loot-id cache
     GM_setValue(KEYS.pnlSchemaVersion, PNL_SCHEMA_VERSION);
     log('PnL: schema migrated to v' + PNL_SCHEMA_VERSION + ' (stale caches cleared)');
@@ -8372,7 +8705,10 @@ function checkInventoryDeltaWear() {
     // Each entrypoint guarded → a crash in one feature can't abort the rest of start().
     if (CONFIG.featNotes) guard('notes', initNotes); else setHealth('notes', 'idle', 'disabled in settings');
     if (CONFIG.featBattleAdvisor) {
-      if (isBattlePage()) guard('battleAdvisor', applyBattleAdvisory);
+      if (isBattlePage()) {
+        guard('battleAdvisor', applyBattleAdvisory);
+        initSharedBodyObserver();
+      }
       else setHealth('battleAdvisor', 'idle', 'not on battle page');
     } else setHealth('battleAdvisor', 'idle', 'disabled in settings');
     if (CONFIG.featPillReminder) guard('pillReminder', initPillReminder); else setHealth('pillReminder', 'idle', 'disabled in settings');
@@ -8421,6 +8757,7 @@ function checkInventoryDeltaWear() {
     setInterval(() => {
       if (scanning) return;
       if (!isInventoryPage() && !isMarketPage()) return;
+      if (loopGuard('advisor-heartbeat', 10, 15000)) return;
       const cards = findItemCards();
       if (cards.size > 0 && hasInventoryChanged(cards)) {
         log('Advisor heartbeat: grid changed without rescan → re-attach + rescan');
