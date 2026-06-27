@@ -345,7 +345,13 @@ global.window = {
   addEventListener: () => {},
   getComputedStyle: (el) => {
     return {
-      color: el.style.color || 'rgb(59, 219, 139)'
+      color: el.style.color || 'rgb(59, 219, 139)',
+      borderColor: el.style.borderColor || '',
+      borderTopColor: el.style.borderTopColor || '',
+      outlineColor: el.style.outlineColor || '',
+      backgroundColor: el.style.backgroundColor || '',
+      boxShadow: el.style.boxShadow || '',
+      ...el.style
     };
   },
   setTimeout: (fn, delay) => setTimeout(fn, delay)
@@ -1979,6 +1985,78 @@ try {
       global.document.getElementById = oldBodyGetElementById;
       
       console.log('Daily P&L Tracker Phase 1 tests passed successfully.');
+
+      // --- Testing Skin & Equipment Recognition ---
+      console.log('--- Testing Skin & Equipment Recognition ---');
+
+      // Test 1: skinNameFromSrc
+      assert.strictEqual(globalThis.skinNameFromSrc('/images/skins/ctKnife.png?v=10'), 'ctKnife');
+      assert.strictEqual(globalThis.skinNameFromSrc('/images/skins/gsg9Sniper.png'), 'gsg9Sniper');
+      assert.strictEqual(globalThis.skinNameFromSrc('/images/items/knife.png'), null);
+
+      // Test 2: slotForSkin
+      assert.strictEqual(globalThis.slotForSkin('ctKnife'), 'knife'); // from skinToSlot
+      assert.strictEqual(globalThis.slotForSkin('gsg9Sniper'), 'sniper'); // from skinToSlot
+      assert.strictEqual(globalThis.slotForSkin('customNameKnife'), 'knife'); // from suffix auto-fallback
+      assert.strictEqual(globalThis.slotForSkin('wc2026'), 'lightAmmo'); // from skinToSlot
+      assert.strictEqual(globalThis.slotForSkin('ctHeavyAmmo'), 'heavyAmmo'); // from skinToSlot
+      assert.strictEqual(globalThis.slotForSkin('ctAmmo'), 'ammo'); // from skinToSlot
+      assert.strictEqual(globalThis.slotForSkin('ctLightAmmo'), 'lightAmmo'); // from skinToSlot
+      assert.strictEqual(globalThis.slotForSkin('unknownSkinName'), null); // unknown
+
+      // Test 3: detectItem for weapon skin
+      const mockWeaponImg = new MockElement('img');
+      mockWeaponImg.setAttribute('src', '/images/skins/ctKnife.png');
+      mockWeaponImg.setAttribute('alt', 'ctKnife');
+      const mockWeaponCard = new MockElement('div');
+      const weaponInfo = globalThis.detectItem(mockWeaponImg, mockWeaponCard);
+      assert.strictEqual(weaponInfo.type, 'weapon', 'Weapon skin should be weapon type');
+      assert.strictEqual(weaponInfo.code, 'knife', 'Weapon skin code should be knife');
+      assert.strictEqual(weaponInfo.tier, 1, 'Weapon skin tier should be 1');
+      assert.strictEqual(weaponInfo.isSkin, true, 'Weapon skin isSkin should be true');
+
+      // Test 4: detectItem for armor skin (with resolved tier from color)
+      const mockArmorImg = new MockElement('img');
+      mockArmorImg.setAttribute('src', '/images/skins/gsg9Chest.png');
+      mockArmorImg.setAttribute('alt', 'gsg9Chest');
+      const mockArmorCard = new MockElement('div');
+      // mock the border color to represent Tier 3 (blue)
+      mockArmorCard.style.borderColor = 'rgb(60, 130, 240)';
+      
+      const armorInfo = globalThis.detectItem(mockArmorImg, mockArmorCard);
+      assert.strictEqual(armorInfo.type, 'chest', 'Armor skin type should be chest');
+      assert.strictEqual(armorInfo.tier, 3, 'Armor skin tier should resolve to 3');
+      assert.strictEqual(armorInfo.code, 'chest3', 'Armor skin code should be reconstructed to chest3');
+      assert.strictEqual(armorInfo.isSkin, true, 'Armor skin isSkin should be true');
+
+      // Test 5: isInsideSkinShop page scoping
+      const shopContainer = new MockElement('div');
+      const loadMoreBtn = new MockElement('button');
+      loadMoreBtn.textContent = 'Load more';
+      shopContainer.appendChild(loadMoreBtn);
+      
+      const skinImgInShop = new MockElement('img');
+      shopContainer.appendChild(skinImgInShop);
+      
+      assert.strictEqual(globalThis.isInsideSkinShop(skinImgInShop), true, 'Image inside shop should be detected');
+      
+      const normalContainer = new MockElement('div');
+      const normalImg = new MockElement('img');
+      normalContainer.appendChild(normalImg);
+      assert.strictEqual(globalThis.isInsideSkinShop(normalImg), false, 'Normal image should not be detected as shop');
+
+      // Test 6: detectItem for consumable skin (wc2026 mapped to lightAmmo)
+      const mockConsumableImg = new MockElement('img');
+      mockConsumableImg.setAttribute('src', '/images/skins/wc2026.png');
+      mockConsumableImg.setAttribute('alt', 'wc2026');
+      const mockConsumableCard = new MockElement('div');
+      const consumableInfo = globalThis.detectItem(mockConsumableImg, mockConsumableCard);
+      assert.strictEqual(consumableInfo.type, 'lightAmmo', 'Consumable skin type should be lightAmmo');
+      assert.strictEqual(consumableInfo.code, 'lightAmmo', 'Consumable skin code should be lightAmmo');
+      assert.strictEqual(consumableInfo.tier, null, 'Consumable skin tier should be null');
+      assert.strictEqual(consumableInfo.isSkin, true, 'Consumable skin isSkin should be true');
+
+      console.log('Skin & Equipment Recognition tests passed successfully.');
 
       console.log('Success! The script loaded and initialized without throwing any runtime errors.');
       process.exit(0);

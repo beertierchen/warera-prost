@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.7.11
+// @version      0.7.12
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -76,7 +76,7 @@
 
     // --- DOM ---
     // Item images all live under this path; we climb from the <img> to its card.
-    itemImageSelector: "img[src*='/images/items/']",
+    itemImageSelector: "img[src*='/images/items/'], img[src*='/images/skins/']",
     cardAncestorMaxClimb: 6,            // how many parents to walk up looking for the "card"
 
     // SVG path "d" fingerprints-substring-match to identify the stat by its icon.
@@ -120,6 +120,23 @@
       boots: 'boots', shoes: 'boots',
       // currency / non-equipment
       scraps: 'scrap', scrap: 'scrap',
+    },
+
+    skinToSlot: {
+      // weapons
+      gsg9Sniper: 'sniper', ctKnife: 'knife', gsg9Rifle: 'rifle',
+      gsg9Knife: 'knife', ctRifle: 'rifle', gsg9Jet: 'jet', ctJet: 'jet',
+      gsg9Tank: 'tank', gsg9Gun: 'gun',
+      // armor
+      gsg9Chest: 'chest', gsg9Helmet: 'helmet', gsg9Gloves: 'gloves',
+      gsg9Pants: 'pants', gsg9Boots: 'boots',
+      ctChest: 'chest', ctHelmet: 'helmet', ctGloves: 'gloves',
+      ctPants: 'pants', ctBoots: 'boots',
+      // consumables
+      wc2026: 'lightAmmo',
+      ctHeavyAmmo: 'heavyAmmo',
+      ctAmmo: 'ammo',
+      ctLightAmmo: 'lightAmmo',
     },
 
     // armor stat per slot (for tooltip labelling)
@@ -969,8 +986,29 @@
       try { cards = (globalThis.findItemCards || findItemCards)(false); } catch (e) { return ['fail', 'findItemCards threw: ' + e.message]; }
       const n = cards ? cards.size : 0;
       if (!n) return ['fail', 'no item cards found (selector drift?)'];
+
+      let skinCount = 0;
+      let unknownSkinCount = 0;
+      cards.forEach((img, card) => {
+        const info = detectItem(img, card);
+        if (info && info.isSkin) {
+          skinCount++;
+          if (info.type === 'unknown') {
+            unknownSkinCount++;
+          }
+        }
+      });
+
       const badges = document.querySelectorAll('.wia-badge').length;
-      return badges > 0 ? ['ok', ''] : ['fail', `advice not rendered (0 badges on ${n} cards)`];
+      if (badges === 0) {
+        return ['fail', `advice not rendered (0 badges on ${n} cards)`];
+      }
+
+      if (unknownSkinCount > 0) {
+        return ['warn', `${unknownSkinCount} Skins ohne Slot — Dump-Tool laufen lassen`];
+      }
+
+      return ['ok', skinCount > 0 ? `${skinCount} Skins erkannt` : ''];
     },
     battleAdvisor() {
       if (!CONFIG.featBattleAdvisor) return ['idle', 'disabled in settings'];
@@ -1550,12 +1588,16 @@
     imgs.forEach((img, idx) => {
       const isModal = isMarketPage() ? false : isInsideModalOrSidebar(img);
       const isProfile = isMarketPage() ? false : isInsideProfileEquipment(img);
+      const isShop = isInsideSkinShop(img);
       const card = climbToCard(img);
       if (verbose) {
+        const itemInfo = detectItem(img, card);
         log(`  [Image #${idx}] alt="${img.getAttribute('alt')}" src="${img.getAttribute('src')}"`);
         log(`    isInsideModalOrSidebar: ${isModal}`);
         log(`    isInsideProfileEquipment: ${isProfile}`);
+        log(`    isInsideSkinShop: ${isShop}`);
         log(`    climbToCard resolved element:`, card ? `${card.tagName}.${card.className}` : 'null');
+        log(`    detectItem: type=${itemInfo.type}, code=${itemInfo.code}, tier=${itemInfo.tier}, isSkin=${itemInfo.isSkin}`);
       }
 
       if (isModal) {
@@ -1564,6 +1606,10 @@
       }
       if (isProfile) {
         if (verbose) log(`    -> Skipped (inside character profile equipment)`);
+        return;
+      }
+      if (isShop) {
+        if (verbose) log(`    -> Skipped (inside skin shop)`);
         return;
       }
       if (card) {
@@ -1774,6 +1820,10 @@
     globalThis.getActiveInventoryTab = getActiveInventoryTab;
     globalThis.isConsumablesVisible = isConsumablesVisible;
     globalThis.isEquipmentVisible = isEquipmentVisible;
+    globalThis.skinNameFromSrc = skinNameFromSrc;
+    globalThis.slotForSkin = slotForSkin;
+    globalThis.isInsideSkinShop = isInsideSkinShop;
+    globalThis.detectItem = detectItem;
   }
 
   function getLocale() {
@@ -1817,9 +1867,112 @@
     return img.parentElement || img;
   }
 
+  function skinNameFromSrc(src) {
+    if (!src) return null;
+    const match = src.match(/\/images\/skins\/([^/.?#]+)/);
+    return match ? match[1] : null;
+  }
+
+  function slotForSkin(skinName) {
+    if (!skinName) return null;
+
+    // 1. Wissensbibliothek CONFIG.skinToSlot
+    if (CONFIG.skinToSlot) {
+      if (CONFIG.skinToSlot[skinName]) {
+        return CONFIG.skinToSlot[skinName];
+      }
+      const lowerName = skinName.toLowerCase();
+      for (const [key, slot] of Object.entries(CONFIG.skinToSlot)) {
+        if (key.toLowerCase() === lowerName) {
+          return slot;
+        }
+      }
+    }
+
+    // 2. Suffix-Auto-Fallback
+    const lowerName = skinName.toLowerCase();
+    for (const kw of Object.keys(CONFIG.typeByAltKeyword)) {
+      if (lowerName.endsWith(kw)) {
+        return kw;
+      }
+    }
+
+    return null;
+  }
+
+  function isInsideSkinShop(el) {
+    let parent = el.parentElement;
+    for (let i = 0; i < 9 && parent; i++) {
+      // 1. "Load more" button
+      const buttons = Array.from(parent.querySelectorAll('button'));
+      const hasLoadMore = buttons.some(btn => {
+        const txt = btn.textContent.toLowerCase();
+        return txt.includes('load more') || txt.includes('mehr laden');
+      });
+      if (hasLoadMore) return true;
+
+      // 2. "Gift this skin" or similar label
+      const hasGiftLabel = Array.from(parent.querySelectorAll('button, div, span, p')).some(item => {
+        const txt = item.textContent.toLowerCase();
+        return txt.includes('gift this skin') || txt.includes('gift skin') || txt.includes('skin verschenken') || txt.includes('verschenken');
+      });
+      if (hasGiftLabel) return true;
+
+      // 3. Premium pricing - check if there's a chevron or other shop-specific indicator.
+      const hasShopIndicators = Array.from(parent.querySelectorAll('a, button, span')).some(item => {
+        const txt = item.textContent.toLowerCase();
+        return txt.includes('buy skin') || txt.includes('skin kaufen') || txt.includes('skin shop');
+      });
+      if (hasShopIndicators) return true;
+
+      parent = parent.parentElement;
+    }
+    return false;
+  }
+
   function detectType(img, card) {
     const alt = (img.getAttribute('alt') || '').toLowerCase().trim();
     const src = (img.getAttribute('src') || '').toLowerCase();
+
+    // Skin Branch
+    const rawSrc = img.getAttribute('src') || '';
+    const skinName = skinNameFromSrc(rawSrc);
+    if (skinName) {
+      const slot = slotForSkin(skinName);
+      if (!slot) return { type: 'unknown', alt, code: null, srcBase: skinName, tier: null, isSkin: true };
+      const type = CONFIG.typeByAltKeyword[slot] || slot;
+      if (type === 'weapon') {
+        // Weapon-Code = Slot; Tier deterministisch
+        return {
+          type,
+          alt,
+          code: slot,
+          srcBase: skinName,
+          tier: CONFIG.weaponCodeToTier[slot] ?? null,
+          isSkin: true
+        };
+      }
+      if (typeof isConsumable === 'function' && isConsumable(slot)) {
+        return {
+          type,
+          alt,
+          code: slot,
+          srcBase: skinName,
+          tier: null,
+          isSkin: true
+        };
+      }
+      // Armor: Slot bekannt, Tier offen -> downstream resolvedTier füllt
+      return {
+        type,
+        alt,
+        code: null,
+        srcBase: skinName,
+        tier: null,
+        isSkin: true
+      };
+    }
+
     // sprite basename (chest.png -> "chest") is the clean TYPE key.
     const srcBase = (src.match(/\/images\/items\/([^/.?#]+)/) || [])[1] || '';
     // itemCode = the full alt ("gloves6", "chest3", "sniper")-what the market API keys on.
@@ -1848,7 +2001,20 @@
         }
       }
     }
-    return { type, alt, code, srcBase, tier };
+    return { type, alt, code, srcBase, tier, isSkin: false };
+  }
+
+  function detectItem(img, card) {
+    const det = detectType(img, card);
+    if (det.type !== 'unknown' && det.type !== 'scrap') {
+      const resolvedTier = det.tier != null ? det.tier : detectTierByColor(card);
+      let code = det.code;
+      if (det.isSkin && det.type !== 'weapon' && code == null && resolvedTier != null) {
+        code = det.type + resolvedTier; // "chest" + 3 = "chest3"
+      }
+      return { ...det, tier: resolvedTier, code };
+    }
+    return det;
   }
 
   // Color-based tier fallback, used ONLY when the alt carries no suffix digit.
@@ -3007,12 +3173,11 @@
 
       const allItems = [];
       cards.forEach((img, card) => {
-        const { type, alt, code: cCode, tier } = detectType(img, card);
+        const { type, alt, code: cCode, tier } = detectItem(img, card);
         if (type === 'scrap' || type === 'unknown') return;
         const stats = parseStats(card, type);
         if (shouldSuppressItem(card, stats)) return;
-        const resolvedTier = tier != null ? tier : detectTierByColor(card);
-        const item = { card, img, type, alt, code: cCode, tier: resolvedTier, stats };
+        const item = { card, img, type, alt, code: cCode, tier, stats };
         item.myStat = itemStat(item);
         if (type === 'weapon') item.weaponScore = item.myStat;
         allItems.push(item);
@@ -3130,7 +3295,8 @@ async function scanInventory(force) {
 
       const items = [];
       cards.forEach((img, card) => {
-        const { type, alt, code, tier } = detectType(img, card);
+        const itemInfo = detectItem(img, card);
+        const { type, alt, code, tier } = itemInfo;
 
         // stats nur parsen, wenn es kein Schrott oder Verbrauchsgegenstand ist
         const stats = (type === 'scrap' || type === 'unknown') ? null : parseStats(card, type);
@@ -3168,8 +3334,7 @@ async function scanInventory(force) {
           return; // Skript bricht für diese Karte sauber ab
         }
 
-        const resolvedTier = tier != null ? tier : detectTierByColor(card);
-        const item = { card, img, type, alt, code, tier: resolvedTier, stats };
+        const item = { card, img, type, alt, code, tier, stats };
         item.myStat = itemStat(item);
         if (type === 'weapon') item.weaponScore = item.myStat;
         items.push(item);
@@ -4050,6 +4215,7 @@ async function scanInventory(force) {
             <summary style="font-size: 11px; color: #8b949e; cursor: pointer; user-select: none; font-weight: bold; outline: none;">Feature-Health / Diagnose</summary>
             <button type="button" class="wia-health-btn" style="margin: 6px 0; font-size: 11px; padding: 3px 8px; cursor: pointer;">Aktualisieren</button>
             <button type="button" class="wia-pnl-print-btn" style="margin: 6px 4px; font-size: 11px; padding: 3px 8px; cursor: pointer; color: #58a6ff; background: rgba(88,166,255,0.1); border: 1px solid rgba(88,166,255,0.2); border-radius: 3px;">P&L Kassenzettel (Konsole)</button>
+            <button type="button" class="wia-skins-dump-btn" style="margin: 6px 4px; font-size: 11px; padding: 3px 8px; cursor: pointer; color: #ff9800; background: rgba(255,152,0,0.1); border: 1px solid rgba(255,152,0,0.2); border-radius: 3px;">Skins Dump (Konsole)</button>
             <div class="wia-health-panel"></div>
           </details>
         </div>
@@ -4131,6 +4297,10 @@ async function scanInventory(force) {
     const printBtn = modal.querySelector('.wia-pnl-print-btn');
     if (printBtn) {
       printBtn.onclick = (e) => { e.preventDefault(); printPnlReceipt(); };
+    }
+    const skinsDumpBtn = modal.querySelector('.wia-skins-dump-btn');
+    if (skinsDumpBtn) {
+      skinsDumpBtn.onclick = (e) => { e.preventDefault(); dumpSkinsToConsole(); };
     }
     if (healthPanel) { runProbes(); renderHealthPanel(healthPanel); }   // initial fill = live truth
 
@@ -8547,6 +8717,48 @@ function checkInventoryDeltaWear() {
   }
   globalThis.printPnlReceipt = printPnlReceipt;
 
+  function dumpSkinsToConsole() {
+    const imgs = document.querySelectorAll('img[src*="/images/skins/"]');
+    if (!imgs.length) {
+      console.log('WIA SKINS DUMP: Keine Skins auf der aktuellen Seite gefunden.');
+      alert('WIA SKINS DUMP: Keine Skins auf der aktuellen Seite gefunden.');
+      return;
+    }
+
+    const seen = new Set();
+    const rows = [];
+    
+    rows.push(
+      'SKIN'.padEnd(16) + 
+      'SRC'.padEnd(45) + 
+      'AUTO-SLOT'.padEnd(12) + 
+      'STATUS'
+    );
+
+    imgs.forEach((img) => {
+      const src = img.getAttribute('src') || '';
+      const skinName = skinNameFromSrc(src);
+      if (!skinName || seen.has(skinName)) return;
+      seen.add(skinName);
+
+      const slot = slotForSkin(skinName);
+      const autoSlot = slot || '—';
+      const status = slot ? '✓ auto' : '⚠ Tabelle';
+
+      rows.push(
+        skinName.padEnd(16) +
+        src.padEnd(45) +
+        autoSlot.padEnd(12) +
+        status
+      );
+    });
+
+    const output = rows.join('\n');
+    console.log('%cWIA SKINS DUMP:\n' + output, 'font-family: monospace; font-weight: bold;');
+    alert('WIA SKINS DUMP gedruckt! Bitte öffne die Browser-Konsole (F12) zum Kopieren.');
+  }
+  globalThis.dumpSkinsToConsole = dumpSkinsToConsole;
+
   function teardownPnlUi() {
     const badge = document.getElementById('wia-pnl-tracker');
     if (badge) {
@@ -8653,7 +8865,7 @@ function checkInventoryDeltaWear() {
   const curByCode = {};
 
   cards.forEach((img, card) => {
-    const { type, code } = detectType(img, card);
+    const { type, code } = detectItem(img, card);
     // Nur Ausrüstung (Waffen & Rüstung) erfassen
     if (['weapon', 'helmet', 'chest', 'gloves', 'pants', 'boots'].includes(type) && code) {
       const stats = parseStats(card, type);

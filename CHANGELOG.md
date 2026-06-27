@@ -1,5 +1,21 @@
 # CHANGELOG
 
+## 2026-06-27 | Skin- & Ausrüstungserkennung, Munitions-Skins-Support und Diagnose-Dump (v0.7.12)
+
+**Geänderte Dateien:** `warera-prost.user.js`
+
+**Änderungen (Deutsch):**
+- **Skin-Erkennung für den Advisor**: Geskinnte Gegenstände (Waffen und Rüstungsteile unter `/images/skins/`) werden nun im Inventar und auf dem Markt vollständig erkannt und normal bewertet.
+- **Support für Munitions-Skins**: Skins auf Munition (z. B. `wc2026`, `ctLightAmmo`, `ctHeavyAmmo`, `ctAmmo`) werden über eine interne Zuordnung (`CONFIG.skinToSlot`) korrekt auf ihre Basis-Munitionstypen zurückgemappt. Dies stellt sicher, dass der P&L-Mengen-Tracker den Munitionsverbrauch auch mit Skins fehlerfrei aufzeichnet.
+- **Skins-Ausschluss im Shop**: Auf der Skin-Shop-Seite wird die Bewertung automatisch deaktiviert, um Premium-Währungspreise nicht mit normalen Markt-Coins zu vermischen.
+- **Skins-Dump für Fehlerdiagnose**: In den Einstellungen (unter Feature-Health / Diagnose) gibt es einen neuen Button "Skins Dump (Konsole)". Dieser gibt eine copy-paste-fertige Tabelle aller auf der Seite gefundenen Skins, deren Auto-Slot und ihren Erkennungs-Status aus, um das Hinzufügen nicht-standardisierter Skins zu vereinfachen.
+
+**Changes (English):**
+- **Skin & Equipment Recognition**: Cosmetic skin items (weapons and armor under `/images/skins/`) are now fully detected and evaluated in your inventory and on the market pages.
+- **Ammo Skin Support**: Cosmetic ammo skins (e.g., `wc2026`, `ctLightAmmo`, `ctHeavyAmmo`, `ctAmmo`) are correctly mapped back to their base ammo types via `CONFIG.skinToSlot`. This guarantees that the P&L consumption tracker accurately captures ammo usage when skins are equipped.
+- **Shop Exclusion Page-Scoping**: Automatically disables advice overlays on the skin shop page to prevent mixing premium currency with regular market coins.
+- **Skins Dump for Debugging**: Adds a "Skins Dump (Konsole)" button in settings under Feature-Health/Diagnose. It outputs a copy-pasteable table of all page skins, their auto-slot mappings, and status to simplify adding new custom skins.
+
 ## 2026-06-27 | Zuverlässigeres P&L-Tracking, Fehlerbereinigungen für Mengen & Preise (v0.7.11)
 
 **Geänderte Dateien:** `warera-prost.user.js`
