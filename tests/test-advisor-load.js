@@ -2029,21 +2029,12 @@ try {
       assert.strictEqual(armorInfo.code, 'chest3', 'Armor skin code should be reconstructed to chest3');
       assert.strictEqual(armorInfo.isSkin, true, 'Armor skin isSkin should be true');
 
-      // Test 5: isInsideSkinShop page scoping
-      const shopContainer = new MockElement('div');
-      const loadMoreBtn = new MockElement('button');
-      loadMoreBtn.textContent = 'Load more';
-      shopContainer.appendChild(loadMoreBtn);
+      // Test 5: isShopPage page scoping
+      global.location.pathname = '/shop/skins';
+      assert.strictEqual(globalThis.isShopPage(), true, 'Shop page pathname should be detected');
       
-      const skinImgInShop = new MockElement('img');
-      shopContainer.appendChild(skinImgInShop);
-      
-      assert.strictEqual(globalThis.isInsideSkinShop(skinImgInShop), true, 'Image inside shop should be detected');
-      
-      const normalContainer = new MockElement('div');
-      const normalImg = new MockElement('img');
-      normalContainer.appendChild(normalImg);
-      assert.strictEqual(globalThis.isInsideSkinShop(normalImg), false, 'Normal image should not be detected as shop');
+      global.location.pathname = '/user/my-user-id/inventory';
+      assert.strictEqual(globalThis.isShopPage(), false, 'Inventory page should not be detected as shop page');
 
       // Test 6: detectItem for consumable skin (wc2026 mapped to lightAmmo)
       const mockConsumableImg = new MockElement('img');

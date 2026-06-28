@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.7.13
+// @version      0.7.14
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -623,6 +623,17 @@
 
   const originalTitles = new WeakMap();
 
+  const SCOPING_STATS = {
+    scansCount: 0,
+    imagesChecked: 0,
+    skinsDetected: 0,
+    itemsDetected: 0,
+    shopChecksCount: 0,
+    lastScanTimeMs: 0
+  };
+  let cachedCards = null;
+  let cachedCardsTime = 0;
+
   // ───────────────────────────────────────────────────────────────────────────
   // Storage (namespaced GM_* with light token obfuscation)
   // ───────────────────────────────────────────────────────────────────────────
@@ -720,6 +731,7 @@
   let menuSettingsId = null;
   let menuClearId = null;
   let menuDebugId = null;
+  let menuPickId = null;
   const OBF_KEY = 'wareEra.advisor.v1'; // XOR pad-obfuscation only, not encryption
 
   function xor(str, pad) {
@@ -793,6 +805,7 @@
       if (menuSettingsId != null) GM_unregisterMenuCommand(menuSettingsId);
       if (menuClearId != null) GM_unregisterMenuCommand(menuClearId);
       if (menuDebugId != null) GM_unregisterMenuCommand(menuDebugId);
+      if (menuPickId != null) GM_unregisterMenuCommand(menuPickId);
     }
     menuSettingsId = GM_registerMenuCommand(t('menuSettings'), openSettings);
     menuClearId = GM_registerMenuCommand(t('menuClearRescan'), () => {
@@ -803,6 +816,14 @@
       CONFIG.debug ? '🐞 Debug: AN (klick = aus)' : '🐞 Debug: AUS (klick = an)',
       () => setDebug(!CONFIG.debug)
     );
+    if (CONFIG.debug) {
+      menuPickId = GM_registerMenuCommand(
+        '🐞 Debug: Scan First Card Scoping',
+        runFirstCardScopingLog
+      );
+    } else {
+      menuPickId = null;
+    }
   }
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -972,7 +993,28 @@
         <span style="margin-left:auto;">${meta}</span>
       </div>`;
     }).join('');
-    el.innerHTML = `<div style="background:#0d1117; border:1px solid rgba(148,163,184,.25); border-radius:6px; padding:8px;">${rows}</div>`;
+
+    let ampelColor = '#3fb950'; // green
+    if (SCOPING_STATS.lastScanTimeMs >= 150) {
+      ampelColor = '#f85149'; // red
+    } else if (SCOPING_STATS.lastScanTimeMs >= 50) {
+      ampelColor = '#d29922'; // yellow
+    }
+
+    const perfRow = `
+      <div style="border-top:1px solid rgba(148,163,184,.15); margin-top:8px; padding-top:8px; font-size:11px; color:#8b949e; line-height:1.4;">
+        <div style="font-weight:bold; color:#c9d1d9; margin-bottom:4px; display:flex; align-items:center; gap:6px;">
+          <span style="width:7px; height:7px; border-radius:50%; background:${ampelColor}; flex:0 0 auto; box-shadow:0 0 4px ${ampelColor};"></span>
+          Scan Performance / Scoping Stats
+        </div>
+        <div>Last Scan Duration: <strong style="color:#c9d1d9;">${SCOPING_STATS.lastScanTimeMs.toFixed(2)} ms</strong></div>
+        <div>Scans Count: <strong style="color:#c9d1d9;">${SCOPING_STATS.scansCount}</strong></div>
+        <div>Images Scanned: <strong style="color:#c9d1d9;">${SCOPING_STATS.imagesChecked}</strong> (Skins: ${SCOPING_STATS.skinsDetected}, Items: ${SCOPING_STATS.itemsDetected})</div>
+        <div>Shop Checks (URL): <strong style="color:#c9d1d9;">${SCOPING_STATS.shopChecksCount}</strong></div>
+      </div>
+    `;
+
+    el.innerHTML = `<div style="background:#0d1117; border:1px solid rgba(148,163,184,.25); border-radius:6px; padding:8px;">${rows}${perfRow}</div>`;
   }
 
   // ── Phase 2: route-aware probes ──────────────────────────────────────────
@@ -1512,7 +1554,31 @@
       }
       parent = parent.parentElement;
     }
-    return false;
+  }
+
+  function isShopPage() {
+    return /\/shop(\/|$)/.test(location.pathname);
+  }
+
+  function runFirstCardScopingLog() {
+    const img = document.querySelector(CONFIG.itemImageSelector);
+    if (!img) {
+      console.log('[WIA:debug] No card image found on page matching selector:', CONFIG.itemImageSelector);
+      return;
+    }
+    const isModal = isMarketPage() ? false : isInsideModalOrSidebar(img);
+    const isProfile = isMarketPage() ? false : isInsideProfileEquipment(img);
+    const isShop = isShopPage();
+    const card = climbToCard(img);
+    const itemInfo = detectItem(img, card);
+    console.log('[WIA:debug] Scoping Debug for first image:', {
+      img,
+      isInsideModalOrSidebar: isModal,
+      isInsideProfileEquipment: isProfile,
+      isShopPage: isShop,
+      climbToCard: card ? `${card.tagName}.${card.className}` : 'null',
+      detectItem: itemInfo
+    });
   }
 
   function isInsideProfileEquipment(el) {
@@ -1572,64 +1638,107 @@
   }
 
   function findItemCards(verbose = false) {
-    let root = document;
-    if (isMarketPage()) {
-      const sellContainer = findMarketSellContainer();
-      if (sellContainer) {
-        root = sellContainer;
-        if (verbose) log("findItemCards: limiting scan to market sell container", sellContainer);
-      } else {
-        return new Map();
-      }
+    const startTime = performance.now();
+    SCOPING_STATS.scansCount++;
+
+    if (!verbose && cachedCards && (performance.now() - cachedCardsTime < 50)) {
+      return cachedCards;
     }
-    const imgs = root.querySelectorAll(CONFIG.itemImageSelector);
-    if (verbose) log(`findItemCards: found ${imgs.length} raw images on page matching "${CONFIG.itemImageSelector}"`);
-    const cards = new Map(); // card element -> img
-    imgs.forEach((img, idx) => {
-      const isModal = isMarketPage() ? false : isInsideModalOrSidebar(img);
-      const isProfile = isMarketPage() ? false : isInsideProfileEquipment(img);
-      const isShop = isInsideSkinShop(img);
-      const card = climbToCard(img);
-      if (verbose) {
-        const itemInfo = detectItem(img, card);
-        log(`  [Image #${idx}] alt="${img.getAttribute('alt')}" src="${img.getAttribute('src')}"`);
-        log(`    isInsideModalOrSidebar: ${isModal}`);
-        log(`    isInsideProfileEquipment: ${isProfile}`);
-        log(`    isInsideSkinShop: ${isShop}`);
-        log(`    climbToCard resolved element:`, card ? `${card.tagName}.${card.className}` : 'null');
-        log(`    detectItem: type=${itemInfo.type}, code=${itemInfo.code}, tier=${itemInfo.tier}, isSkin=${itemInfo.isSkin}`);
+
+    try {
+      if (isShopPage()) {
+        SCOPING_STATS.lastScanTimeMs = performance.now() - startTime;
+        cachedCards = new Map();
+        cachedCardsTime = performance.now();
+        return cachedCards;
       }
 
-      if (isModal) {
-        if (verbose) log(`    -> Skipped (inside modal/sidebar/drawer)`);
-        return;
+      let root = document;
+      if (isMarketPage()) {
+        const sellContainer = findMarketSellContainer();
+        if (sellContainer) {
+          root = sellContainer;
+          if (verbose) log("findItemCards: limiting scan to market sell container", sellContainer);
+        } else {
+          SCOPING_STATS.lastScanTimeMs = performance.now() - startTime;
+          cachedCards = new Map();
+          cachedCardsTime = performance.now();
+          return cachedCards;
+        }
       }
-      if (isProfile) {
-        if (verbose) log(`    -> Skipped (inside character profile equipment)`);
-        return;
-      }
-      if (isShop) {
-        if (verbose) log(`    -> Skipped (inside skin shop)`);
-        return;
-      }
-      if (card) {
-        const width = card.offsetWidth;
-        if (width > 0 && width < 40) {
-          if (verbose) log(`    -> Skipped (card too small: ${width}px)`);
+      const imgs = root.querySelectorAll(CONFIG.itemImageSelector);
+      if (verbose) log(`findItemCards: found ${imgs.length} raw images on page matching "${CONFIG.itemImageSelector}"`);
+      const cards = new Map(); // card element -> img
+      
+      const isShop = isShopPage();
+      
+      imgs.forEach((img, idx) => {
+        SCOPING_STATS.imagesChecked++;
+        SCOPING_STATS.shopChecksCount++;
+
+        const isModal = isMarketPage() ? false : isInsideModalOrSidebar(img);
+        const isProfile = isMarketPage() ? false : isInsideProfileEquipment(img);
+        const card = climbToCard(img);
+        
+        const itemInfo = detectItem(img, card);
+        if (itemInfo) {
+          if (itemInfo.isSkin) {
+            SCOPING_STATS.skinsDetected++;
+          } else {
+            SCOPING_STATS.itemsDetected++;
+          }
+        }
+
+        if (verbose) {
+          log(`  [Image #${idx}] alt="${img.getAttribute('alt')}" src="${img.getAttribute('src')}"`);
+          log(`    isInsideModalOrSidebar: ${isModal}`);
+          log(`    isInsideProfileEquipment: ${isProfile}`);
+          log(`    isShopPage: ${isShop}`);
+          log(`    climbToCard resolved element:`, card ? `${card.tagName}.${card.className}` : 'null');
+          log(`    detectItem: type=${itemInfo.type}, code=${itemInfo.code}, tier=${itemInfo.tier}, isSkin=${itemInfo.isSkin}`);
+        }
+
+        if (isModal) {
+          if (verbose) log(`    -> Skipped (inside modal/sidebar/drawer)`);
           return;
         }
-        if (!cards.has(card)) {
-          cards.set(card, img);
-          if (verbose) log(`    -> Added card`);
-        } else {
-          if (verbose) log(`    -> Skipped (card already added)`);
+        if (isProfile) {
+          if (verbose) log(`    -> Skipped (inside character profile equipment)`);
+          return;
         }
-      } else {
-        if (verbose) log(`    -> Skipped (no valid card element found)`);
-      }
-    });
-    if (verbose) log(`findItemCards: returning ${cards.size} active cards`);
-    return cards;
+        if (isShop) {
+          if (verbose) log(`    -> Skipped (inside shop page)`);
+          return;
+        }
+        if (card) {
+          const width = card.offsetWidth;
+          if (width > 0 && width < 40) {
+            if (verbose) log(`    -> Skipped (card too small: ${width}px)`);
+            return;
+          }
+          if (!cards.has(card)) {
+            cards.set(card, img);
+            if (verbose) log(`    -> Added card`);
+          } else {
+            if (verbose) log(`    -> Skipped (card already added)`);
+          }
+        } else {
+          if (verbose) log(`    -> Skipped (no valid card element found)`);
+        }
+      });
+      if (verbose) log(`findItemCards: returning ${cards.size} active cards`);
+      
+      SCOPING_STATS.lastScanTimeMs = performance.now() - startTime;
+      cachedCards = cards;
+      cachedCardsTime = performance.now();
+      return cards;
+    } catch (e) {
+      reportError('advisor', e, 'findItemCards');
+      SCOPING_STATS.lastScanTimeMs = performance.now() - startTime;
+      cachedCards = new Map();
+      cachedCardsTime = performance.now();
+      return cachedCards;
+    }
   }
 
   // Returns the element that contains the image AND the stat/durability/equip siblings
@@ -1822,7 +1931,7 @@
     globalThis.isEquipmentVisible = isEquipmentVisible;
     globalThis.skinNameFromSrc = skinNameFromSrc;
     globalThis.slotForSkin = slotForSkin;
-    globalThis.isInsideSkinShop = isInsideSkinShop;
+    globalThis.isShopPage = isShopPage;
     globalThis.detectItem = detectItem;
   }
 
@@ -1900,35 +2009,7 @@
     return null;
   }
 
-  function isInsideSkinShop(el) {
-    let parent = el.parentElement;
-    for (let i = 0; i < 9 && parent; i++) {
-      // 1. "Load more" button
-      const buttons = Array.from(parent.querySelectorAll('button'));
-      const hasLoadMore = buttons.some(btn => {
-        const txt = btn.textContent.toLowerCase();
-        return txt.includes('load more') || txt.includes('mehr laden');
-      });
-      if (hasLoadMore) return true;
-
-      // 2. "Gift this skin" or similar label
-      const hasGiftLabel = Array.from(parent.querySelectorAll('button, div, span, p')).some(item => {
-        const txt = item.textContent.toLowerCase();
-        return txt.includes('gift this skin') || txt.includes('gift skin') || txt.includes('skin verschenken') || txt.includes('verschenken');
-      });
-      if (hasGiftLabel) return true;
-
-      // 3. Premium pricing - check if there's a chevron or other shop-specific indicator.
-      const hasShopIndicators = Array.from(parent.querySelectorAll('a, button, span')).some(item => {
-        const txt = item.textContent.toLowerCase();
-        return txt.includes('buy skin') || txt.includes('skin kaufen') || txt.includes('skin shop');
-      });
-      if (hasShopIndicators) return true;
-
-      parent = parent.parentElement;
-    }
-    return false;
-  }
+  
 
   function detectType(img, card) {
     const alt = (img.getAttribute('alt') || '').toLowerCase().trim();
@@ -3255,6 +3336,9 @@
   }
 
 async function scanInventory(force) {
+    if (force) {
+      cachedCards = null;
+    }
     if (scanning) {
       return;
     }
@@ -4456,6 +4540,7 @@ async function scanInventory(force) {
   let routePollFrame = null;
 
   const debouncedScan = debounce(() => {
+    cachedCards = null;
     if (isInventoryPage()) {
       scanInventory(false);
     } else if (isMarketPage()) {
@@ -4465,6 +4550,7 @@ async function scanInventory(force) {
   }, CONFIG.rescanDebounceMs);
 
   function triggerScan(force = false) {
+    cachedCards = null;
     if (bypassNextScanDebounce) {
       bypassNextScanDebounce = false;
       if (isInventoryPage()) {
@@ -4576,6 +4662,7 @@ function updateObserverTarget() {
   function handleRouteChange() {
     if (location.pathname === lastPath) return;
     lastPath = location.pathname;
+    cachedCards = null;
     lastInventoryCards = null; // Reset fingerprint on route change
     lastInventoryCardTexts.clear();
     lastMktState = null;

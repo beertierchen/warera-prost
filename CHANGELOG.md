@@ -1,5 +1,21 @@
 # CHANGELOG
 
+## 2026-06-28 | Inventar-Ladeperformance verbessert & Diagnose-Erweiterungen (v0.7.14)
+
+**Geänderte Dateien:** `warera-prost.user.js`
+
+**Änderungen (Deutsch):**
+- **Schnelleres Inventar-Laden**: Die extrem langsame Seiten-Struktur-Prüfung (`isInsideSkinShop`) wurde durch eine ultraschnelle URL-Prüfung (`isShopPage`) ersetzt. Beim Laden des Inventars gibt es keine spürbaren Verzögerungen oder 10s-Hänger mehr.
+- **Cache-Optimierung**: Die Bildersuche wird nun innerhalb eines Frames (50ms) zwischengespeichert, um unnötige Mehrfachscans bei schnellen Seitenaktualisierungen zu vermeiden.
+- **Leistungs-Probes & Ampel**: Im Diagnose-Panel der Einstellungen wird jetzt die genaue Scandauer (in ms) und ein detailliertes Bilder-Statistik-Protokoll angezeigt. Eine eigene Ampel signalisiert die Performance (Grün: <50ms, Gelb: <150ms, Rot: ≥150ms).
+- **First Card Scoping Debugger**: Entwickler/Debugger können über das Tampermonkey-Menü per Klick (`🐞 Debug: Scan First Card Scoping`) das detaillierte Scoping des ersten Bildes auf der Seite in der Konsole protokollieren.
+
+**Changes (English):**
+- **Faster Inventory Loading**: Replaces the expensive DOM scoping check (`isInsideSkinShop`) with a near-instant URL test (`isShopPage`), completely resolving inventory page-load lag and 10s hangs.
+- **Scoping Cache**: Caches scanned images for 50ms per frame to prevent redundant DOM traversals during high-frequency mutation events.
+- **Performance Probes & Status Ampel**: Displays the exact image scanning duration (in ms) along with detailed image metrics directly within the Feature-Health / Diagnostics panel. Performance is color-coded (Green: <50ms, Yellow: <150ms, Red: ≥150ms).
+- **First Card Scoping Debugger**: Adds a Tampermonkey menu command (`🐞 Debug: Scan First Card Scoping`) when debug mode is enabled to inspect and print the exact scoping path of the first matching image on the page.
+
 ## 2026-06-28 | Kompakteres Pillen-Interface, dynamische Messer- & Regen-Phasen (v0.7.13)
 
 **Geänderte Dateien:** `warera-prost.user.js`
