@@ -1,5 +1,21 @@
 # CHANGELOG
 
+## 2026-06-28 | Item-Advisor: saubereres Layout, schnelleres Rendern & genauere Haltbarkeit (v0.7.15)
+
+**Geänderte Dateien:** `warera-prost.user.js`
+
+**Änderungen (Deutsch):**
+- **Saubereres Overlay-Layout**: Empfehlungs-Bubble, Score und Schrott-/Marktwert liegen jetzt in eigenen Streifen ober- und unterhalb der Karte — sie überdecken keine Item-Stats mehr und ragen nicht in Nachbarkarten.
+- **Schnelleres Rendern**: Stats werden ohne DOM-Klonen ausgelesen, je Karte nur noch ein Durchlauf, und die Haltbarkeitsbalken-Suche ist schneller.
+- **Genauere Haltbarkeit**: wird direkt aus dem Fortschrittsbalken gelesen.
+- **Vorläufige Empfehlungen** werden durch einen gestrichelten Rand markiert (statt eines vorangestellten „~").
+
+**Changes (English):**
+- **Cleaner overlay layout**: the recommendation bubble, score and scrap/market value now sit in dedicated strips above and below the card — no longer covering native item stats or bleeding into neighbouring cards.
+- **Faster rendering**: stats are parsed without DOM cloning, with a single pass per card and a faster durability-bar lookup.
+- **More accurate durability**: read straight from the progress bar.
+- **Provisional recommendations** are marked with a dashed border (instead of a leading "~").
+
 ## 2026-06-28 | Inventar-Ladeperformance verbessert & Diagnose-Erweiterungen (v0.7.14)
 
 **Geänderte Dateien:** `warera-prost.user.js`

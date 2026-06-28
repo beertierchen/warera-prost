@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.7.14
+// @version      0.7.15
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -1554,6 +1554,7 @@
       }
       parent = parent.parentElement;
     }
+    return false;
   }
 
   function isShopPage() {
@@ -1645,6 +1646,12 @@
       return cachedCards;
     }
 
+    // Reset per-scan counts
+    SCOPING_STATS.imagesChecked = 0;
+    SCOPING_STATS.skinsDetected = 0;
+    SCOPING_STATS.itemsDetected = 0;
+    SCOPING_STATS.shopChecksCount = 0;
+
     try {
       if (isShopPage()) {
         SCOPING_STATS.lastScanTimeMs = performance.now() - startTime;
@@ -1670,8 +1677,6 @@
       if (verbose) log(`findItemCards: found ${imgs.length} raw images on page matching "${CONFIG.itemImageSelector}"`);
       const cards = new Map(); // card element -> img
       
-      const isShop = isShopPage();
-      
       imgs.forEach((img, idx) => {
         SCOPING_STATS.imagesChecked++;
         SCOPING_STATS.shopChecksCount++;
@@ -1680,20 +1685,20 @@
         const isProfile = isMarketPage() ? false : isInsideProfileEquipment(img);
         const card = climbToCard(img);
         
-        const itemInfo = detectItem(img, card);
-        if (itemInfo) {
-          if (itemInfo.isSkin) {
-            SCOPING_STATS.skinsDetected++;
-          } else {
-            SCOPING_STATS.itemsDetected++;
-          }
+        const src = img.getAttribute('src') || '';
+        const isSkin = src.includes('/skins/') || (typeof skinNameFromSrc === 'function' && skinNameFromSrc(src) !== null);
+        if (isSkin) {
+          SCOPING_STATS.skinsDetected++;
+        } else {
+          SCOPING_STATS.itemsDetected++;
         }
 
         if (verbose) {
+          const itemInfo = detectItem(img, card);
           log(`  [Image #${idx}] alt="${img.getAttribute('alt')}" src="${img.getAttribute('src')}"`);
           log(`    isInsideModalOrSidebar: ${isModal}`);
           log(`    isInsideProfileEquipment: ${isProfile}`);
-          log(`    isShopPage: ${isShop}`);
+          log(`    isShopPage: false`);
           log(`    climbToCard resolved element:`, card ? `${card.tagName}.${card.className}` : 'null');
           log(`    detectItem: type=${itemInfo.type}, code=${itemInfo.code}, tier=${itemInfo.tier}, isSkin=${itemInfo.isSkin}`);
         }
@@ -1704,10 +1709,6 @@
         }
         if (isProfile) {
           if (verbose) log(`    -> Skipped (inside character profile equipment)`);
-          return;
-        }
-        if (isShop) {
-          if (verbose) log(`    -> Skipped (inside shop page)`);
           return;
         }
         if (card) {
@@ -1746,17 +1747,42 @@
     return card.closest('[aria-haspopup="dialog"]') || card.parentElement || card;
   }
 
-  // The durability bar = the SMALLEST div that contains the scaleX fill (the bar strip),
-  // not the outermost container (which spans the stat row). Fallback sorts by div depth.
+  // The durability bar = the parent of the scaleX progress fill element.
   function findDurabilityBar(cell) {
-    const matches = Array.from(cell.querySelectorAll('div')).filter(d => d.querySelector('[style*="scaleX"]'));
-    if (!matches.length) return null;
-    return matches.sort((a, b) => {
-      const ha = a.offsetHeight || 0;
-      const hb = b.offsetHeight || 0;
-      if (ha !== hb) return ha - hb;
-      return a.querySelectorAll('div').length - b.querySelectorAll('div').length;
-    })[0];
+    const scaleXEl = cell.querySelector('[style*="scaleX"]');
+    if (!scaleXEl) return null;
+    return scaleXEl.parentElement;
+  }
+
+  // Extracts text content from a DOM node excluding PROST-injected elements and icons.
+  function getCleanTextContent(rootEl, excludeStats = false) {
+    if (!rootEl) return '';
+    if (rootEl.nodeType === 3) { // Node.TEXT_NODE
+      return rootEl.nodeValue || '';
+    }
+    const hasIconChild = Array.from(rootEl.children || []).some(child => {
+      const cls = child.className || '';
+      return cls.toString().includes('a6izou0');
+    });
+    const className = (rootEl.className || '').toString();
+    const id = (rootEl.id || '').toString();
+    if (
+      className.includes('wia-') ||
+      id.includes('wia-') ||
+      className.includes('a6izou0') ||
+      (excludeStats && hasIconChild)
+    ) {
+      return ' ';
+    }
+    if (rootEl.children && rootEl.children.length === 0) {
+      return (rootEl.textContent || '') + ' ';
+    }
+    let text = '';
+    const kids = rootEl.childNodes || rootEl.children || [];
+    for (let i = 0; i < kids.length; i++) {
+      text += getCleanTextContent(kids[i], excludeStats) + ' ';
+    }
+    return text;
   }
 
   // Removes priceSub and resets durBar inline position styling
@@ -1773,17 +1799,14 @@
     }
   }
 
-  // Removes grown card minHeight and restores shifted image wrapper styles
   function cleanupCardHeader(card) {
-    card.style.minHeight = '';
+    const cell = getItemCell(card);
+    cell.style.position = '';
+    cell.style.overflow = '';
+    cell.style.boxSizing = '';
+    cell.style.paddingTop = '';
+    cell.style.paddingBottom = '';
     delete card.dataset.wiaHeader;
-    const imgWrap = card.querySelector('img')?.parentElement;
-    if (imgWrap) {
-      imgWrap.style.top = '';
-      imgWrap.style.height = '';
-      imgWrap.style.bottom = '';
-      delete imgWrap.dataset.wiaShifted;
-    }
   }
 
   // Locale-safe number parser supporting commas, dots, and k/m/tsd/mio suffixes
@@ -2138,62 +2161,56 @@
   // is rendered in a separate progress bar (NOT under .a6izou0).
   function parseStats(card, type) {
     const cell = getItemCell(card);
-    const cleanCard = cell.cloneNode(true);
-    cleanCard.querySelectorAll('[class^="wia-"]').forEach((badge) => {
-      badge.remove();
-    });
-
     const stats = { attack: null, crit: null, primaryPercent: null, durability: null };
     const fp = CONFIG.statSvgFingerprints;
 
-    let unknownStatVal = null; // value of an unrecognized stat icon (helmet/gloves/boots)
-    const cleanIcons = cleanCard.querySelectorAll('.a6izou0');
-    cleanIcons.forEach((cleanIcon) => {
-      const path = cleanIcon.querySelector('path');
+    // 1. Durability from bar (primary source)
+    const durBar = findDurabilityBar(cell);
+    if (durBar) {
+      const barText = getCleanTextContent(durBar, true);
+      const pctMatch = barText.match(/(\d+(?:\.\d+)?)\s*%/);
+      if (pctMatch) {
+        stats.durability = parseNum(pctMatch[1]);
+      } else {
+        const scaleXEl = durBar.querySelector('[style*="scaleX"]');
+        if (scaleXEl) {
+          const style = scaleXEl.getAttribute('style') || '';
+          const m = style.match(/scaleX\(([\d.]+)\)/);
+          if (m) {
+            const val = parseFloat(m[1]);
+            stats.durability = val <= 1.0 ? Math.round(val * 100) : Math.round(val);
+          }
+        }
+      }
+    }
+
+    // 2. Parse stats from icons
+    let unknownStatVal = null;
+    const icons = cell.querySelectorAll('.a6izou0');
+    icons.forEach((icon) => {
+      const path = icon.querySelector('path');
       const d = path ? (path.getAttribute('d') || '') : '';
-      const val = numberNearClean(cleanIcon);
+      const val = numberNearClean(icon);
       if (val == null) return;
       if (d.includes(fp.attack)) stats.attack = val;
       else if (d.includes(fp.crit)) stats.crit = val;
       else if (fp.armor && d.includes(fp.armor)) stats.primaryPercent = val;
-      else if (unknownStatVal == null) unknownStatVal = val; // first unrecognized slot icon
+      else if (unknownStatVal == null) unknownStatVal = val;
     });
 
-    // armor slots whose icon we don't fingerprint yet (helmet/gloves/boots/pants):
-    // fall back to the first unrecognized stat-icon value.
     if (type !== 'weapon' && stats.primaryPercent == null && unknownStatVal != null) {
       stats.primaryPercent = unknownStatVal;
     }
 
-    // Remove stat icon containers from cleanCard so their values (like crit %)
-    // do not leak into durability text parsing.
-    cleanIcons.forEach((cleanIcon) => {
-      const parentDiv = cleanIcon.closest('div');
-      if (parentDiv && parentDiv !== cleanCard) {
-        const container = parentDiv.className.includes('a6izou0') ? parentDiv.parentElement : parentDiv;
-        if (container && container !== cleanCard) {
-          container.remove();
-        } else {
-          parentDiv.remove();
-        }
-      } else {
-        cleanIcon.remove();
-      }
-    });
+    // 3. Durability fallback (if not resolved from bar)
+    if (stats.durability == null) {
+      const text = getCleanTextContent(cell, true).replace(/\s+/g, ' ').trim();
+      const percents = (text.match(/(\d+(?:[.,\s]\d+)?)\s*%/g) || [])
+        .map(p => parseNum(p));
+      if (percents.length) stats.durability = percents[percents.length - 1];
+    }
 
-    cleanCard.querySelectorAll('.wia-badge, .wia-score-sub, .wia-price-sub, .wia-top-banner, .a6izou0').forEach(child => {
-      child.insertAdjacentText('afterend', ' ');
-    });
-
-    // durability = the trailing % in the card (the progress bar).
-    const text = (cleanCard.textContent || '').replace(/\s+/g, ' ').trim();
-    const percents = (text.match(/(\d+(?:[.,\s]\d+)?)\s*%/g) || [])
-      .map(p => parseNum(p));
-    if (percents.length) stats.durability = percents[percents.length - 1];
-
-    // scrap yield is NOT shown on the inventory card in WareEra; fall back to a
-    // configurable per-rarity table (set in evaluate, where rarity is known).
-    stats.scrapYield = extractScrapYieldClean(card, cleanCard);
+    stats.scrapYield = extractScrapYield(card);
     return stats;
   }
 
@@ -2207,7 +2224,7 @@
     for (let i = 0; i < 4 && el; i++) {
       el = el.parentElement;
       if (!el) break;
-      const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
+      const text = getCleanTextContent(el).replace(/\s+/g, ' ').trim();
       const nums = text.match(/\d+(?:[.,\s]\d+)*/g) || [];
       if (nums.length === 1) {
         return parseNum(nums[0]);
@@ -2218,22 +2235,19 @@
     return null;
   }
 
-  function extractScrapYieldClean(originalCard, cleanCard) {
+  function extractScrapYield(card) {
     // Look for a scrap icon inside the card and read its adjacent number,
     // otherwise scan text near the word "scrap".
-    const scrapImg = originalCard.querySelector("img[src*='scrap'], img[alt*='scrap' i]");
+    const scrapImg = card.querySelector("img[src*='scrap'], img[alt*='scrap' i]");
     if (scrapImg) {
-      const imgs = Array.from(originalCard.querySelectorAll('img'));
+      const imgs = Array.from(card.querySelectorAll('img'));
       const idx = imgs.indexOf(scrapImg);
-      if (idx !== -1) {
-        const cleanImgs = cleanCard.querySelectorAll('img');
-        if (cleanImgs[idx]) {
-          const n = numberNearClean(cleanImgs[idx]);
-          if (n != null) return n;
-        }
+      if (idx !== -1 && imgs[idx]) {
+        const n = numberNearClean(imgs[idx]);
+        if (n != null) return n;
       }
     }
-    const text = (cleanCard.textContent || '').replace(/\s+/g, ' ').trim();
+    const text = getCleanTextContent(card).replace(/\s+/g, ' ').trim();
     const m = (text || '').match(/(\d+(?:[.,\s]\d+)*)\s*(?:scraps?|schrott)/i);
     return m ? parseNum(m[1]) : null;
   }
@@ -2580,19 +2594,21 @@
   };
 
   const WIA_HEADER_PX = 18;   // top strip height for score + bubble (tune live)
+  const WIA_FOOTER_PX = 24;   // bottom strip height for the scrap/market price sub
 
   function reserveCardLayout(card) {
-    if (card.dataset.wiaHeader === '1') return;
-    card.style.position = 'relative';
-    card.style.minHeight = (48 + WIA_HEADER_PX) + 'px';
+    const cell = getItemCell(card);
+    cell.style.position = 'relative';
+    cell.style.overflow = 'visible';
+    // Reserve dedicated strips ABOVE (badge/score) and BELOW (price) the card so
+    // PROST overlays sit in their own band — never overlapping native stats nor
+    // bleeding into neighbouring cards. Padding on the FULL cell shifts image and
+    // stats down together (alignment stays uniform across all cards). Force
+    // content-box so the padding always adds height, regardless of inherited sizing.
+    cell.style.boxSizing = 'content-box';
+    cell.style.paddingTop = WIA_HEADER_PX + 'px';
+    cell.style.paddingBottom = WIA_FOOTER_PX + 'px';
     card.dataset.wiaHeader = '1';
-    const imgWrap = card.querySelector('img')?.parentElement;
-    if (imgWrap) {
-      imgWrap.style.top = WIA_HEADER_PX + 'px';
-      imgWrap.style.height = 'auto';
-      imgWrap.style.bottom = '0';
-      imgWrap.dataset.wiaShifted = '1';
-    }
   }
 
   function getResultFingerprint(item, result) {
@@ -2663,43 +2679,42 @@
     if (oldTopBanner) oldTopBanner.remove();
 
     // 2. Recommendation Badge (always shown for active non-damaged items)
-    let badge = card.querySelector('.wia-badge');
+    let badge = cell.querySelector('.wia-badge');
     if (!badge) {
       badge = document.createElement('div');
       badge.className = 'wia-badge';
-      card.appendChild(badge);
+      cell.appendChild(badge);
     }
     const emojiMap = { KEEP: '💎', SELL: '💰', SCRAP: '🔨', HOLD: '✋', UNKNOWN: '❓' };
-    let text = emojiMap[result.action] || '❓';
+    const text = emojiMap[result.action] || '❓';
     if (result.provisional) {
-      text = '~' + text;
+      badge.classList.add('wia-provisional');
       card.dataset.wiaProvisional = '1';
     } else {
+      badge.classList.remove('wia-provisional');
       delete card.dataset.wiaProvisional;
     }
     badge.textContent = text;
     badge.style.background = BADGE_COLORS[result.action] || BADGE_COLORS.UNKNOWN;
     badge.style.opacity = item.stale ? '0.55' : '1'; // dim when on cached/stale prices
-    badge.style.top = Math.round(WIA_HEADER_PX / 2) + 'px';
     const tooltipText = buildTooltip(item, result);
     badge.title = tooltipText;
     card.title = tooltipText;
 
     // 3. Score Sub-badge
-    let scoreSub = card.querySelector('.wia-score-sub');
+    let scoreSub = cell.querySelector('.wia-score-sub');
     const showScore = item.myStat != null;
     if (showScore) {
       if (!scoreSub) {
         scoreSub = document.createElement('div');
         scoreSub.className = 'wia-score-sub';
-        card.appendChild(scoreSub);
+        cell.appendChild(scoreSub);
       }
       const scoreVal = item.myStat;
       scoreSub.textContent = item.type === 'weapon' ? scoreVal.toFixed(0) : scoreVal;
       // Blue if top 3 stock keep, otherwise gray
       const isGood = item.isStockKeep === true;
       scoreSub.style.background = isGood ? '#388bfd' : '#8b949e';
-      scoreSub.style.top = Math.round(WIA_HEADER_PX / 2) + 'px';
       scoreSub.style.display = 'flex';
     } else if (scoreSub) {
       scoreSub.remove();
@@ -2710,26 +2725,17 @@
     const showPrice = result.scrapValue != null || result.market != null;
     let priceSub = cell.querySelector('.wia-price-sub');
 
-    // Locate the durability progress-bar container inside the cell (contains scaleX style attribute)
-    const durBar = findDurabilityBar(cell);
-
-    if (showPrice && durBar) {
+    if (showPrice) {
       suspendObserver();
       try {
-        if (getComputedStyle(durBar).position === 'static') {
-          durBar.style.position = 'relative';
-        }
-        durBar.dataset.wiaGrown = '1';
-        durBar.style.minHeight = '26px';
-        // Ensure priceSub is parented to durBar
-        if (priceSub && priceSub.parentElement !== durBar) {
+        if (priceSub && priceSub.parentElement !== cell) {
           priceSub.remove();
           priceSub = null;
         }
         if (!priceSub) {
           priceSub = document.createElement('div');
           priceSub.className = 'wia-price-sub';
-          durBar.appendChild(priceSub);
+          cell.appendChild(priceSub);
         }
         const sVal = result.scrapValue;
         const mVal = result.market;
@@ -2756,11 +2762,11 @@
         );
         priceSub.title = t('priceTooltip');
 
-        // Color: green if scrap > market, orange if scrap <= market, gray if either is null
+        // Dynamic border color to indicate recommendation, maintaining dark theme background
         if (sVal != null && mVal != null) {
-          priceSub.style.background = sVal > mVal ? '#3fb950' : '#d29922';
+          priceSub.style.borderColor = sVal > mVal ? '#2ea043' : '#d29922';
         } else {
-          priceSub.style.background = '#8b949e';
+          priceSub.style.borderColor = 'rgba(148, 163, 184, 0.15)';
         }
         priceSub.style.display = 'flex';
       } finally {
@@ -3363,37 +3369,38 @@ async function scanInventory(force) {
     });
 
     try {
-      // Synchronously reserve layout for all valid cards upfront
-      suspendObserver();
-      try {
-        cards.forEach((img, card) => {
-          const { type } = detectType(img, card);
-          if (type === 'scrap' || type === 'unknown') return;
-          const stats = parseStats(card, type);
-          if (shouldSuppressItem(card, stats)) return;
-          reserveCardLayout(card);
-        });
-      } finally {
-        resumeObserver();
-      }
-
       const items = [];
+      const suppressedCards = [];
+
       cards.forEach((img, card) => {
         const itemInfo = detectItem(img, card);
         const { type, alt, code, tier } = itemInfo;
 
-        // stats nur parsen, wenn es kein Schrott oder Verbrauchsgegenstand ist
+        // Stats only parsed if not scrap or unknown
         const stats = (type === 'scrap' || type === 'unknown') ? null : parseStats(card, type);
 
         if (!originalTitles.has(card)) {
           originalTitles.set(card, card.title || '');
         }
 
-        // HIER IST DER FIX: Alle ignorierten Typen (Schrott, Essen/Pillen UND getragene Ausrüstung)
-        // laufen in DIESEN Block und bekommen den Suppressed-Marker!
         if (type === 'scrap' || type === 'unknown' || shouldSuppressItem(card, stats)) {
-          suspendObserver();
-          try {
+          suppressedCards.push(card);
+        } else {
+          // Synchronously reserve layout
+          reserveCardLayout(card);
+
+          const item = { card, img, type, alt, code, tier, stats };
+          item.myStat = itemStat(item);
+          if (type === 'weapon') item.weaponScore = item.myStat;
+          items.push(item);
+        }
+      });
+
+      // Synchronously cleanup suppressed cards upfront
+      if (suppressedCards.length > 0) {
+        suspendObserver();
+        try {
+          suppressedCards.forEach((card) => {
             const cell = getItemCell(card);
             const badge = card.querySelector('.wia-badge');
             if (badge) badge.remove();
@@ -3405,24 +3412,17 @@ async function scanInventory(force) {
             if (topBanner) topBanner.remove();
             card.style.boxShadow = '';
 
-            // Das ist das Wichtigste, damit der Heartbeat Ruhe gibt:
             card.dataset.wiaSuppressed = '1';
             delete card.dataset.wiaDone;
 
             if (originalTitles.has(card)) {
               card.title = originalTitles.get(card);
             }
-          } finally {
-            resumeObserver();
-          }
-          return; // Skript bricht für diese Karte sauber ab
+          });
+        } finally {
+          resumeObserver();
         }
-
-        const item = { card, img, type, alt, code, tier, stats };
-        item.myStat = itemStat(item);
-        if (type === 'weapon') item.weaponScore = item.myStat;
-        items.push(item);
-      });
+      }
 
       if (!items.length) {
         scanning = false;
@@ -3587,7 +3587,7 @@ async function scanInventory(force) {
   function injectStyles() {
     GM_addStyle(`
       .wia-badge {
-        position: absolute; right: 2px; transform: translateY(-50%); z-index: 50;
+        position: absolute; right: 2px; top: 2px; z-index: 50;
         width: 16px; height: 16px; border-radius: 50%;
         font: 10px system-ui, sans-serif;
         display: flex; align-items: center; justify-content: center;
@@ -3595,21 +3595,26 @@ async function scanInventory(force) {
         user-select: none;
         text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
       }
+      .wia-badge.wia-provisional {
+        border: 1.5px dashed #fff !important;
+        box-sizing: border-box;
+      }
       .wia-score-sub {
-        position: absolute; left: 2px; transform: translateY(-50%); z-index: 60;
+        position: absolute; left: 2px; top: 2px; z-index: 60;
         font: bold 8px system-ui, sans-serif; padding: 1px 3px; border-radius: 4px;
         color: #fff; display: flex; align-items: center; justify-content: center;
         text-shadow: 0 1px 1px rgba(0,0,0,.5); box-shadow: 1px 1px 2px rgba(0,0,0,.3);
       }
       .wia-price-sub {
-        position: absolute; bottom: 0; left: 0; right: 0; z-index: 60;
-        font: bold 10px system-ui, sans-serif; padding: 0 2px; border-radius: 0 0 4px 4px;
+        position: absolute; bottom: 2px; left: 2px; right: 2px; z-index: 60;
+        font: bold 9px system-ui, sans-serif; padding: 1px 3px; border-radius: 4px;
         color: #fff; display: flex; flex-direction: column; align-items: stretch; gap: 0;
         line-height: 1.1; letter-spacing: -0.3px;
         justify-content: center;
-        /* 4-way black outline for contrast over any bar color (same trick as .wia-badge) */
+        background: rgba(22, 27, 34, 0.85);
+        border: 1px solid rgba(148, 163, 184, 0.15);
+        box-shadow: 0 2px 4px rgba(0,0,0,.5);
         text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
-        box-shadow: 0 -1px 2px rgba(0,0,0,.3);
       }
       .wia-price-sub .wia-price-row { display: flex; align-items: center; justify-content: space-between; gap: 2px; }
       .wia-price-sub .wia-price-ico { font-size: 9px; opacity: .9; display: inline-flex; align-items: center; }

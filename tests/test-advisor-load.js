@@ -1294,9 +1294,9 @@ try {
   // Assertions
   assert.strictEqual(fetchPricesCalled, true, 'fetchPrices should have been triggered in the background');
   
-  const badgeEl = invCard.querySelector('.wia-badge');
+  const badgeEl = invCell.querySelector('.wia-badge');
   assert.ok(badgeEl, 'Badge should be rendered immediately/synchronously');
-  assert.strictEqual(badgeEl.textContent.startsWith('~'), true, 'Badge should be marked provisional (with ~)');
+  assert.strictEqual(badgeEl.classList.contains('wia-provisional'), true, 'Badge should be marked provisional class');
   assert.strictEqual(invCard.dataset.wiaProvisional, '1', 'Card should have data-wia-provisional="1"');
   
   // Restore fetchPrices
