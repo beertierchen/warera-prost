@@ -907,10 +907,10 @@ try {
 
   hpText.textContent = '100/130';
   globalThis.injectPillBadge();
-  assert.ok(pillBadge.classList.contains('wia-badge-gated'), 'Pill badge should be in wia-badge-gated class when health is below 100%');
+  assert.ok(pillBadge.classList.contains('wia-badge-recover'), 'Pill badge should be in wia-badge-recover class when health is below 100%');
   
   const labelEl = pillBadge.querySelector('.wia-pill-phase-lbl');
-  assert.strictEqual(labelEl.textContent, 'H&H full', 'Gated label should display H&H full');
+  assert.strictEqual(labelEl.textContent, 'Recover-Phase', 'Gated label should display Recover-Phase');
 
   const timerEl = pillBadge.querySelector('.wia-pill-timer');
   assert.ok(timerEl, 'Gated badge should display H&H recovery remaining timer');
@@ -970,7 +970,7 @@ try {
   const buffBadge = document.querySelector('#wia-pill-badge');
   const buffTimer = buffBadge.querySelector('.wia-pill-timer');
   assert.ok(buffTimer, 'Timer element should be present during BUFF');
-  assert.strictEqual(buffTimer.textContent, 'Window from 15:05 (in 3h 5m)', 'Should show preferred window countdown');
+  assert.strictEqual(buffTimer.textContent, 'until 3h 5m', 'Should show preferred window countdown');
 
   // 2. Without preferred window, H&H not full
   globalThis.CONFIG.pillPrefWindowFrom = '';

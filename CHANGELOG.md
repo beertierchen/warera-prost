@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 2026-06-28 | Kompakteres Pillen-Interface, dynamische Messer- & Regen-Phasen (v0.7.13)
+
+**Geänderte Dateien:** `warera-prost.user.js`
+
+**Änderungen (Deutsch):**
+- **Kompakteres Pillen-Interface**: Das Pillen-Element im Menü wurde verkleinert und übersichtlicher gestaltet. Die aktuelle Phase steht nun über dem Countdown. Der Timer wurde farblich an den jeweiligen Status angepasst.
+- **Dynamische Messer- & Regen-Phasen**: Die Phasen „Messer“ und „Regen“ werden nun dynamisch anhand eurer H&H-Regeneration (inkl. 5% Puffer) berechnet. Ist genug H&H vorhanden, um bis zum nächsten Fenster natürlich auf 100% zu heilen, seid ihr in der Messer-Phase, andernfalls in der Regen-Phase.
+
+**Changes (English):**
+- **Compact Pill Interface**: Shrinks the pill badge inside the header menu and stacks the phase name vertically above the countdown timer. Colors the timer text based on the active state.
+- **Dynamic Knife & Recovery Phases**: Replaces fixed-hour phases with dynamic calculation based on your H&H regeneration and a 5% safety buffer. If you have enough H&H to naturally recover to 100% by the time of the preferred window or debuff end, you enter the Knife phase; otherwise, you enter the Recovery phase.
+
 ## 2026-06-27 | Skin- & Ausrüstungserkennung, Munitions-Skins-Support und Diagnose-Dump (v0.7.12)
 
 **Geänderte Dateien:** `warera-prost.user.js`

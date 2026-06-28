@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.7.12
+// @version      0.7.13
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -333,14 +333,14 @@
         pillTakeNowOverlay: 'TAKE NOW',
         pillTopUpOverlay: 'TOP UP FIRST',
         pillPreferredWindow: '{from} - {to}',
-        pillPhaseBuff: 'Active',
-        pillPhaseKnife: 'Knife',
-        pillPhaseRecover: 'Recover',
+        pillPhaseBuff: 'Active-Phase',
+        pillPhaseKnife: 'Knife-Phase',
+        pillPhaseRecover: 'Recover-Phase',
         pillPhaseReady: 'READY',
         pillPhaseGated: 'Pill in',
         pillGatingHeader: 'Pill gates',
         pillHeadlineWindow: 'from {time}',
-        pillHeadlineWindowTimer: '(in {duration})',
+        pillHeadlineWindowTimer: 'until {duration}',
         pillHeadlineHnH: 'H&H full',
         pillHeadlineHnHTimer: 'in {duration}',
         pillGateHnHWait: 'H&H full in ~{time} ({pct}%)',
@@ -520,14 +520,14 @@
         pillTakeNowOverlay: 'NEHMEN',
         pillTopUpOverlay: 'ERST FÜLLEN',
         pillPreferredWindow: '{from} - {to}',
-        pillPhaseBuff: 'Aktiv',
-        pillPhaseKnife: 'Messer',
-        pillPhaseRecover: 'Regen',
+        pillPhaseBuff: 'Aktiv-Phase',
+        pillPhaseKnife: 'Messer-Phase',
+        pillPhaseRecover: 'Regen-Phase',
         pillPhaseReady: 'BEREIT',
         pillPhaseGated: 'Pille in',
         pillGatingHeader: 'Pillen-Bedingungen',
         pillHeadlineWindow: 'ab {time}',
-        pillHeadlineWindowTimer: '(in {duration})',
+        pillHeadlineWindowTimer: 'für {duration}',
         pillHeadlineHnH: 'H&H voll',
         pillHeadlineHnHTimer: 'in {duration}',
         pillGateHnHWait: 'H&H voll in ~{time} ({pct}%)',
@@ -3666,9 +3666,9 @@ async function scanInventory(force) {
       #wia-pill-badge {
         display: inline-flex; align-items: center; justify-content: center;
         position: relative; margin: 0 8px;
-        font: 600 13px/1 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        border-radius: 999px; padding: 5px 12px; cursor: pointer; user-select: none;
-        z-index: 10000; min-height: 28px; box-sizing: border-box;
+        font: 600 11px/1 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        border-radius: 999px; padding: 2px 8px; cursor: pointer; user-select: none;
+        z-index: 10000; min-height: 26px; box-sizing: border-box;
         color: #e8eef5;
         background: rgba(13, 17, 23, 0.55);
         border: 1px solid rgba(255, 255, 255, 0.10);
@@ -3687,18 +3687,31 @@ async function scanInventory(force) {
         0%   { box-shadow: 0 1px 3px rgba(0,0,0,.4), 0 0 0 rgba(63,185,80,0); }
         100% { box-shadow: 0 1px 3px rgba(0,0,0,.4), 0 0 9px rgba(63,185,80,.6); }
       }
-      .wia-pill-row { display: flex; align-items: center; gap: 6px; }
+      .wia-pill-row { display: flex; align-items: center; gap: 5px; }
       .wia-pill-status-dot {
-        width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto;
-        background: #8b949e; box-shadow: 0 0 5px currentColor;
+        width: 6px; height: 6px; border-radius: 50%; flex: 0 0 auto;
+        background: #8b949e; box-shadow: 0 0 4px currentColor;
       }
-      .wia-badge-buff    .wia-pill-status-dot { background: #3fb950; box-shadow: 0 0 5px rgba(63,185,80,.9); }
-      .wia-badge-knife   .wia-pill-status-dot { background: #58a6ff; box-shadow: 0 0 5px rgba(88,166,255,.9); }
-      .wia-badge-recover .wia-pill-status-dot { background: #e3b341; box-shadow: 0 0 5px rgba(227,179,65,.9); }
-      .wia-badge-ready   .wia-pill-status-dot { background: #3fb950; box-shadow: 0 0 6px rgba(63,185,80,1); }
-      .wia-badge-gated   .wia-pill-status-dot { background: #8b949e; box-shadow: 0 0 4px rgba(139,148,158,.7); }
-      .wia-pill-phase-lbl { font-size: 11px; font-weight: 600; opacity: .82; letter-spacing: .2px; }
-      .wia-pill-timer { color: #fff; font-weight: 700; font-variant-numeric: tabular-nums; }
+      .wia-badge-buff    .wia-pill-status-dot { background: #3fb950; box-shadow: 0 0 4px rgba(63,185,80,.9); }
+      .wia-badge-knife   .wia-pill-status-dot { background: #58a6ff; box-shadow: 0 0 4px rgba(88,166,255,.9); }
+      .wia-badge-recover .wia-pill-status-dot { background: #e3b341; box-shadow: 0 0 4px rgba(227,179,65,.9); }
+      .wia-badge-ready   .wia-pill-status-dot { background: #3fb950; box-shadow: 0 0 5px rgba(63,185,80,1); }
+      .wia-badge-gated   .wia-pill-status-dot { background: #8b949e; box-shadow: 0 0 3px rgba(139,148,158,.7); }
+      .wia-pill-text-col {
+        display: flex; flex-direction: column; justify-content: center;
+        gap: 1px; line-height: 1.1;
+      }
+      .wia-pill-phase-lbl { font-size: 9px; font-weight: 600; opacity: .82; letter-spacing: .2px; }
+      .wia-pill-timer {
+        font-size: 9px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+      }
+      .wia-badge-buff .wia-pill-timer    { color: #3fb950; }
+      .wia-badge-knife .wia-pill-timer   { color: #58a6ff; }
+      .wia-badge-recover .wia-pill-timer { color: #e3b341; }
+      .wia-badge-gated .wia-pill-timer   { color: #e3b341; }
+      .wia-badge-ready .wia-pill-timer   { color: #3fb950; }
       .wia-pill-hover-details {
         display: none; position: absolute; top: 100%; right: 0; margin-top: 8px;
         width: 250px; background: rgba(13, 17, 23, .96);
@@ -5671,7 +5684,7 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
     if (CONFIG.pillPrefWindowFrom) {
       const windowStart = nextWindowStart(now);
       const durationStr = formatDuration(windowStart - now);
-      return t('pillGateWindowWait', { time: CONFIG.pillPrefWindowFrom, duration: durationStr });
+      return t('pillHeadlineWindowTimer', { duration: durationStr });
     }
 
     const status = parseHealthAndHunger();
@@ -5719,20 +5732,6 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
       nextTransitionLabel = t('pillPhaseKnife');
       nextTransitionTime = formatAbsoluteTime(pillTakenAt + buffMs);
       badgeClass = 'wia-badge-buff';
-    } else if (pillTakenAt > 0 && elapsed < buffMs + knifeMs) {
-      phase = 'KNIFE';
-      phaseLabel = t('pillPhaseKnife');
-      timerStr = getBuffDebuffTimerStr(now);
-      nextTransitionLabel = t('pillPhaseRecover');
-      nextTransitionTime = formatAbsoluteTime(pillTakenAt + buffMs + knifeMs);
-      badgeClass = 'wia-badge-knife';
-    } else if (pillTakenAt > 0 && elapsed < totalMs) {
-      phase = 'RECOVER';
-      phaseLabel = t('pillPhaseRecover');
-      timerStr = getBuffDebuffTimerStr(now);
-      nextTransitionLabel = t('pillPhaseReady');
-      nextTransitionTime = formatAbsoluteTime(pillTakenAt + totalMs);
-      badgeClass = 'wia-badge-recover';
     } else {
       const status = parseHealthAndHunger();
       const hpNeeded = status.hpMax - status.hpCurrent;
@@ -5756,24 +5755,45 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
         phaseLabel = t('pillPhaseReady');
         badgeClass = 'wia-badge-ready';
         timerStr = '';
+        nextTransitionLabel = '';
+        nextTransitionTime = '';
       } else {
-        phase = 'GATED';
-        badgeClass = 'wia-badge-gated';
-        const lowestPct = Math.round(Math.min(status.hpPercent, status.hungerPercent));
+        const targetTime = Math.max(debuffEnd, windowStart);
+        const msRemaining = Math.max(0, targetTime - now);
+        let ticks = 0;
+        if (msRemaining >= status.nextTickMs) {
+          ticks = 1 + Math.floor((msRemaining - status.nextTickMs) / 3600000);
+        }
+        const maxHpRecoverable = ticks * status.hpRegen;
+        const maxHungerRecoverable = ticks * status.hungerRegen;
+
+        const hpMinRequired = status.hpMax - maxHpRecoverable + (status.hpMax * 0.05);
+        const hungerMinRequired = status.hungerMax - maxHungerRecoverable + (status.hungerMax * 0.05);
+
+        const hasSurplus = status.hpCurrent > hpMinRequired && status.hungerCurrent > hungerMinRequired;
+
+        if (hasSurplus) {
+          phase = 'KNIFE';
+          phaseLabel = t('pillPhaseKnife');
+          badgeClass = 'wia-badge-knife';
+        } else {
+          phase = 'RECOVER';
+          phaseLabel = t('pillPhaseRecover');
+          badgeClass = 'wia-badge-recover';
+        }
 
         if (windowStart === nextPill && CONFIG.pillPrefWindowFrom) {
-          phaseLabel = t('pillHeadlineWindow', { time: CONFIG.pillPrefWindowFrom });
           timerStr = t('pillHeadlineWindowTimer', { duration: formatDuration(windowStart - now) });
         } else if (hAndHFullETA === nextPill && totalTicks > 0) {
-          phaseLabel = t('pillHeadlineHnH');
           timerStr = t('pillHeadlineHnHTimer', { duration: formatDuration(hAndHFullETA - now) });
         } else {
-          phaseLabel = t('pillPhaseGated');
+          const lowestPct = Math.round(Math.min(status.hpPercent, status.hungerPercent));
           timerStr = `${formatDuration(nextPill - now)} (${lowestPct}%)`;
         }
+
+        nextTransitionLabel = t('pillPhaseReady');
+        nextTransitionTime = formatAbsoluteTime(nextPill);
       }
-      nextTransitionLabel = '';
-      nextTransitionTime = '';
     }
 
     return {
@@ -5881,8 +5901,10 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
         <div class="wia-pill-row">
           <img src="/images/items/cocain.png?v=33" alt="💊" style="width: 14px; height: 14px; border-radius: 2px; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.5));" />
           <span class="wia-pill-status-dot"></span>
-          <span class="wia-pill-phase-lbl">${info.phaseLabel}</span>
-          ${info.timerStr ? `<span class="wia-pill-timer">${info.timerStr}</span>` : ''}
+          <div class="wia-pill-text-col">
+            <span class="wia-pill-phase-lbl">${info.phaseLabel}</span>
+            ${info.timerStr ? `<span class="wia-pill-timer">${info.timerStr}</span>` : ''}
+          </div>
         </div>
         <div class="wia-pill-hover-details">
           ${nextStr}
@@ -5918,7 +5940,7 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
       const isHnHReady = status.both100;
       const isWindowReady = CONFIG.pillPrefWindowFrom ? isInsidePreferredWindow(now) : true;
       const isReady = info.phase === 'READY';
-      const isGated = info.phase === 'GATED';
+      const isGated = info.phase === 'KNIFE' || info.phase === 'RECOVER';
 
       const cocainImgs = document.querySelectorAll("img[alt='cocain']");
       cocainImgs.forEach(img => {
@@ -8581,9 +8603,9 @@ function checkInventoryDeltaWear() {
       console.log('%c--- KEINE TAGES-P&L DATEN VORHANDEN ---', 'color: #ff7b72; font-weight: bold;');
       return;
     }
-    
+
     const logs = ledger.pnlLogs || [];
-    
+
     // Group logs
     const repairs = [];
     const consumptions = {};
@@ -8637,7 +8659,7 @@ function checkInventoryDeltaWear() {
     let s = `\n%c========================================\n`;
     s += `      🧾 WAREERA P&L BELEG (HEUTE)       \n`;
     s += `========================================\n\n`;
-    
+
     // 1. Einnahmen
     s += `--- EINNAHMEN ---\n`;
     let hasInc = false;
@@ -8727,11 +8749,11 @@ function checkInventoryDeltaWear() {
 
     const seen = new Set();
     const rows = [];
-    
+
     rows.push(
-      'SKIN'.padEnd(16) + 
-      'SRC'.padEnd(45) + 
-      'AUTO-SLOT'.padEnd(12) + 
+      'SKIN'.padEnd(16) +
+      'SRC'.padEnd(45) +
+      'AUTO-SLOT'.padEnd(12) +
       'STATUS'
     );
 
