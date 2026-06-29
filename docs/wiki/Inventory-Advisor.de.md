@@ -2,11 +2,11 @@
 
 # 🎒 Inventory Advisor
 
-Legt auf jede Inventarkarte ein Overlay mit einer Empfehlung — **KEEP**, **HOLD**,
-**SELL** oder **SCRAP** — und zeigt dazu Stat-Wert sowie Schrott- und Marktpreis.
+Legt auf jede Inventarkarte ein Overlay mit einer Empfehlung - **KEEP**, **HOLD**,
+**SELL** oder **SCRAP** - und zeigt dazu Stat-Wert sowie Schrott- und Marktpreis.
 Rein lesend, keine Automatisierung.
 
-![Inventory-Advisor-Overlays auf Waffen- und Rüstungskarten](images/inventory-advisor.png)
+![Inventory-Advisor-Overlays auf Waffen- und Rüstungskarten](images/itemadvisor.gif)
 
 ## Empfehlungen (Farbe + Symbol)
 
@@ -35,14 +35,14 @@ die Overlays in einem eigenen Band liegen und die nativen Stats nicht mehr verde
 
 ## Skins & Haltbarkeit
 
-- **Geskinnte Ausrüstung wird erkannt** und wie das Basis-Item bewertet — ein
+- **Geskinnte Ausrüstung wird erkannt** und wie das Basis-Item bewertet - ein
   Waffen-/Rüstungs-Skin versteckt die Empfehlung nicht mehr.
 - **Haltbarkeit** wird direkt aus dem Fortschrittsbalken des Items gelesen.
 
 ## Hinweise
 
 - **Ausgerüstete Items** (Badge „Equip.") und Items unter 100 % Haltbarkeit
-  erhalten keine Verkaufs-/Schrott-Empfehlung — ihr Wert ist nicht mit einem
+  erhalten keine Verkaufs-/Schrott-Empfehlung - ihr Wert ist nicht mit einem
   frischen Angebot vergleichbar.
 - Items in **Charakter-Profil**-Slots werden ausgenommen, und der gesamte
   **Shop** (`/shop/…`) wird übersprungen, damit nur dein handelbares Inventar

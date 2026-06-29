@@ -6,19 +6,14 @@
 you can jot a private reminder about anyone — diplomacy, debts, "do not trust",
 whatever. Notes are stored **locally** in your browser.
 
-## The note icon
+![Player Notes Flow](images/user_notes.gif)
 
-A 📒 icon appears next to player names (in chat, profiles, lists). Gray = no
-note yet; highlighted = a note exists.
+## How it works
 
-![Note icon next to a player name in chat](images/player-notes-icon.png)
-
-## Editing a note
-
-Click the icon to open the note editor. Type your note and **Save**
-(*Speichern*), **Cancel** (*Abbrechen*), or **Delete** (*Löschen*) it.
-
-![Note editor modal with a text area and Delete / Cancel / Save buttons](images/player-notes-modal.png)
+- A 📒 icon appears next to player names (in chat, profiles, lists). Gray = no
+  note yet; highlighted = a note exists.
+- Click the icon to open the note editor. Type your note and **Save**
+  (*Speichern*), **Cancel** (*Abbrechen*), or **Delete** (*Löschen*) it.
 
 ## Storage & privacy
 

@@ -2,7 +2,7 @@
 
 The **Daily Profit & Loss (P&L) Tracker** helps you monitor your financial performance in WareEra in real time. It calculates your net gains or losses for the current day based on your market actions, crafting results, and equipment wear.
 
-![Daily P&L Panel](images/pnl-tracker.png)
+![Daily P&L Panel](images/P_L_Tracker.gif)
 
 ## Key Features
 

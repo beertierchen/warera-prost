@@ -3,10 +3,10 @@
 # 📒 Spieler-Notizen
 
 Fügt neben Spieler-Links ein Notiz-Icon hinzu. Ein Klick öffnet einen Dialog, in dem
-du dir eine private Notiz zu diesem Spieler speichern kannst — lokal in deinem Browser.
+du dir eine private Notiz zu diesem Spieler speichern kannst - lokal in deinem Browser.
 Experimentell.
 
-![Notiz-Icon neben einem Spieler-Link im Chat](images/player-notes-icon.png)
+![Spieler-Notizen Ablauf](images/user_notes.gif)
 
 ## Bedienung
 
@@ -14,8 +14,6 @@ Experimentell.
   ist das Icon hervorgehoben.
 - Klick auf das Icon öffnet den Notiz-Dialog **„Notiz: \<Spieler\>"** mit Textfeld und
   den Schaltflächen **Löschen**, **Abbrechen** und **Speichern**.
-
-![Notiz-Dialog mit Textfeld und den Buttons Löschen, Abbrechen, Speichern](images/player-notes-modal.png)
 
 ## Hinweise
 

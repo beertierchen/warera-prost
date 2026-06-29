@@ -5,7 +5,7 @@
 
 The **Resource Market Intraday Graph** injects an interactive price history chart directly into the resource trading pages of WareEra. This visualization helps you spot price trends, identify daily low/high points, and decide the best moments to buy or sell raw materials.
 
-![Resource Market Intraday Graph](images/market-graph.png)
+![Resource Market Intraday Graph](images/market_Graph.gif)
 
 ## Key Features
 

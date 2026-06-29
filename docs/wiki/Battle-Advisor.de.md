@@ -9,7 +9,7 @@ die aktiven Befehle (Orders) kompakt direkt im Button ein. Experimentell.
 
 ## Was du siehst
 
-- **Hervorgehobener Button:** grüner Rahmen, leicht vergrößert — das ist die Seite,
+- **Hervorgehobener Button:** grüner Rahmen, leicht vergrößert - das ist die Seite,
   auf der du kämpfen solltest.
 - **Gedimmte Seite:** abgeschwächt und entsättigt (Graustufen).
 - **Inline-Befehle:** kleine Flaggen/Symbole im Button zeigen die aktuell aktiven
@@ -20,7 +20,7 @@ die aktiven Befehle (Orders) kompakt direkt im Button ein. Experimentell.
 1. **Primär:** Die Seite, deren Länder-Code in deiner Liste verbündeter Länder steht,
    wird hervorgehoben.
 2. **Fallback:** Hat eine Seite Befehle (von Land oder MU), gilt diese Seite als
-   temporärer Verbündeter **für diesen Kampf** und wird hervorgehoben — auch wenn das
+   temporärer Verbündeter **für diesen Kampf** und wird hervorgehoben - auch wenn das
    Land nicht in deiner Verbündeten-Liste steht.
 3. Haben **beide** oder **keine** Seite eindeutig Orders/Verbündete, wird nichts
    geraten (keine Hervorhebung).
