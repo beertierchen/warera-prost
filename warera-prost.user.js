@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.7.15
+// @version      0.7.16
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -194,7 +194,7 @@
         2: { min: 6, max: 10 },
         3: { min: 11, max: 15 },
         4: { min: 21, max: 30 },
-        5: { min: 36, max: 50 },
+        5: { min: 35, max: 50 },
         6: { min: 56, max: 70 }
       },
       chest: {
@@ -202,7 +202,7 @@
         2: { min: 6, max: 10 },
         3: { min: 11, max: 15 },
         4: { min: 21, max: 30 },
-        5: { min: 36, max: 50 },
+        5: { min: 35, max: 50 },
         6: { min: 56, max: 70 }
       },
       helmet: {
@@ -2092,33 +2092,61 @@
       if (cleanCode === kw || cleanSrcBase === kw || alt === kw) { type = t; break; }
     }
 
-    if (type === 'weapon' && tier == null && card) {
-      const stats = parseStats(card, type);
-      if (stats.attack != null && stats.crit != null) {
-        for (const [tStr, range] of Object.entries(CONFIG.weaponRanges)) {
-          const t = Number(tStr);
-          if (stats.attack >= range.dmg.min && stats.attack <= range.dmg.max &&
-              stats.crit >= range.crit.min && stats.crit <= range.crit.max) {
-            tier = t;
-            break;
-          }
-        }
-      }
-    }
+    // Tier from the alt-suffix digit only; stat-range/color resolution is
+    // centralised in detectItem (stat range is the primary indicator there).
     return { type, alt, code, srcBase, tier, isSkin: false };
+  }
+
+  // Tier from stat ranges — the PRIMARY tier indicator (works for skinned and
+  // unskinned items alike, unlike the alt-suffix digit which skins lack and the
+  // border color which skin art covers). Weapons match attack+crit against
+  // weaponRanges; armor matches its single stat against statRangesByTier. The
+  // ranges are the per-tier roll bands, so a valid item's stat falls in exactly
+  // one band; a value in a between-tier gap or out of range returns null and the
+  // caller falls back to the alt digit / color.
+  function tierFromStats(type, stats) {
+    if (!stats) return null;
+    if (type === 'weapon') {
+      const { attack, crit } = stats;
+      if (attack == null || crit == null) return null;
+      for (const [tStr, r] of Object.entries(CONFIG.weaponRanges)) {
+        if (attack >= r.dmg.min && attack <= r.dmg.max &&
+            crit >= r.crit.min && crit <= r.crit.max) return Number(tStr);
+      }
+      return null;
+    }
+    const bands = CONFIG.statRangesByTier[type];
+    const v = stats.primaryPercent;
+    if (!bands || v == null) return null;
+    for (const [tStr, r] of Object.entries(bands)) {
+      if (v >= r.min && v <= r.max) return Number(tStr);
+    }
+    return null;
   }
 
   function detectItem(img, card) {
     const det = detectType(img, card);
-    if (det.type !== 'unknown' && det.type !== 'scrap') {
-      const resolvedTier = det.tier != null ? det.tier : detectTierByColor(card);
-      let code = det.code;
-      if (det.isSkin && det.type !== 'weapon' && code == null && resolvedTier != null) {
-        code = det.type + resolvedTier; // "chest" + 3 = "chest3"
-      }
-      return { ...det, tier: resolvedTier, code };
-    }
-    return det;
+    if (det.type === 'unknown' || det.type === 'scrap') return det;
+    if (typeof isConsumable === 'function' && isConsumable(det.type)) return det;
+
+    // Tier resolution, in priority order:
+    //   1. stat range (primary; covers skinned items that carry no alt digit)
+    //   2. deterministic class tier for weapons (knife=T1 … jet=T6)
+    //   3. alt-suffix digit (e.g. "pants4") for unskinned items
+    //   4. tier-tinted border color (last resort)
+    let tier = null;
+    if (card) tier = tierFromStats(det.type, parseStats(card, det.type));
+    if (tier == null && det.type === 'weapon') tier = CONFIG.weaponCodeToTier[det.code] ?? null;
+    if (tier == null) tier = det.tier;
+    if (tier == null) tier = detectTierByColor(card);
+
+    // Keep the armor market code consistent with the resolved tier
+    // ("pants" + 4 -> "pants4"); weapons keep their slot code and pair the tier
+    // at lookup time, so only rebuild for armor.
+    let code = det.code;
+    if (det.type !== 'weapon' && tier != null) code = det.type + tier;
+
+    return { ...det, tier, code };
   }
 
   // Color-based tier fallback, used ONLY when the alt carries no suffix digit.

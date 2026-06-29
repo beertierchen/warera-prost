@@ -2047,6 +2047,60 @@ try {
       assert.strictEqual(consumableInfo.tier, null, 'Consumable skin tier should be null');
       assert.strictEqual(consumableInfo.isSkin, true, 'Consumable skin isSkin should be true');
 
+      // Helper: build a card carrying a single armor stat icon (primaryPercent),
+      // no tier digit and no tier-tinted border — mirrors a skinned armor card.
+      const makeArmorStatCard = (statVal) => {
+        const c = new MockElement('div');
+        c.setAttribute('aria-haspopup', 'dialog');
+        const inner = new MockElement('div');
+        c.appendChild(inner);
+        const iconC = new MockElement('div', '_1dnmndy29y');
+        const icon = new MockElement('div', 'a6izou0');
+        const p = new MockElement('path');
+        p.setAttribute('d', 'M12,1L3,5V11C3,16.55'); // armor stat fingerprint
+        icon.appendChild(p);
+        iconC.appendChild(icon);
+        const valSpan = new MockElement('span');
+        valSpan.textContent = String(statVal);
+        iconC.appendChild(valSpan);
+        inner.appendChild(iconC);
+        return c;
+      };
+
+      // Test 7: skinned armor with NO tier digit and NO tier-tinted border resolves
+      // tier from its stat range (the reported bug: skinned pants showed "pants · —"
+      // and all-"?" prices because tier/code stayed null). Rüstung 21 -> pants T4.
+      const skinnedPantsImg = new MockElement('img');
+      skinnedPantsImg.setAttribute('src', '/images/skins/ctPants.png');
+      skinnedPantsImg.setAttribute('alt', 'ctPants');
+      const skinnedPantsCard = makeArmorStatCard(21);
+      const skinnedPants = globalThis.detectItem(skinnedPantsImg, skinnedPantsCard);
+      assert.strictEqual(skinnedPants.type, 'pants', 'Skinned pants type should be pants');
+      assert.strictEqual(skinnedPants.tier, 4, 'Skinned pants (stat 21) should resolve to T4 via stat range');
+      assert.strictEqual(skinnedPants.code, 'pants4', 'Skinned pants code should be reconstructed to pants4');
+      assert.strictEqual(skinnedPants.isSkin, true, 'Skinned pants isSkin should be true');
+
+      // Test 8: stat range is the PRIMARY indicator even for a non-skin item whose
+      // alt digit and stat agree (gloves stat 23 -> T4 band 21-25).
+      const glovesImg = new MockElement('img');
+      glovesImg.setAttribute('src', '/images/items/gloves4.png');
+      glovesImg.setAttribute('alt', 'gloves4');
+      const glovesCard = makeArmorStatCard(23);
+      const gloves = globalThis.detectItem(glovesImg, glovesCard);
+      assert.strictEqual(gloves.type, 'gloves', 'Gloves type should be gloves');
+      assert.strictEqual(gloves.tier, 4, 'Gloves (stat 23) should resolve to T4 via stat range');
+      assert.strictEqual(gloves.code, 'gloves4', 'Gloves code should be gloves4');
+
+      // Test 9: when the stat lands in a between-tier gap (pants 16-20 is impossible),
+      // tier falls back to the alt digit rather than going null.
+      const gapPantsImg = new MockElement('img');
+      gapPantsImg.setAttribute('src', '/images/items/pants4.png');
+      gapPantsImg.setAttribute('alt', 'pants4');
+      const gapPantsCard = makeArmorStatCard(18); // 18 is in the 16-20 hole
+      const gapPants = globalThis.detectItem(gapPantsImg, gapPantsCard);
+      assert.strictEqual(gapPants.tier, 4, 'Pants with gap stat should fall back to alt digit T4');
+      assert.strictEqual(gapPants.code, 'pants4', 'Gap pants code should stay pants4');
+
       console.log('Skin & Equipment Recognition tests passed successfully.');
 
       console.log('Success! The script loaded and initialized without throwing any runtime errors.');

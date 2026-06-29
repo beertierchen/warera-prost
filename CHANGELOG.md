@@ -1,5 +1,21 @@
 # CHANGELOG
 
+## 2026-06-29 | Fehlerbehebung bei der Skin-Rüstungs-Erkennung (v0.7.16)
+
+**Geänderte Dateien:** `warera-prost.user.js`
+
+**Änderungen (Deutsch):**
+- **Priorisierte Werterang-Erkennung**: Das Tier von Ausrüstung (Waffen & Rüstung) wird nun primär über dessen Wertebereich ermittelt. Dies behebt den Fehler, bei dem geskinnte Rüstungsteile (die keine Tier-Ziffer im Namen tragen und deren Randfarbe von Skin-Grafiken verdeckt wird) als tierlos erkannt wurden.
+- **Fehlertolerante Erkennungskette**: Schlägt die Werterang-Erkennung fehl (z. B. bei Werten in Werte-Lücken), wird nacheinander auf die Waffenklasse, die Ziffer im Bild-Alt-Namen und als letzte Option auf die Randfarbe zurückgegriffen.
+- **Konsistente Marktcodes**: Nach der Erkennung wird die interne Kennung für Rüstungen wieder zusammengesetzt (z. B. `pants4`), damit nachgelagerte Preis- und Schrottberechnungen korrekt aufgelöst werden.
+- **Stat-Bereiche korrigiert**: Mindestwerte für T5-Hosen und T5-Brustplatten wurden von 36 auf 35 angepasst.
+
+**Changes (English):**
+- **Priority Stat-Range Detection**: Equipment tier (weapons & armor) is now primarily resolved by matching its stat ranges. This fixes the issue where cosmetic skin armor (which has no tier suffix digit and has its border color obscured by skin art) failed to resolve a tier.
+- **Robust Fallback Prioritization**: If stat range matching fails (e.g. on values landing in between-tier gaps), detection falls back sequentially to weapon class tier, alt-suffix digit, and finally border color.
+- **Consistent Market Codes**: Reconstructs armor codes after tier resolution (e.g., `pants4`) so downstream scrap and price lookups work correctly.
+- **Stat Range Correction**: Adjusted Tier 5 minimum stats for pants and chest from 36 to 35.
+
 ## 2026-06-28 | Item-Advisor: saubereres Layout, schnelleres Rendern & genauere Haltbarkeit (v0.7.15)
 
 **Geänderte Dateien:** `warera-prost.user.js`
