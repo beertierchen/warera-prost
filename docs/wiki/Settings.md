@@ -6,19 +6,30 @@ Open settings with the ⚙ **gear button** at the bottom-right of any WareEra pa
 (also available via your userscript manager's menu). The dot on the gear shows
 data freshness: 🟢 fresh · 🟠 stale · 🔴 rate-limited.
 
+> 📷 _Screenshot pending:_ `images/settings-modal.png` _— the settings dialog with all toggles._
+
 ## Options
+
+Each toggle has an **ℹ** info button that expands a short explanation, so the
+panel stays compact.
 
 | Setting | Purpose |
 | --- | --- |
 | **API Token** | Optional. Fetches fresh equipment & scrap prices from the official API. See below. |
 | **Fetch live offers via API** | Ranks item stats against currently active market listings (needs token). |
-| **Scrap-Flip indicator** | Enables the [market flip badges](Scrap-Flip-Indicator). |
-| **User notes on player links** | Enables [Player Notes](Player-Notes). |
-| **Battle advisor** | Enables [Battle Advisor](Battle-Advisor); reveals the allied-codes field. |
+| **Daily P&L Tracker** | Shows your [daily profit/loss](Daily-PnL-Tracker) in the topbar. On by default. |
+| **Resource Market Intraday Graph** | *Experimental.* Adds an [intraday price graph](Market-Graph) to resource market modals. |
+| **Pill Reminder** | *Experimental.* Topbar [pill-cycle status & timer](Pill-Reminder). |
+| **Scrap-Flip indicator** | *Experimental.* Enables the [market flip badges](Scrap-Flip-Indicator). |
+| **User notes on player links** | *Experimental.* Enables [Player Notes](Player-Notes). |
+| **Battle advisor** | *Experimental.* Enables [Battle Advisor](Battle-Advisor); reveals the allied-codes field. |
 | **Allied country codes** | Comma-separated, lowercase (e.g. `de,pt`). Your side on battle pages. |
 
-Each experimental feature has an **ℹ** toggle next to it that expands a short
-explanation, so the panel stays compact.
+## Diagnostics
+
+A built-in **[Diagnostics](Diagnostics)** panel shows feature health, scan
+performance (a green/yellow/red traffic-light) and a debug dump — handy when
+something looks off after a game update.
 
 ## Cheat Sheet
 

@@ -5,21 +5,37 @@
 Das Zahnrad ⚙ unten rechts öffnet die Einstellungen. Ein kleiner Punkt am Zahnrad zeigt
 den Frische-Status der Marktdaten (grün = aktuell, orange = veraltet, rot = Rate-Limit).
 
+> 📷 _Screenshot folgt:_ `images/settings-modal.png` _— der Einstellungs-Dialog mit allen Schaltern._
+
 ## Feature-Schalter
 
-Jede experimentelle Funktion hat einen Schalter und ein **ℹ**, das eine kurze
-Erklärung ein-/ausklappt:
+Jeder Schalter hat ein **ℹ**, das eine kurze Erklärung ein-/ausklappt, damit das
+Panel kompakt bleibt:
 
 - **Live-Angebote über API abrufen** — holt aktuelle Marktangebote über die offizielle
   API, um Item-Stats gegen derzeit aktive Angebote zu ranken. Benötigt API-Token.
-- **Scrap-Flip-Indikator** — markiert profitable Schrott-Flips auf dem Markt. Siehe
-  [Scrap-Flip-Indikator](Scrap-Flip-Indicator.de).
-- **Spieler-Notizen 📒** — Notiz-Icon neben Spieler-Links. Siehe
+- **Täglicher P&L Tracker** — zeigt deinen [täglichen Gewinn/Verlust](Daily-PnL-Tracker.de)
+  in der Topbar. Standardmäßig an.
+- **Ressourcen-Markt Intraday-Grafik** — *experimentell.* Blendet einen
+  [Intraday-Preisverlauf](Market-Graph.de) in Ressourcen-Modals ein.
+- **Pill Reminder** — *experimentell.* Topbar-Status & Timer für den
+  [Pillen-Zyklus](Pill-Reminder.de).
+- **Scrap-Flip-Indikator** — *experimentell.* Markiert profitable Schrott-Flips auf dem
+  Markt. Siehe [Scrap-Flip-Indikator](Scrap-Flip-Indicator.de).
+- **Spieler-Notizen 📒** — *experimentell.* Notiz-Icon neben Spieler-Links. Siehe
   [Spieler-Notizen](Player-Notes.de).
-- **Battle-Advisor ⚔️** — Button-Hervorhebung auf Kampfseiten; blendet darunter das
-  Feld für **Verbündete Ländercodes** ein. Siehe [Battle Advisor](Battle-Advisor.de).
+- **Battle-Advisor ⚔️** — *experimentell.* Button-Hervorhebung auf Kampfseiten; blendet
+  darunter das Feld für **Verbündete Ländercodes** ein. Siehe [Battle Advisor](Battle-Advisor.de).
+
+## Diagnose
+
+Ein eingebautes **[Diagnose](Diagnostics.de)**-Panel zeigt Feature-Health, Scan-Performance
+(grün/gelb/rot-Ampel) und einen Debug-Dump — praktisch, wenn nach einem Spiel-Update etwas
+nicht stimmt.
 
 ## API-Token
+
+<a id="api-token"></a>
 
 Optionaler Token für `api2.warera.io`, um frische Equipment- und Schrottpreise zu laden.
 
@@ -29,6 +45,8 @@ Optionaler Token für `api2.warera.io`, um frische Equipment- und Schrottpreise 
 > nicht gegen lokale Schadsoftware oder andere Scripts mit GM-Zugriff. Behandle den
 > Rechner als vertrauenswürdig. Bei Verdacht auf Kompromittierung den Token in WareEra
 > widerrufen/erneuern.
+
+> PROST funktioniert auch ohne Token — du bekommst dann gecachte statt Live-Preise.
 
 ## Sprache
 

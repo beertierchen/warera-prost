@@ -5,6 +5,10 @@
 PROST is a userscript — it runs inside a userscript manager in your browser. No
 account, no server, no build step.
 
+> ⚠️ **Open beta.** Expect rough edges: it can be slow or imprecise, and a WareEra
+> UI update can temporarily break detection until PROST is updated. It only reads
+> and annotates the page — no automation.
+
 ## 1. Install a userscript manager
 
 | Browser | Recommended manager |
@@ -31,10 +35,42 @@ account, no server, no build step.
    data freshness (green = fresh, orange = stale, red = rate-limited).
 3. Open your **inventory** or the **equipment market** to see overlays.
 
+## Troubleshooting
+
+<a id="troubleshooting"></a>
+
+**Chrome / Edge: "Allow User Scripts" error**
+
+On recent Chrome/Edge (Manifest V3) Tampermonkey may show:
+
+> Please enable the "Allow User Scripts" extension setting. Click here for more info how to do this.
+
+Fix it once:
+
+1. Open `chrome://extensions` (Edge: `edge://extensions`).
+2. Open **Tampermonkey → Details**.
+3. Turn on **Allow User Scripts**. (On older Chrome versions there's no such
+   toggle — enable **Developer mode** at the top-right of the extensions page instead.)
+4. Reload WareEra.
+
+See Tampermonkey's [FAQ](https://www.tampermonkey.net/faq.php#Q209) for details.
+
+> 📷 _Screenshot pending:_ `images/chrome-allow-userscripts.png` _— the "Allow User Scripts" toggle in Tampermonkey's details page._
+
+**Other checks**
+
+- The script is **enabled** in the manager dashboard (toggle on).
+- You're on the right domain: `app.warera.io`.
+- On first API use, **allow the `@connect` permissions** when prompted
+  (`api2.warera.io`, `gateway.warerastats.io`).
+- **Stuck on an old version after a release?** Greasy Fork can lag briefly. Force
+  it: Tampermonkey dashboard → PROST → **Check for userscript updates**.
+
 ## Updating
 
 - **Greasy Fork install:** updates are pulled automatically by your manager.
 - **Manual install:** re-open the raw script to pull the latest version.
+- Current version & changes: [CHANGELOG](https://github.com/beertierchen/warera-prost/blob/main/CHANGELOG.md).
 
 ## Optional: API token
 
