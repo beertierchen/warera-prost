@@ -2,7 +2,7 @@
 
 Der **Crafting-Rechner** unterstützt dich bei der wirtschaftlichen Bewertung von Rezepten. Er vergleicht den Marktwert der benötigten Materialien mit dem Marktpreis des hergestellten Gegenstands und zeigt dir sofort, ob sich die Herstellung lohnt oder ob der Direktkauf günstiger ist.
 
-![Crafting-Rechner](images/crafting-calculator.png)
+![Crafting-Rechner](images/carfting_advisor.png)
 
 ## Hauptfunktionen
 

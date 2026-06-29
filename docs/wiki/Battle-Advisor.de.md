@@ -15,6 +15,8 @@ die aktiven Befehle (Orders) kompakt direkt im Button ein. Experimentell.
 - **Inline-Befehle:** kleine Flaggen/Symbole im Button zeigen die aktuell aktiven
   Orders (von Land **oder** Militäreinheit) für diese Seite.
 
+![Kampfbefehl-Tooltip](images/Fighting_Tooltip.png)
+
 ## Wie die Seite bestimmt wird
 
 1. **Primär:** Die Seite, deren Länder-Code in deiner Liste verbündeter Länder steht,

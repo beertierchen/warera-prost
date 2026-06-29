@@ -16,6 +16,8 @@ so you don't attack/defend the wrong way, and previews the active orders inline.
   unit icons that have posted orders for that side, shown inline so you can read
   the call to action at a glance.
 
+![Battle Order Tooltip](images/Fighting_Tooltip.png)
+
 ## How your side is chosen
 
 1. **Primary — your allied list.** The side whose country flag code is in your
