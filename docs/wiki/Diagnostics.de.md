@@ -2,7 +2,7 @@
 
 Das **Diagnose-Panel** bietet technische Einblicke, Performance-Messungen und Werkzeuge zur Fehlerbehebung. Es hilft sicherzustellen, dass PROST flüssig läuft und deinen Browser beim Scannen des Inventars nicht ausbremst.
 
-![Diagnose-Panel](images/debuging_healt_traficlight.gif)
+![Diagnose-Panel](/images/debuging_healt_traficlight.gif)
 
 ## Hauptfunktionen
 

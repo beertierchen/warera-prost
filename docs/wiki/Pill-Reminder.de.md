@@ -5,7 +5,7 @@
 
 Der **Pillen-Reminder** optimiert deine Spielzyklen, indem er dich an Einnahmefenster erinnert und dir hilft, dein Lebens- und Hungersbudget (H&H) so zu verwalten, dass du pünktlich zum nächsten Pillenfenster die vollen 100% H&H erreichst.
 
-![Pill-Reminder](images/pilltimer_user.png)
+![Pill-Reminder](/images/pilltimer_user.png)
 
 ## Hauptkonzepte
 
@@ -14,17 +14,17 @@ Pillen lösen Zyklen mit bestimmten Phasen aus (Messer-Phase, Regen-Phase, Berei
 - **Aktive Buff-Dauer**: Restzeit der aktuellen Pille.
 - **Phasenübergangs-Timer**: Countdowns und Anzeigen für den Start der nächsten Phase (z.B. Beginn der Regenerationszeit oder nächstes Einnahmefenster).
 
-![Pill Timer Tooltip](images/pillentimer_tooltip.png)
+![Pill Timer Tooltip](/images/pillentimer_tooltip.png)
 
 ### 2. H&H Budget-Optimierung
 Um zu verhindern, dass du Regeneration verschenkst oder zum Ende eines Zyklus unter 100% H&H fällst, überwacht das System deine Werte:
 - **Messer-Phase**: Solange deine H&H-Werte über dem liegen, was du im verbleibenden Zyklus regenerieren musst, kannst du Messer-Aktionen ausführen.
 
-![Pill H&H Budget](images/pilltimer_user_2.png)
+![Pill H&H Budget](/images/pilltimer_user_2.png)
 
 - **Regen-Phase**: Warnungen signalisieren dir, Messer-Aktionen einzustellen und Nahrung zu konsumieren, um rechtzeitig vor Ablauf der Abklingzeit wieder 100% H&H zu erreichen.
 
-![Pill H&H Recovery](images/pilltimer_user_3.png)
+![Pill H&H Recovery](/images/pilltimer_user_3.png)
 
 ## Konfiguration
 

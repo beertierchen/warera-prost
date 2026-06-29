@@ -2,7 +2,7 @@
 
 The **Diagnostics** panel provides technical oversight, performance monitoring, and troubleshooting utilities to ensure PROST is running optimally and not lagging your browser during inventory management.
 
-![Diagnostics Panel](images/debuging_healt_traficlight.gif)
+![Diagnostics Panel](/images/debuging_healt_traficlight.gif)
 
 ## Key Features
 

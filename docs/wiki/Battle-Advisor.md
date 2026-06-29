@@ -5,7 +5,7 @@
 *Experimental.* On battle pages, PROST highlights the button for **your side**
 so you don't attack/defend the wrong way, and previews the active orders inline.
 
-![Battle page with the DEFEND button highlighted green and the ATTACK button muted](images/battle-advisor.png)
+![Battle page with the DEFEND button highlighted green and the ATTACK button muted](/images/battle-advisor.png)
 
 ## What you see
 
@@ -16,7 +16,7 @@ so you don't attack/defend the wrong way, and previews the active orders inline.
   unit icons that have posted orders for that side, shown inline so you can read
   the call to action at a glance.
 
-![Battle Order Tooltip](images/Fighting_Tooltip.png)
+![Battle Order Tooltip](/images/Fighting_Tooltip.png)
 
 ## How your side is chosen
 

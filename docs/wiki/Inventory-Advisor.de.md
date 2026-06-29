@@ -6,7 +6,7 @@ Legt auf jede Inventarkarte ein Overlay mit einer Empfehlung - **KEEP**, **HOLD*
 **SELL** oder **SCRAP** - und zeigt dazu Stat-Wert sowie Schrott- und Marktpreis.
 Rein lesend, keine Automatisierung.
 
-![Inventory-Advisor-Overlays auf Waffen- und Rüstungskarten](images/itemadvisor.gif)
+![Inventory-Advisor-Overlays auf Waffen- und Rüstungskarten](/images/itemadvisor.gif)
 
 ## Empfehlungen (Farbe + Symbol)
 

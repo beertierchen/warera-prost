@@ -6,7 +6,7 @@
 you can jot a private reminder about anyone — diplomacy, debts, "do not trust",
 whatever. Notes are stored **locally** in your browser.
 
-![Player Notes Flow](images/user_notes.gif)
+![Player Notes Flow](/images/user_notes.gif)
 
 ## How it works
 

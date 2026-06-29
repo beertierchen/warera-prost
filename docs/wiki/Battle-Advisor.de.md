@@ -5,7 +5,7 @@
 Hebt auf Kampfseiten (`/battle/<id>`) den Button **deiner** Seite hervor und blendet
 die aktiven Befehle (Orders) kompakt direkt im Button ein. Experimentell.
 
-![Battle-Seite: DEFEND-Button hervorgehoben mit verbündeten Flaggen, ATTACK-Seite gedimmt](images/battle-advisor.png)
+![Battle-Seite: DEFEND-Button hervorgehoben mit verbündeten Flaggen, ATTACK-Seite gedimmt](/images/battle-advisor.png)
 
 ## Was du siehst
 
@@ -15,7 +15,7 @@ die aktiven Befehle (Orders) kompakt direkt im Button ein. Experimentell.
 - **Inline-Befehle:** kleine Flaggen/Symbole im Button zeigen die aktuell aktiven
   Orders (von Land **oder** Militäreinheit) für diese Seite.
 
-![Kampfbefehl-Tooltip](images/Fighting_Tooltip.png)
+![Kampfbefehl-Tooltip](/images/Fighting_Tooltip.png)
 
 ## Wie die Seite bestimmt wird
 

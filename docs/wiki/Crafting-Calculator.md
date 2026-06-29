@@ -2,7 +2,7 @@
 
 The **Crafting Calculator** assists players in evaluating the economic feasibility of crafting recipes. It compares the total market value of required raw materials against the market floor price of the finished product, showing you instantly whether it is cheaper to craft or to buy.
 
-![Crafting Profit Overlay](images/carfting_advisor.png)
+![Crafting Profit Overlay](/images/carfting_advisor.png)
 
 ## Key Features
 

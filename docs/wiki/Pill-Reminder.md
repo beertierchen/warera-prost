@@ -5,7 +5,7 @@
 
 The **Pill Reminder** is designed to maximize your efficiency by tracking pill consumption windows and optimizing your Health & Hunger (H&H) recovery budget. It helps you stay above critical limits, ensuring you don't drop below 100% H&H right before a new pill window opens.
 
-![Pill Reminder](images/pilltimer_user.png)
+![Pill Reminder](/images/pilltimer_user.png)
 
 ## Key Concepts
 
@@ -14,17 +14,17 @@ Pill consumption in WareEra triggers specific phases (Active/Knife phase, Recove
 - **Remaining Effect Timers**: How long the active pill buff/effect lasts.
 - **Phase Transition Indicators**: Clear notifications and countdowns showing when the next phase (such as the recovery or next pill window) starts.
 
-![Pill Timer Tooltip](images/pillentimer_tooltip.png)
+![Pill Timer Tooltip](/images/pillentimer_tooltip.png)
 
 ### 2. H&H Budget Optimization
 To prevent wasting regeneration or dropping below 100% H&H at the end of a cycle, the system monitors your current health/hunger levels:
 - **Knife/Active Phase**: Safe to perform active tasks (e.g. using a knife) as long as your H&H remains above what you can safely regenerate.
 
-![Pill H&H Budget](images/pilltimer_user_2.png)
+![Pill H&H Budget](/images/pilltimer_user_2.png)
 
 - **Recovery Phase**: Alert indicators warn you to stop knife actions or start consuming food to restore H&H back to 100% before the pill timer ends.
 
-![Pill H&H Recovery](images/pilltimer_user_3.png)
+![Pill H&H Recovery](/images/pilltimer_user_3.png)
 
 ## Configuration
 
