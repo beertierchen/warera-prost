@@ -6,7 +6,7 @@ Open settings with the ⚙ **gear button** at the bottom-right of any WareEra pa
 (also available via your userscript manager's menu). The dot on the gear shows
 data freshness: 🟢 fresh · 🟠 stale · 🔴 rate-limited.
 
-![Settings Dialog](/images/settings.gif)
+![Settings Dialog](https://raw.githubusercontent.com/beertierchen/warera-prost/main/docs/wiki/images/settings.gif)
 
 ## Options
 

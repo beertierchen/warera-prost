@@ -5,7 +5,7 @@
 Das Zahnrad ⚙ unten rechts öffnet die Einstellungen. Ein kleiner Punkt am Zahnrad zeigt
 den Frische-Status der Marktdaten (grün = aktuell, orange = veraltet, rot = Rate-Limit).
 
-![Settings Dialog](/images/settings.gif)
+![Settings Dialog](https://raw.githubusercontent.com/beertierchen/warera-prost/main/docs/wiki/images/settings.gif)
 
 ## Feature-Schalter
 

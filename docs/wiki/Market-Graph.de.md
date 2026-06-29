@@ -5,7 +5,7 @@
 
 Der **Ressourcen-Markt Intraday-Graph** bettet eine interaktive Preisverlaufsgrafik direkt in die Ressourcen-Handelsfenster von WareEra ein. Diese Visualisierung hilft dir, Preistrends zu erkennen, Tief- und Höhepunkte des Tages zu identifizieren und den optimalen Zeitpunkt für den Kauf oder Verkauf zu wählen.
 
-![Ressourcen-Markt-Graph](/images/market_Graph.gif)
+![Ressourcen-Markt-Graph](https://raw.githubusercontent.com/beertierchen/warera-prost/main/docs/wiki/images/market_Graph.gif)
 
 ## Hauptfunktionen
 

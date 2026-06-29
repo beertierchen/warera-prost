@@ -2,7 +2,7 @@
 
 Der **Tägliche Gewinn- & Verlust-Tracker (P&L)** hilft dir, deine finanzielle Bilanz in WareEra in Echtzeit zu überwachen. Er berechnet die Netto-Gewinne oder -Verluste des aktuellen Tages basierend auf deinen Marktaktivitäten, Crafting-Ergebnissen und dem Verschleiß deiner Ausrüstung.
 
-![Täglicher P&L Tracker](/images/P_L_Tracker.gif)
+![Täglicher P&L Tracker](https://raw.githubusercontent.com/beertierchen/warera-prost/main/docs/wiki/images/P_L_Tracker.gif)
 
 ## Hauptfunktionen
 

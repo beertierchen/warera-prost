@@ -6,7 +6,7 @@ The core feature. On your **inventory** page, every item card gets a colored
 recommendation badge plus overlays that rank the item and compare its scrap
 value against the market. Read-only — it never sells, scraps, or moves anything.
 
-![Inventory Advisor overlays on weapon and armor cards](/images/itemadvisor.gif)
+![Inventory Advisor overlays on weapon and armor cards](https://raw.githubusercontent.com/beertierchen/warera-prost/main/docs/wiki/images/itemadvisor.gif)
 
 ## Recommendations (color + symbol)
 

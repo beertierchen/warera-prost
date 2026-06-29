@@ -6,7 +6,7 @@ Fügt neben Spieler-Links ein Notiz-Icon hinzu. Ein Klick öffnet einen Dialog, 
 du dir eine private Notiz zu diesem Spieler speichern kannst - lokal in deinem Browser.
 Experimentell.
 
-![Spieler-Notizen Ablauf](/images/user_notes.gif)
+![Spieler-Notizen Ablauf](https://raw.githubusercontent.com/beertierchen/warera-prost/main/docs/wiki/images/user_notes.gif)
 
 ## Bedienung
 
