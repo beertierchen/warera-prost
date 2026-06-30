@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## 2026-06-30 | Crafting-Advisor: Korrektur der Ressourcenkosten bei T6 (v0.7.17)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `tests/test-advisor-load.js`
+
+**Änderungen (Deutsch):**
+- **Fehlerfreie Ressourcenberechnung bei T6**: Behebt einen Fehler, bei dem die benötigte Schrottmenge für Tier-6-Gegenstände (z. B. `1.46k` Schrott) fälschlicherweise als `146` statt `1460` gelesen wurde, was zu einer viel zu geringen Anzeige der Ressourcenkosten führte.
+
+**Changes (English):**
+- **Correct T6 Resource Calculations**: Fixes an issue where large scrap amounts for Tier 6 crafting (e.g. `1.46k` scraps) were parsed as `146` instead of `1460`, which displayed incorrect resource costs.
+
 ## 2026-06-29 | Fehlerbehebung bei der Skin-Rüstungs-Erkennung (v0.7.16)
 
 **Geänderte Dateien:** `warera-prost.user.js`

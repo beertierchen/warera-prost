@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.7.16
+// @version      0.7.17
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -7189,7 +7189,8 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
 
     const slashSpans = Array.from(modal.querySelectorAll('span')).filter(span => span.textContent.trim().startsWith('/'));
     for (const slashSpan of slashSpans) {
-      const val = parseInt(slashSpan.textContent.replace(/[^0-9]/g, ''), 10) || 0;
+      const text = slashSpan.textContent.replace(/^\//, '').trim();
+      const val = parseNum(text) || 0;
       const parent = slashSpan.parentElement;
       if (parent) {
         if (parent.querySelector('img[src*="scrap"], img[src*="scraps"], img[alt="scraps"], img[alt="scrap"]')) {

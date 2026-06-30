@@ -1170,6 +1170,16 @@ try {
   const parsedRandom = globalThis.parseCraftingState(modalDiv);
   assert.strictEqual(parsedRandom.selectedItem, 'random', 'Parsed selected item should be random when "?" is selected');
 
+  // Test T6 formatting with 'k' suffix (e.g. '/ 1.46k' and '/ 32')
+  scrapsInnerSpan.textContent = '/ 1.46k';
+  steelInnerSpan.textContent = '/ 32';
+  commonSpan.textContent = 'Mythic'; // Mythic = T6
+  
+  const parsedT6 = globalThis.parseCraftingState(modalDiv);
+  assert.strictEqual(parsedT6.tier, 6, 'Parsed tier should be 6 (Mythic)');
+  assert.strictEqual(parsedT6.scrapsRequired, 1460, 'Parsed scraps required should be 1460 (parsed from 1.46k)');
+  assert.strictEqual(parsedT6.steelRequired, 32, 'Parsed steel required should be 32');
+
   modalDiv.remove();
   console.log('Crafting Advisor tests passed successfully.');
 
