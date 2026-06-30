@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## 2026-06-30 | Advisor Heartbeat Fix (v0.7.19)
+
+**Geänderte Dateien:** `warera-prost.user.js`
+
+**Änderungen (Deutsch):**
+- **Fehlalarm im Advisor-Heartbeat behoben**: Der LoopGuard-Grenzwert für den Advisor-Heartbeat wurde erhöht. Dadurch wird verhindert, dass das Script fälschlicherweise als "abgestürzt" (`fail`) markiert wird, wenn man sich länger als 15 Sekunden im Inventar oder Markt aufhält.
+
+**Changes (English):**
+- **Fixed Advisor Heartbeat False Alarms**: Increased the LoopGuard limit for the advisor heartbeat to prevent the script from falsely showing a "failed" (`fail`) state when staying on the inventory or market page for longer than 15 seconds.
+
 ## 2026-06-30 | Item-Advisor: Konfigurierbarer Bestand, T1-T3 Filter & Waffenkrit-Fix (v0.7.18)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `tests/test-advisor-load.js`, `docs/wiki/`

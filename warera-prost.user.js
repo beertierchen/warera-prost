@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.7.18
+// @version      0.7.19
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -9166,7 +9166,7 @@ function checkInventoryDeltaWear() {
     setInterval(() => {
       if (scanning) return;
       if (!isInventoryPage() && !isMarketPage()) return;
-      if (loopGuard('advisor-heartbeat', 10, 15000)) return;
+      if (loopGuard('advisor-heartbeat', 25, 15000)) return;
       const cards = findItemCards();
       if (cards.size > 0 && hasInventoryChanged(cards)) {
         log('Advisor heartbeat: grid changed without rescan → re-attach + rescan');
