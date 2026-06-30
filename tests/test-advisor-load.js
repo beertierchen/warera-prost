@@ -2113,6 +2113,127 @@ try {
 
       console.log('Skin & Equipment Recognition tests passed successfully.');
 
+      // --- Testing Diamond Spam and Crit Thresholds (PLAN-fix-item-advisor-diamond-spam.md) ---
+      console.log('--- Testing Diamond Spam and Crit Thresholds ---');
+
+      // Setup a dummy context for evaluate
+      const mockCtx = {
+        prices: { scraps: 0.26, steel: 0.32 },
+        scrapPrice: 0.26,
+        offers: {},
+        txs: {},
+        stale: false
+      };
+
+      // Helper to generate a dummy card and item object
+      const makeMockItem = (type, tier, statVal, extraStats = {}) => {
+        const stats = type === 'weapon' 
+          ? { attack: statVal, crit: extraStats.crit ?? 0, durability: 100 }
+          : { primaryPercent: statVal, durability: 100 };
+        return {
+          card: new MockElement('div'),
+          img: new MockElement('img'),
+          type,
+          alt: type + tier,
+          code: type === 'weapon' ? `${type}-${tier}` : `${type}${tier}`,
+          tier,
+          stats,
+          myStat: statVal
+        };
+      };
+
+      // Test 1: T3 armor with stat 11 (worst T3) should NOT get KEEP (since legacy rule is removed)
+      const t3WorstPants = makeMockItem('pants', 3, 11);
+      // Let's rank it in a group with better items so it is not stockKeep
+      const groupItems = [
+        makeMockItem('pants', 3, 15),
+        makeMockItem('pants', 3, 14),
+        makeMockItem('pants', 3, 13),
+        t3WorstPants
+      ];
+      globalThis.calculateInventoryRankings(groupItems);
+      // t3WorstPants should be at index 3 (rank 4, isStockKeep = false)
+      assert.strictEqual(t3WorstPants.isStockKeep, false, 'Worst pants should not be stockKeep');
+
+      const evaluationWorst = globalThis.evaluate(t3WorstPants, mockCtx);
+      assert.notStrictEqual(evaluationWorst.action, 'KEEP', 'T3 worst pants (stat 11) should not get KEEP');
+
+      // Test 2: Top 3 stock cap: out of 5 max-stat pants, only 3 get KEEP
+      const maxStatPants = [
+        makeMockItem('pants', 3, 15),
+        makeMockItem('pants', 3, 15),
+        makeMockItem('pants', 3, 15),
+        makeMockItem('pants', 3, 15),
+        makeMockItem('pants', 3, 15)
+      ];
+      globalThis.calculateInventoryRankings(maxStatPants);
+      
+      const actions = maxStatPants.map(item => globalThis.evaluate(item, mockCtx).action);
+      const keepCount = actions.filter(a => a === 'KEEP').length;
+      const holdCount = actions.filter(a => a === 'HOLD').length;
+      
+      assert.strictEqual(keepCount, 3, 'Exactly 3 max-stat pants should get KEEP');
+      assert.strictEqual(holdCount, 2, 'The other 2 max-stat pants should get HOLD');
+
+      // Test 3: T1/T2 weapon crit avoidScrap thresholds (T1 >= 5, T2 >= 10)
+      // T1 weapon with crit 4 (previously avoided scrap, now should not)
+      const t1WeaponCrit4 = makeMockItem('weapon', 1, 30, { crit: 4 });
+      t1WeaponCrit4.isStockKeep = false;
+      const t1Crit4Eval = globalThis.evaluate(t1WeaponCrit4, mockCtx);
+      assert.ok(!t1Crit4Eval.reason.includes('Zustand') && !t1Crit4Eval.reason.includes('Condition'), 'T1 weapon with 4% crit should not trigger Critical Condition');
+
+      // T1 weapon with crit 5 (should avoid scrap)
+      const t1WeaponCrit5 = makeMockItem('weapon', 1, 30, { crit: 5 });
+      t1WeaponCrit5.isStockKeep = false;
+      const t1Crit5Eval = globalThis.evaluate(t1WeaponCrit5, mockCtx);
+      assert.ok(t1Crit5Eval.reason.includes('Zustand') || t1Crit5Eval.reason.includes('Condition'), 'T1 weapon with 5% crit should trigger Critical Condition');
+
+      // T2 weapon with crit 9 (should not trigger avoidScrap)
+      const t2WeaponCrit9 = makeMockItem('weapon', 2, 55, { crit: 9 });
+      t2WeaponCrit9.isStockKeep = false;
+      const t2Crit9Eval = globalThis.evaluate(t2WeaponCrit9, mockCtx);
+      assert.ok(!t2Crit9Eval.reason.includes('Zustand') && !t2Crit9Eval.reason.includes('Condition'), 'T2 weapon with 9% crit should not trigger Critical Condition');
+
+      // T2 weapon with crit 10 (should trigger avoidScrap)
+      const t2WeaponCrit10 = makeMockItem('weapon', 2, 55, { crit: 10 });
+      t2WeaponCrit10.isStockKeep = false;
+      const t2Crit10Eval = globalThis.evaluate(t2WeaponCrit10, mockCtx);
+      assert.ok(t2Crit10Eval.reason.includes('Zustand') || t2Crit10Eval.reason.includes('Condition'), 'T2 weapon with 10% crit should trigger Critical Condition');
+
+      // Test 4: Configurable stockKeepCount (e.g. set to 2)
+      const origStockKeepCount = globalThis.CONFIG.stockKeepCount;
+      globalThis.CONFIG.stockKeepCount = 2;
+      const stockCountPants = [
+        makeMockItem('pants', 3, 15),
+        makeMockItem('pants', 3, 15),
+        makeMockItem('pants', 3, 15),
+        makeMockItem('pants', 3, 15)
+      ];
+      globalThis.calculateInventoryRankings(stockCountPants);
+      const stockCountActions = stockCountPants.map(item => globalThis.evaluate(item, mockCtx).action);
+      const keepCount2 = stockCountActions.filter(a => a === 'KEEP').length;
+      assert.strictEqual(keepCount2, 2, 'With stockKeepCount=2, exactly 2 items should get KEEP');
+      globalThis.CONFIG.stockKeepCount = origStockKeepCount; // restore
+
+      // Test 5: T1-T3 bad rolls filter (< 50% excludes them from isStockKeep)
+      // T3 pants range: 11 - 15.
+      // Stat 11 (0% roll) should NOT be kept even if it's the only one
+      const singleBadPant = [makeMockItem('pants', 3, 11)];
+      globalThis.calculateInventoryRankings(singleBadPant);
+      assert.strictEqual(singleBadPant[0].isStockKeep, false, 'T3 pant with stat 11 (0% roll) should not be stockKeep even if alone');
+
+      // Stat 12 (25% roll) should NOT be kept even if it's the only one
+      const singleBadPant2 = [makeMockItem('pants', 3, 12)];
+      globalThis.calculateInventoryRankings(singleBadPant2);
+      assert.strictEqual(singleBadPant2[0].isStockKeep, false, 'T3 pant with stat 12 (25% roll) should not be stockKeep even if alone');
+
+      // Stat 13 (50% roll) should be kept
+      const singleGoodPant = [makeMockItem('pants', 3, 13)];
+      globalThis.calculateInventoryRankings(singleGoodPant);
+      assert.strictEqual(singleGoodPant[0].isStockKeep, true, 'T3 pant with stat 13 (50% roll) should be stockKeep if alone');
+
+      console.log('Diamond Spam and Crit Threshold tests passed successfully.');
+
       console.log('Success! The script loaded and initialized without throwing any runtime errors.');
       process.exit(0);
     } catch (err) {

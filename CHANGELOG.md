@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## 2026-06-30 | Item-Advisor: Konfigurierbarer Bestand, T1-T3 Filter & Waffenkrit-Fix (v0.7.18)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `tests/test-advisor-load.js`, `docs/wiki/`
+
+**Änderungen (Deutsch):**
+- **Einstellbare Bestandsgröße (Stock Keep)**: Die Anzahl der zu behaltenden Gegenstände im Bestand pro Typ/Tier kann nun im Einstellungsmenü konfiguriert werden (Standard: 3). Gegenstände außerhalb dieser Grenze erhalten keinen Diamanten (`💎 KEEP`).
+- **Aussortierung schlechter T1-T3 Gegenstände**: Gegenstände der Stufen T1 bis T3 werden vom Diamanten ausgeschlossen, wenn ihr Wert in der unteren Hälfte (< 50 %) des möglichen Wertebereichs liegt.
+- **T1/T2 Waffenkrit-Anpassung**: Die Mindest-Kritwerte für den „kritischen Zustand“ (`avoidScrap`) wurden für T1 auf $\ge$ 5 % und für T2 auf $\ge$ 10 % (also die jeweiligen Maximalwerte) angehoben.
+
+**Changes (English):**
+- **Configurable Stock Keep Count**: The number of items to keep in stock per type/tier is now configurable in the settings menu (default: 3). Items beyond this limit will not receive a `💎 KEEP` badge.
+- **Exclusion of Low-Roll T1-T3 Items**: Items in tiers T1 to T3 are excluded from the `💎 KEEP` advice if their stat roll is in the lower half (< 50%) of the possible range.
+- **T1/T2 Weapon Crit Adjustments**: The minimum crit thresholds for "avoidScrap" (Critical Condition) have been increased to $\ge$ 5% for T1 and $\ge$ 10% for T2 (the maximum possible rolls).
+
 ## 2026-06-30 | Crafting-Advisor: Korrektur der Ressourcenkosten bei T6 (v0.7.17)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `tests/test-advisor-load.js`

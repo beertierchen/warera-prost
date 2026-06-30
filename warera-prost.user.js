@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.7.17
+// @version      0.7.18
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -63,6 +63,7 @@
     alliedCountryCodes: ['de','pt','es','gm','ir','na','sr','th','at','fi','ie','no','se','uk','va','bf','cd','ye','ne','au','br','id'],
     featMarketGraph: false,
     featPnlTracker: true,
+    stockKeepCount: 3,
 
     // --- caching / rate-limit ---
     priceCacheTtlMs: 20 * 60 * 1000,    // 20 min (spec: 15-30 min)
@@ -312,6 +313,9 @@
         settingsAlliedCodesPlaceholder: 'de,pt,...',
         settingsTitle: 'WareEra Inventory Advisor',
         gearTitle: 'WareEra Inventory Advisor-Settings',
+        settingsAdvisorSettingsLabel: 'Inventory Advisor Options',
+        settingsStockKeepCountLabel: 'Stock items to keep per type:',
+        settingsStockKeepCountSub: '(Items beyond this limit will not get a 💎 KEEP badge)',
         settingsDesc: 'The Inventory Advisor gives a quick overview of whether items should be kept (KEEP/HOLD), sold (SELL), or salvaged (SCRAP).',
         settingsApiToken: 'API Token (api2.warera.io)',
         settingsTokenPlaceholder: 'Bearer token',
@@ -499,6 +503,9 @@
         settingsAlliedCodesPlaceholder: 'de,pt,...',
         settingsTitle: 'WareEra Inventory Advisor',
         gearTitle: 'WareEra Inventory Advisor-Einstellungen',
+        settingsAdvisorSettingsLabel: 'Optionen für den Item Advisor',
+        settingsStockKeepCountLabel: 'Anzahl zu behaltender Items im Bestand (pro Typ/Tier):',
+        settingsStockKeepCountSub: '(Gegenstände außerhalb dieser Grenze erhalten keinen Diamanten 💎)',
         settingsDesc: 'Der Inventory Advisor soll eine schnelle Übersicht geben, ob Items behalten (KEEP/HOLD), gewinnbringend verkauft (SELL) oder zerschreddert (SCRAP) werden sollten.',
         settingsApiToken: 'API-Token (api2.warera.io)',
         settingsTokenPlaceholder: 'Bearer-Token',
@@ -650,6 +657,7 @@
     scrapedPrices: NS + 'scrapedPrices',
     useLiveOffersApi: NS + 'useLiveOffers',
     showScrapFlip: NS + 'scrapFlip',
+    stockKeepCount: NS + 'stockKeepCount',
     featNotes: NS + 'featNotes',
     featBattleAdvisor: NS + 'featBattle',
     alliedCountryCodes: NS + 'alliedCodes',
@@ -1956,6 +1964,8 @@
     globalThis.slotForSkin = slotForSkin;
     globalThis.isShopPage = isShopPage;
     globalThis.detectItem = detectItem;
+    globalThis.evaluate = evaluate;
+    globalThis.calculateInventoryRankings = calculateInventoryRankings;
   }
 
   function getLocale() {
@@ -2471,43 +2481,39 @@
       return decide(ACTION.KEEP, reasons, market, scrapValue);
     }
 
-    // 2) Rule: Blue (T3) shoes/gloves/vest/pants basestat >= 11
-    if (tier === 3 && type !== 'weapon' && (type === 'boots' || type === 'gloves' || type === 'chest' || type === 'pants')) {
-      if (myStat >= 11) {
-        reasons.push(t('highRollT3', { stat: fmt(myStat) }));
-        return decide(ACTION.KEEP, reasons, market, scrapValue);
-      }
-    }
+    // 2) Rule: (Removed legacy T3 exception rule)
 
-    // 3) Rule: Weapon Crit checks to avoid scrap for T1/T2
+    // 3) Rule: Weapon Crit checks to avoid scrap for T1/T2 (only absolute TOP-stats)
     let avoidScrap = false;
     if (type === 'weapon') {
       const crit = stats.crit ?? 0;
-      if (tier === 1 && crit >= 4) {
+      if (tier === 1 && crit >= 5) {
         avoidScrap = true;
-        reasons.push(t('critCondition', { tierLabel: 'T1', crit: fmt(crit), min: '4.00', range: '1% - 5%' }));
-      } else if (tier === 2 && crit >= 8) {
+        reasons.push(t('critCondition', { tierLabel: 'T1', crit: fmt(crit), min: '5.00', range: '1% - 5%' }));
+      } else if (tier === 2 && crit >= 10) {
         avoidScrap = true;
-        reasons.push(t('critCondition', { tierLabel: 'T2', crit: fmt(crit), min: '8.00', range: '6% - 10%' }));
+        reasons.push(t('critCondition', { tierLabel: 'T2', crit: fmt(crit), min: '10.00', range: '6% - 10%' }));
       }
     }
 
-    // 4) top roll -> KEEP (data-driven against live offers)
-    const top = isTopRoll(offerData, type, myStat);
-    if (top === true) {
-      reasons.push(t('topRollOffers', { stat: fmt(myStat), pct: Math.round(CONFIG.goodRollTopFraction * 100), offers: item.offerCount }));
-      return decide(ACTION.KEEP, reasons, market, scrapValue);
-    }
-    if (top === false) {
-      reasons.push(t('notTopRollOffers', { stat: fmt(myStat), offers: item.offerCount }));
-    } else {
-      if (item.isInventoryTopRoll === true) {
-        reasons.push(t('topRollInv', { stat: fmt(myStat), pct: Math.round(CONFIG.goodRollTopFraction * 100), items: item.inventorySampleCount }));
+    // 4) top roll -> KEEP (data-driven against live offers) - only if not explicitly rejected from stock keep
+    if (item.isStockKeep !== false) {
+      const top = isTopRoll(offerData, type, myStat);
+      if (top === true) {
+        reasons.push(t('topRollOffers', { stat: fmt(myStat), pct: Math.round(CONFIG.goodRollTopFraction * 100), offers: item.offerCount }));
         return decide(ACTION.KEEP, reasons, market, scrapValue);
-      } else if (item.isInventoryTopRoll === false) {
-        reasons.push(t('notTopRollInv', { stat: fmt(myStat), items: item.inventorySampleCount }));
+      }
+      if (top === false) {
+        reasons.push(t('notTopRollOffers', { stat: fmt(myStat), offers: item.offerCount }));
       } else {
-        reasons.push(t('unknownRollRank'));
+        if (item.isInventoryTopRoll === true) {
+          reasons.push(t('topRollInv', { stat: fmt(myStat), pct: Math.round(CONFIG.goodRollTopFraction * 100), items: item.inventorySampleCount }));
+          return decide(ACTION.KEEP, reasons, market, scrapValue);
+        } else if (item.isInventoryTopRoll === false) {
+          reasons.push(t('notTopRollInv', { stat: fmt(myStat), items: item.inventorySampleCount }));
+        } else {
+          reasons.push(t('unknownRollRank'));
+        }
       }
     }
 
@@ -3129,7 +3135,39 @@
 
       const size = groupItems.length;
       groupItems.forEach((item, index) => {
-        item.isStockKeep = index < 3; // Keep the top 3 of stock
+        let keep = index < CONFIG.stockKeepCount;
+
+        // T1-T3 bad stats filter: exclude items from stock keep if roll is < 50%
+        if (keep && item.tier != null && item.tier <= 3) {
+          const type = item.type;
+          const tier = item.tier;
+          const myStat = item.myStat;
+          
+          let min = 0, max = 0;
+          if (type === 'weapon') {
+            const wRange = CONFIG.weaponRanges[tier];
+            if (wRange) {
+              const critWeight = CONFIG.weaponCritWeight;
+              min = wRange.dmg.min + wRange.crit.min * critWeight;
+              max = wRange.dmg.max + wRange.crit.max * critWeight;
+            }
+          } else {
+            const range = CONFIG.statRangesByTier[type]?.[tier];
+            if (range) {
+              min = range.min;
+              max = range.max;
+            }
+          }
+
+          if (max > min && myStat != null) {
+            const rollPct = ((myStat - min) / (max - min)) * 100;
+            if (rollPct < 50) {
+              keep = false;
+            }
+          }
+        }
+
+        item.isStockKeep = keep;
         item.stockRank = index + 1;
         item.stockSize = size;
 
@@ -4221,6 +4259,7 @@ async function scanInventory(force) {
     const prevPillDebuff = bg.querySelector('.wia-pill-debuff')?.value ?? CONFIG.pillDebuffH;
     const prevPillPrefFrom = bg.querySelector('.wia-pill-pref-from')?.value ?? CONFIG.pillPrefWindowFrom;
     const prevPillPrefTo = bg.querySelector('.wia-pill-pref-to')?.value ?? CONFIG.pillPrefWindowTo;
+    const prevStockKeepCount = bg.querySelector('.wia-stock-keep-count')?.value ?? CONFIG.stockKeepCount;
 
     bg.innerHTML = `
       <div class="wia-modal">
@@ -4257,6 +4296,16 @@ async function scanInventory(force) {
           </div>
           <div class="wia-hint" hidden>${t('settingsScrapFlipHint')}</div>
         </div>
+        <details class="wia-advisor-settings" style="margin-top: 6px; margin-left: 24px;" open>
+          <summary style="font-size: 11px; color: #8b949e; cursor: pointer; user-select: none; font-weight: bold; outline: none; margin-bottom: 6px;">
+            🔧 ${t('settingsAdvisorSettingsLabel')}
+          </summary>
+          <div style="margin-top: 4px;">
+            <label style="font-size: 11px; color: #8b949e; display: block; margin: 0 0 2px;">${t('settingsStockKeepCountLabel')}</label>
+            <input type="number" min="1" max="10" class="wia-stock-keep-count" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;" value="${prevStockKeepCount}" />
+            <div style="font-size: 10px; color: #8b949e; margin-top: 2px;">${t('settingsStockKeepCountSub')}</div>
+          </div>
+        </details>
         <div class="wia-feat-row" style="margin-top: 6px;">
           <div style="display: flex; align-items: center; gap: 8px;">
             <input type="checkbox" class="wia-feat-notes" style="width: auto;" ${prevFeatNotes ? 'checked' : ''} />
@@ -4469,6 +4518,10 @@ async function scanInventory(force) {
       const showScrapFlip = bg.querySelector('.wia-scrap-flip').checked;
       GM_setValue(KEYS.showScrapFlip, showScrapFlip);
       CONFIG.showScrapFlip = showScrapFlip;
+
+      const stockKeepCount = parseInt(bg.querySelector('.wia-stock-keep-count').value, 10) || 3;
+      GM_setValue(KEYS.stockKeepCount, stockKeepCount);
+      CONFIG.stockKeepCount = stockKeepCount;
 
       const featNotes = bg.querySelector('.wia-feat-notes').checked;
       GM_setValue(KEYS.featNotes, featNotes);
@@ -9045,6 +9098,7 @@ function checkInventoryDeltaWear() {
     }
     CONFIG.useLiveOffersApi = GM_getValue(KEYS.useLiveOffersApi, false);
     CONFIG.showScrapFlip = GM_getValue(KEYS.showScrapFlip, false);
+    CONFIG.stockKeepCount = parseInt(GM_getValue(KEYS.stockKeepCount, 3), 10) || 3;
     CONFIG.featNotes = GM_getValue(KEYS.featNotes, false);
     CONFIG.featBattleAdvisor = GM_getValue(KEYS.featBattleAdvisor, false);
     CONFIG.alliedCountryCodes = GM_getValue(KEYS.alliedCountryCodes, CONFIG.alliedCountryCodes);

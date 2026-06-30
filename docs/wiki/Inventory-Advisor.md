@@ -12,7 +12,7 @@ value against the market. Read-only — it never sells, scraps, or moves anythin
 
 | Badge | Meaning | When |
 | --- | --- | --- |
-| 💎 **KEEP** (blue) | Keep the item. | One of your top 3 in stock (by type/tier), **or** in the top 33% ("Top Roll") of live offers / your inventory. |
+| 💎 **KEEP** (blue) | Keep the item. | One of your top stock items (default top 3, configurable in settings, by type/tier) — provided its stats for T1-T3 are not in the lower half of the possible range. Also applies to market items in the top 33% ("Top Roll") of live offers. |
 | ✋ **HOLD** (orange) | Reserve it. | In the best 10% of the theoretically possible stat range ("Top Itemscore"). Only assigned when it is *not* 💎 KEEP. |
 | 💰 **SELL** (green) | Sell on the market. | Net market price (minus 1% tax) **exceeds** salvage value. |
 | 🔨 **SCRAP** (red) | Salvage it. | Salvage value **exceeds** net market price. |
@@ -26,7 +26,7 @@ PROST reserves a small strip **above and below** each card, so its overlays sit
 in their own band and no longer cover the game's native stats.
 
 - **Top-left — score pill:** the armor stat or weapon score.
-  - *Blue background* = top 3 in stock (Stock Keep).
+  - *Blue background* = part of the stock to keep (Stock Keep).
   - *Gray* = normal.
 - **Top-right — recommendation badge:** the 💎 / ✋ / 💰 / 🔨 symbol from above.
 - **Bottom — price strip** (`🔨 [scrap value] / 💰 [market price]`):

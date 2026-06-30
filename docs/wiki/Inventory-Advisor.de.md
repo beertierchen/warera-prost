@@ -12,7 +12,7 @@ Rein lesend, keine Automatisierung.
 
 | Symbol | Empfehlung | Bedeutung |
 | --- | --- | --- |
-| 💎 | **KEEP** (Blau) | Behalten. Greift bei deinen Top-3-Beständen (je Typ/Tier) oder wenn das Item im obersten Drittel (Top Roll, Top 33 %) der Live-Angebote bzw. deines Inventars liegt. |
+| 💎 | **KEEP** (Blau) | Behalten. Greift bei deinen Top-Beständen (standardmäßig Top 3, in den Einstellungen anpassbar, je Typ/Tier) — vorausgesetzt, die Stats liegen bei T1-T3 nicht in der unteren Hälfte des Wertebereichs. Gilt auch für Marktgegenstände im obersten Drittel (Top Roll, Top 33 %) der Live-Angebote. |
 | ✋ | **HOLD** (Orange) | Zurückhalten/reservieren. Item liegt in den besten 10 % der theoretisch möglichen Stat-Spanne (Top Itemscore). Wird nur vergeben, wenn nicht ohnehin 💎 KEEP. |
 | 💰 | **SELL** (Grün) | Auf dem Markt verkaufen. Netto-Marktpreis (abzüglich 1 % Steuer) liegt über dem Schrottwert. |
 | 🔨 | **SCRAP** (Rot) | Zerlegen/verschrotten. Schrottwert liegt über dem Netto-Marktpreis. |
@@ -26,7 +26,7 @@ PROST reserviert einen schmalen Streifen **über und unter** jeder Karte, sodass
 die Overlays in einem eigenen Band liegen und die nativen Stats nicht mehr verdecken.
 
 - **Oben links — Score-Pille:** Rüstungs-Stat bzw. Waffen-Score.
-  - *Blauer Hintergrund* = Top 3 im Bestand (Stock Keep).
+  - *Blauer Hintergrund* = Gehört zu den zu behaltenden Beständen (Stock Keep).
   - *Grau* = normal.
 - **Oben rechts — Empfehlungs-Badge:** das Symbol 💎 / ✋ / 💰 / 🔨 von oben.
 - **Unten — Preis-Streifen** (`🔨 [Schrottwert] / 💰 [Marktpreis]`):

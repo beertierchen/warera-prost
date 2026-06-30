@@ -26,6 +26,8 @@ Panel kompakt bleibt:
   [Spieler-Notizen](Player-Notes.de).
 - **Battle-Advisor ⚔️** - *experimentell.* Button-Hervorhebung auf Kampfseiten; blendet
   darunter das Feld für **Verbündete Ländercodes** ein. Siehe [Battle Advisor](Battle-Advisor.de).
+- **🔧 Item-Advisor-Optionen**:
+  - **Anzahl zu behaltender Items im Bestand (pro Typ/Tier)**: Legt die Bestandsgrenze fest, wie viele Gegenstände desselben Typs/Tiers als `💎 KEEP` empfohlen werden sollen (Standard: 3). Gegenstände außerhalb dieser Grenze erhalten keinen Diamanten.
 
 ## Diagnose
 

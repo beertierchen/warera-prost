@@ -24,6 +24,7 @@ panel stays compact.
 | **User notes on player links** | *Experimental.* Enables [Player Notes](Player-Notes). |
 | **Battle advisor** | *Experimental.* Enables [Battle Advisor](Battle-Advisor); reveals the allied-codes field. |
 | **Allied country codes** | Comma-separated, lowercase (e.g. `de,pt`). Your side on battle pages. |
+| **🔧 Item Advisor Options** | Configures **Stock items to keep per type** (defines the maximum limit of items of a specific type/tier to keep in stock as `💎 KEEP`, default: 3). |
 
 ## Diagnostics
 
