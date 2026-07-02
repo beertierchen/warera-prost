@@ -50,7 +50,7 @@ class MockElement {
     this.parentElement = null;
     this.attributes = new Map();
     this.textContent = '';
-    this.offsetWidth = 50;
+    this.offsetWidth = 600;
     this.offsetHeight = 50;
   }
 
@@ -1040,6 +1040,16 @@ try {
   const hpMarkerNew = hpTrack.querySelector('.wia-hnh-floor-marker');
   assert.ok(hpMarkerNew, 'HP floor marker should be found after re-render');
   assert.ok(hpMarkerNew.classList.contains('wia-hnh-alert'), 'HP marker should have alert style when current is below floor');
+
+  // Test narrow layout (< 400px) which should hide the spendable suffix
+  layoutUserMenu.offsetWidth = 350;
+  globalThis.renderHnHBudget();
+  assert.strictEqual(hpBudgetVal.textContent, '62%', 'HP label should hide spendable suffix when under 400px');
+  assert.strictEqual(hungerBudgetVal.textContent, '100%', 'Hunger label should hide spendable suffix when under 400px');
+
+  // Restore wide state for subsequent tests
+  layoutUserMenu.offsetWidth = 600;
+  globalThis.renderHnHBudget();
 
   // Test no window configured -> should remove overlays / bail (Issue 1)
   globalThis.CONFIG.pillPrefWindowFrom = '';

@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 2026-07-02 | Topbar Layout & Bar Label Optimizations (v0.7.20)
+
+**Geänderte Dateien:** `warera-prost.user.js`
+
+**Änderungen (Deutsch):**
+- **Behebung von Layout-Verzerrungen in der Topbar**: Wenn die in-game Statusleiste (Nutzer-Menü) schmaler als 570px gezogen wird, löst sich das Pillen-Erinnerungs-Badge aus dem normalen Textfluss und verhält sich als schwebende Blase. Das verhindert ein Überlappen der nativen Spielanzeigen.
+- **Kompakte Statusanzeigen bei schmalem Fenster**: Unterschreitet die Breite der Menüleiste 400px, wird der Text "... frei" ausgeblendet und es wird nur noch die Prozentzahl (z.B. `62%`) angezeigt. Die Farbhervorhebung (grün für ausreichend Puffer, rot für leer/Grenzbereich) bleibt erhalten. Dies verhindert das Überlappen mit der nativen Regenerationsanzeige.
+
+**Changes (English):**
+- **Fixed Top-bar Layout Distortions**: When the in-game user-menu panel is resized narrower than 570px, the pill reminder badge detaches from the normal inline layout flow and behaves as a floating bubble. This prevents native game stats from overlapping.
+- **Compact Stat Labels on Narrow Screens**: When the panel width falls below 400px, the "... free" text suffix is hidden, rendering only the percentage (e.g. `62%`). The status colors (green for free budget, red for empty/exhausted) are preserved. This prevents overlap with the native regeneration counter.
+
 ## 2026-06-30 | Advisor Heartbeat Fix (v0.7.19)
 
 **Geänderte Dateien:** `warera-prost.user.js`

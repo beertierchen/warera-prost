@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.7.19
+// @version      0.7.20
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -1927,6 +1927,7 @@
     globalThis.parseHealthAndHunger = parseHealthAndHunger;
     globalThis.updatePillState = updatePillState;
     globalThis.injectPillBadge = injectPillBadge;
+    globalThis.shouldPillFloat = shouldPillFloat;
     globalThis.highlightCocaineItems = highlightCocaineItems;
     globalThis.teardownPillReminder = teardownPillReminder;
     globalThis.renderHnHBudget = renderHnHBudget;
@@ -3878,6 +3879,26 @@ async function scanInventory(force) {
       #wia-pill-badge:hover .wia-pill-hover-details {
         display: block;
       }
+      /* Narrow-panel mode: pull the badge OUT of the inline flex flow so it
+         stops widening #layoutUserMenu (which squeezes the native stat
+         bubbles). Pinned bottom-right like the other floating bubbles;
+         mirrors how #wia-pnl-tracker rides a positioned wrapper. Toggled by
+         applyPillFloatState() via a ResizeObserver on the panel width. */
+      #wia-pill-badge.wia-pill-badge--float {
+        position: absolute;
+        right: 8px;
+        bottom: -12px;
+        margin: 0;
+        z-index: 10002;
+      }
+      /* Hover panel would otherwise open downward off the bottom edge when
+         floating — flip it above the badge. */
+      #wia-pill-badge.wia-pill-badge--float .wia-pill-hover-details {
+        top: auto;
+        bottom: 100%;
+        margin-top: 0;
+        margin-bottom: 8px;
+      }
       .wia-pill-detail-item { margin-bottom: 6px; }
       .wia-pill-detail-item strong { color: #58a6ff; }
 
@@ -5165,6 +5186,16 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
   let pillUpdateTimer = null;
   const PILL_OBS_OPTS = { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['style'] };
   let noneReadCount = 0;
+  // Panel width (px) below which the pill badge floats out of the inline
+  // flow. Measured against #layoutUserMenu's own box (ResizeObserver), NOT
+  // the viewport — the game panel is user-resizable independent of the window.
+  const PILL_FLOAT_BREAKPOINT = 570;
+  // Panel width (px) below which the "... frei" labels are hidden to avoid overlap
+  const PILL_LABEL_HIDE_BREAKPOINT = 400;
+  let pillFloatObserver = null;
+  let pillFloatObservedNode = null;
+  let pillIsFloating = false;
+  let pillResizeRaf = 0;
 
   function initPillReminder() {
     if (pillInterval) clearInterval(pillInterval);
@@ -5176,6 +5207,7 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
       pillObserved = true;
     }
     observePillBars();
+    attachPillFloatObserver();
   }
 
   // Live-update the badge + budget when H&H changes (eat/attack), instead of
@@ -5213,6 +5245,7 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
     document.removeEventListener('click', handlePillDocumentClick);
     pillObserved = false;
     if (pillBarObserver) { pillBarObserver.disconnect(); }
+    detachPillFloatObserver();
     if (pillUpdateTimer) { clearTimeout(pillUpdateTimer); pillUpdateTimer = null; }
     noneReadCount = 0;
     removePillBadge();
@@ -5392,13 +5425,24 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
       label.textContent = `${pct}%`;
       label.style.color = '';
     } else {
-      if (spendable === 0) {
-        label.textContent = `${pct}% · ${t('pillSpendableNone')}`;
-        label.style.color = '#ff7b72';
+      const menu = document.getElementById('layoutUserMenu');
+      const panelWidth = menu
+        ? (typeof menu.getBoundingClientRect === 'function' ? menu.getBoundingClientRect().width : (menu.offsetWidth || 0))
+        : 0;
+      const hideSpendable = panelWidth > 0 && panelWidth < PILL_LABEL_HIDE_BREAKPOINT;
+
+      if (hideSpendable) {
+        label.textContent = `${pct}%`;
+        label.style.color = spendable === 0 ? '#ff7b72' : '#3fb950';
       } else {
-        const valText = spendable % 1 === 0 ? spendable : spendable.toFixed(1);
-        label.textContent = `${pct}% · ${t('pillSpendableFree', { val: valText })}`;
-        label.style.color = '#3fb950';
+        if (spendable === 0) {
+          label.textContent = `${pct}% · ${t('pillSpendableNone')}`;
+          label.style.color = '#ff7b72';
+        } else {
+          const valText = spendable % 1 === 0 ? spendable : spendable.toFixed(1);
+          label.textContent = `${pct}% · ${t('pillSpendableFree', { val: valText })}`;
+          label.style.color = '#3fb950';
+        }
       }
     }
   }
@@ -5994,6 +6038,13 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
                    document.querySelector('header');
     if (!anchor) return;
 
+    // Establish a containing block so the float variant (position:absolute)
+    // anchors to the panel, not some far ancestor. Additive + idempotent:
+    // 'relative' doesn't move a statically-positioned element.
+    if (anchor.id === 'layoutUserMenu' && getComputedStyle(anchor).position === 'static') {
+      anchor.style.position = 'relative';
+    }
+
     let badge = document.getElementById('wia-pill-badge');
     if (!badge) {
       badge = document.createElement('div');
@@ -6002,6 +6053,8 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
     }
 
     renderPillBadge(badge);
+    applyPillFloatState(badge);
+    attachPillFloatObserver(); // ensure observer matches the active menu node (idempotent)
   }
 
   function renderPillBadge(badge) {
@@ -6096,6 +6149,81 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
   function removePillBadge() {
     const badge = document.getElementById('wia-pill-badge');
     if (badge) badge.remove();
+  }
+
+  // Pure: should the badge float, given a measured panel width? Fail-open to
+  // in-flow (false) for unmeasured/degenerate widths.
+  function shouldPillFloat(width) {
+    return Number.isFinite(width) && width > 0 && width < PILL_FLOAT_BREAKPOINT;
+  }
+
+  // Toggle float mode from the panel's measured width. Idempotent: no DOM
+  // write unless the float decision actually changed.
+  function applyPillFloatState(badge) {
+    if (!badge) return;
+    const menu = document.getElementById('layoutUserMenu');
+    // getBoundingClientRect().width is the rendered content box after layout.
+    // Fall back to offsetWidth if getBoundingClientRect is not defined (e.g. in test environments).
+    const width = menu
+      ? (typeof menu.getBoundingClientRect === 'function' ? menu.getBoundingClientRect().width : (menu.offsetWidth || 0))
+      : 0;
+    const wantFloat = shouldPillFloat(width);
+    if (wantFloat === pillIsFloating && badge.classList.contains('wia-pill-badge--float') === wantFloat) {
+      return; // already in the desired state
+    }
+    pillIsFloating = wantFloat;
+    if (wantFloat) {
+      badge.classList.add('wia-pill-badge--float');
+    } else {
+      badge.classList.remove('wia-pill-badge--float');
+    }
+    dbg('pillReminder', 'debug', 'float', wantFloat, 'panelWidth', Math.round(width));
+  }
+
+  // Watch the PANEL's own width (not the viewport) — the game user-menu is a
+  // user-resizable in-app panel, so window resize / matchMedia never fire on a
+  // drag. ResizeObserver on #layoutUserMenu is the only correct trigger.
+  function attachPillFloatObserver() {
+    if (typeof ResizeObserver === 'undefined') {
+      dbg('pillReminder', 'debug', 'ResizeObserver unavailable — float disabled');
+      return;
+    }
+    const menu = document.getElementById('layoutUserMenu');
+    if (!menu) {
+      pillFloatObservedNode = null;
+      return;
+    }
+    if (menu === pillFloatObservedNode) {
+      return; // Already observing this active node
+    }
+    if (!pillFloatObserver) {
+      pillFloatObserver = new ResizeObserver(() => {
+        // Coalesce burst of resize notifications during a drag into one frame.
+        if (pillResizeRaf) return;
+        pillResizeRaf = requestAnimationFrame(() => {
+          pillResizeRaf = 0;
+          const badge = document.getElementById('wia-pill-badge');
+          if (badge) applyPillFloatState(badge);
+          // Budget label ("· ⬇ N frei") is width-dependent too — refresh on
+          // resize so it hides under PILL_LABEL_HIDE_BREAKPOINT immediately,
+          // not on the next 10s tick / H&H change.
+          renderHnHBudget();
+        });
+      });
+    }
+    pillFloatObserver.disconnect();   // re-attach cleanly
+    pillFloatObserver.observe(menu);
+    pillFloatObservedNode = menu;
+  }
+
+  function detachPillFloatObserver() {
+    if (pillFloatObserver) pillFloatObserver.disconnect();
+    if (pillResizeRaf) {
+      cancelAnimationFrame(pillResizeRaf);
+      pillResizeRaf = 0;
+    }
+    pillFloatObservedNode = null;
+    pillIsFloating = false;
   }
 
   function highlightCocaineItems() {
@@ -8454,6 +8582,7 @@ function checkInventoryDeltaWear() {
           pillBarObserver.observe(m, PILL_OBS_OPTS);
         }
       }
+      attachPillFloatObserver(); // #layoutUserMenu may be a fresh node
     }
   }
 
