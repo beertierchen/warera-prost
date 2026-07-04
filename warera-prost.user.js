@@ -340,6 +340,25 @@
         bountyLabelAllies: 'Ally-Bounty',
         bountyLabelCascade: 'Ally-Casc-Bounty',
         settingsFeatBounty: 'Bounty push notifications (ntfy.sh)',
+        bountyHistoryBtn: 'Bounty History & Stats',
+        bountyHistoryTitle: 'Bounty History & Statistics',
+        bountyLogTab: 'Log',
+        bountyStatsTab: 'Statistics',
+        bountyTotal: 'Total: {n}',
+        bountyToday: 'Today: {n}',
+        bountyThisWeek: 'This week: {n}',
+        bountyByCountry: 'By country',
+        bountyTableTime: 'Time',
+        bountyTableCountry: 'Country',
+        bountyTableSide: 'Side',
+        bountyTablePool: 'Pool',
+        bountyTableRate: 'Rate',
+        bountyTableAllies: 'Allies',
+        bountyHistoryEmpty: 'No bounties recorded yet.',
+        bountyHistoryClear: 'Clear History',
+        bountyHistoryCleared: 'History cleared.',
+        bountyHistoryLoadMore: 'Load more',
+        bountyHistoryClose: 'Close',
         settingsNtfyTopic: 'ntfy topic (base)',
         settingsNtfyTopicSecret: 'Topic secret (optional)',
         settingsBountyOwnCountry: 'Own country / ally override (name or countryIds)',
@@ -544,6 +563,25 @@
         bountyLabelAllies: 'Ally-Bounty',
         bountyLabelCascade: 'Ally-Casc-Bounty',
         settingsFeatBounty: 'Bounty-Push-Benachrichtigungen (ntfy.sh)',
+        bountyHistoryBtn: 'Bounty-Verlauf & Statistik',
+        bountyHistoryTitle: 'Bounty-Verlauf & Statistik',
+        bountyLogTab: 'Verlauf',
+        bountyStatsTab: 'Statistik',
+        bountyTotal: 'Gesamt: {n}',
+        bountyToday: 'Heute: {n}',
+        bountyThisWeek: 'Diese Woche: {n}',
+        bountyByCountry: 'Nach Land',
+        bountyTableTime: 'Zeit',
+        bountyTableCountry: 'Land',
+        bountyTableSide: 'Seite',
+        bountyTablePool: 'Topf',
+        bountyTableRate: 'Rate',
+        bountyTableAllies: 'Verbündete',
+        bountyHistoryEmpty: 'Noch keine Kopfgeld-Ereignisse aufgezeichnet.',
+        bountyHistoryClear: 'Verlauf löschen',
+        bountyHistoryCleared: 'Verlauf gelöscht.',
+        bountyHistoryLoadMore: 'Mehr laden',
+        bountyHistoryClose: 'Schließen',
         settingsNtfyTopic: 'ntfy-Topic (Basis)',
         settingsNtfyTopicSecret: 'Topic-Secret (optional)',
         settingsBountyOwnCountry: 'Eigenes Land / Ally-Override (Name oder countryIds)',
@@ -730,6 +768,7 @@
     bountyAllianceNameCache: NS + 'bountyAllianceNameCache',
     apiBaseGatewayMigrated: NS + 'apiBaseGatewayMigrated',
     bountyAutoTopic: NS + 'bountyAutoTopic',
+    bountyHistory: NS + 'bountyHistory',
   };
 
   const memoryCache = {};
@@ -4307,6 +4346,15 @@ async function scanInventory(force) {
       .wia-pnl-tracker:hover .wia-pnl-hover {
         display: block;
       }
+
+      /* ── Bounty History modal ── */
+      .wia-bounty-history-btn:hover {
+        background: rgba(88,166,255,0.2) !important;
+        border-color: rgba(88,166,255,0.4) !important;
+      }
+      .wia-bounty-history-btn + .wia-bounty-history-btn {
+        margin-left: 8px;
+      }
     `);
   }
 
@@ -4539,6 +4587,7 @@ async function scanInventory(force) {
               <div class="wia-bounty-detected-identity" style="font-size: 10px; color: #8b949e; margin-top: 2px;">Erkenne Identität...</div>
             </div>
           </details>
+          <button type="button" class="wia-bounty-history-btn" style="margin-top: 6px; margin-left: 24px; font-size: 11px; padding: 3px 8px; cursor: pointer; color: #58a6ff; background: rgba(88,166,255,0.1); border: 1px solid rgba(88,166,255,0.2); border-radius: 3px;">${t('bountyHistoryBtn')}</button>
         </div>
         <button type="button" class="wia-help-toggle" aria-expanded="false">${t('settingsHelpSummary')}</button>
         <aside class="wia-help-panel" hidden>
@@ -4707,6 +4756,9 @@ async function scanInventory(force) {
     if (topicInput) topicInput.oninput = updateTopicHints;
     if (secretInput) secretInput.oninput = updateTopicHints;
     if (scopeSelect) scopeSelect.onchange = updateTopicHints;
+
+    const historyBtn = bg.querySelector('.wia-bounty-history-btn');
+    if (historyBtn) historyBtn.onclick = (e) => { e.preventDefault(); renderBountyHistoryModal(); };
 
     resolveOwnIdentity().then((identity) => {
       resolvedIdentity = identity;
@@ -9743,7 +9795,8 @@ function checkInventoryDeltaWear() {
         if (await topicHasBounty(key)) { seen[key] = now(); continue; }   // cross-client dedup
         if (await sendNtfy(b)) {
           seen[key] = now();                          // mark seen only on 2xx
-          
+          bountyHistoryAdd(b);                        // record in history log (non-blocking)
+
           // Mirror to global topic wia-bounty-all if the current active topic is not already wia-bounty-all
           const activeTopic = getEffectiveTopic();
           if (activeTopic && !activeTopic.startsWith('wia-bounty-all')) {
@@ -9884,6 +9937,246 @@ function checkInventoryDeltaWear() {
     bountyColdStartDone = false;
     setHealth('bountyNotify', 'idle', 'disabled in settings');
   }
+
+  // ── Bounty History & Statistics ──
+  const BOUNTY_HISTORY_MAX = 1000;
+  let bountyHistoryBg = null;
+
+  function bountyHistoryLoad() {
+    try {
+      const raw = GM_getValue(KEYS.bountyHistory, null);
+      if (!raw) return [];
+      const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      dbg('bountyNotify', 'error', 'history load failed, resetting', e.message);
+      GM_setValue(KEYS.bountyHistory, JSON.stringify([]));
+      return [];
+    }
+  }
+
+  function bountyHistorySave(store) {
+    if (!Array.isArray(store)) store = [];
+    if (store.length > BOUNTY_HISTORY_MAX) {
+      store.sort((a, b) => (b.notifiedAt || 0) - (a.notifiedAt || 0));
+      store = store.slice(0, BOUNTY_HISTORY_MAX);
+    }
+    try {
+      GM_setValue(KEYS.bountyHistory, JSON.stringify(store));
+    } catch (e) {
+      dbg('bountyNotify', 'error', 'history save failed (quota?)', e.message);
+      // If quota exceeded, halve the store and retry
+      try {
+        store = store.slice(Math.floor(store.length / 2));
+        GM_setValue(KEYS.bountyHistory, JSON.stringify(store));
+      } catch (e2) {
+        dbg('bountyNotify', 'error', 'history save retry failed', e2.message);
+      }
+    }
+  }
+
+  function bountyHistoryAdd(bounty) {
+    const store = bountyHistoryLoad();
+    const id = `${bounty.battleId}-${bounty.side}-${bounty.effectiveAt}`;
+    if (store.some((e) => e.id === id)) return;
+    const entry = {
+      id,
+      battleId: bounty.battleId,
+      side: bounty.side,
+      country: bounty.country,
+      attackerCountry: bounty.attackerCountry,
+      defenderCountry: bounty.defenderCountry,
+      effectiveAt: bounty.effectiveAt,
+      effectiveAtEpoch: bounty.effectiveAtEpoch || Date.parse(bounty.effectiveAt),
+      moneyPool: bounty.moneyPool,
+      ratePer1k: bounty.ratePer1k,
+      regionId: bounty.regionId || null,
+      warId: bounty.warId || null,
+      notifiedAt: Date.now()
+    };
+    store.push(entry);
+    // Resolve country name async (non-blocking)
+    resolveCountryName(bounty.country).then((name) => {
+      const s = bountyHistoryLoad();
+      const match = s.find((e) => e.id === id);
+      if (match) { match.countryName = name; bountyHistorySave(s); }
+    }).catch(() => {});
+    bountyHistorySave(store);
+  }
+
+  function bountyHistoryGetAll() {
+    const store = bountyHistoryLoad();
+    store.sort((a, b) => (b.notifiedAt || 0) - (a.notifiedAt || 0));
+    return store;
+  }
+
+  function bountyHistoryGetStats() {
+    const store = bountyHistoryLoad();
+    const nowMs = Date.now();
+    const oneDay = 86400000;
+    const today = store.filter((e) => (e.notifiedAt || 0) > nowMs - oneDay).length;
+    const thisWeek = store.filter((e) => (e.notifiedAt || 0) > nowMs - 7 * oneDay).length;
+    const byCountry = {};
+    for (const e of store) {
+      const key = e.countryName || e.country || '?';
+      byCountry[key] = (byCountry[key] || 0) + 1;
+    }
+    const topCountries = Object.entries(byCountry)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10);
+    return { total: store.length, today, thisWeek, topCountries };
+  }
+
+  function bountyHistoryClear() {
+    GM_setValue(KEYS.bountyHistory, JSON.stringify([]));
+    dbg('bountyNotify', 'debug', 'history cleared');
+  }
+
+  function renderBountyHistoryModal() {
+    if (bountyHistoryBg) { bountyHistoryBg.remove(); bountyHistoryBg = null; return; }
+    const bg = document.createElement('div');
+    bg.className = 'wia-modal-bg';
+    bg.style.cssText = 'position: fixed; inset: 0; z-index: 100000; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center;';
+
+    const stats = bountyHistoryGetStats();
+    const allEntries = bountyHistoryGetAll();
+    const pageSize = 50;
+    let displayCount = pageSize;
+
+    const modal = document.createElement('div');
+    modal.className = 'wia-modal';
+    modal.style.cssText = 'background: #161b22; color: #c9d1d9; border: 1px solid #30363d; border-radius: 10px; padding: 20px; width: 700px; max-width: 95vw; font: 13px/1.5 system-ui, sans-serif; box-shadow: 0 8px 30px rgba(0,0,0,.6); position: relative; max-height: 90vh; overflow-y: auto;';
+
+    // Title
+    const title = document.createElement('h2');
+    title.style.cssText = 'margin: 0 0 12px; font-size: 16px; display: flex; align-items: center; justify-content: space-between;';
+    title.innerHTML = `<span>${t('bountyHistoryTitle')}</span>
+      <span style="font-size: 11px; color: #8b949e; font-weight: normal;">${t('bountyTotal', { n: stats.total })}</span>`;
+    modal.appendChild(title);
+
+    // Stats row
+    const statsRow = document.createElement('div');
+    statsRow.style.cssText = 'display: flex; gap: 16px; margin-bottom: 12px; padding: 10px 12px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; font-size: 12px;';
+    statsRow.innerHTML = `
+      <span style="color: #58a6ff; font-weight: 600;">${t('bountyToday', { n: stats.today })}</span>
+      <span style="color: #d29922; font-weight: 600;">${t('bountyThisWeek', { n: stats.thisWeek })}</span>
+      <span style="color: #8b949e;">${t('bountyTotal', { n: stats.total })}</span>
+    `;
+    modal.appendChild(statsRow);
+
+    // Country breakdown
+    if (stats.topCountries.length) {
+      const countryRow = document.createElement('div');
+      countryRow.style.cssText = 'display: flex; flex-wrap: wrap; gap: 4px 12px; margin-bottom: 12px; font-size: 11px; color: #8b949e;';
+      countryRow.innerHTML = `<span style="font-weight: 600;">${t('bountyByCountry')}:</span> ` +
+        stats.topCountries.map(([name, count]) =>
+          `<span>${name} <strong style="color:#c9d1d9;">${count}</strong></span>`
+        ).join(' · ');
+      modal.appendChild(countryRow);
+    }
+
+    // Controls row
+    const controls = document.createElement('div');
+    controls.style.cssText = 'display: flex; gap: 8px; margin-bottom: 10px; align-items: center;';
+    const clearBtn = document.createElement('button');
+    clearBtn.className = 'wia-btn';
+    clearBtn.style.cssText = 'flex: 0 0 auto; padding: 4px 12px; font-size: 11px; border-radius: 4px; cursor: pointer; border: 1px solid #30363d; background: #21262d; color: #c9d1d9;';
+    clearBtn.textContent = t('bountyHistoryClear');
+    clearBtn.onclick = () => {
+      bountyHistoryClear();
+      bountyHistoryBg.remove(); bountyHistoryBg = null;
+      renderBountyHistoryModal();
+    };
+    controls.appendChild(clearBtn);
+
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'wia-btn';
+    closeBtn.style.cssText = 'flex: 0 0 auto; padding: 4px 12px; font-size: 11px; border-radius: 4px; cursor: pointer; border: 1px solid #30363d; background: #21262d; color: #c9d1d9; margin-left: auto;';
+    closeBtn.textContent = t('bountyHistoryClose');
+    closeBtn.onclick = () => { bg.remove(); bountyHistoryBg = null; };
+    controls.appendChild(closeBtn);
+    modal.appendChild(controls);
+
+    // Table
+    const tableWrap = document.createElement('div');
+    tableWrap.style.cssText = 'overflow-x: auto;';
+
+    const table = document.createElement('table');
+    table.style.cssText = 'width: 100%; border-collapse: collapse; font-size: 11px;';
+
+    const thead = document.createElement('thead');
+    thead.innerHTML = `<tr style="border-bottom: 1px solid #30363d; color: #8b949e; text-align: left;">
+      <th style="padding: 4px 6px; white-space: nowrap;">${t('bountyTableTime')}</th>
+      <th style="padding: 4px 6px; white-space: nowrap;">${t('bountyTableCountry')}</th>
+      <th style="padding: 4px 6px; white-space: nowrap;">${t('bountyTableSide')}</th>
+      <th style="padding: 4px 6px; text-align: right; white-space: nowrap;">${t('bountyTablePool')}</th>
+      <th style="padding: 4px 6px; text-align: right; white-space: nowrap;">${t('bountyTableRate')}</th>
+    </tr>`;
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+
+    function renderRows(limit) {
+      tbody.innerHTML = '';
+      const rows = allEntries.slice(0, limit);
+      if (!rows.length) {
+        const empty = document.createElement('tr');
+        empty.innerHTML = `<td colspan="5" style="padding: 20px; text-align: center; color: #8b949e; font-size: 12px;">${t('bountyHistoryEmpty')}</td>`;
+        tbody.appendChild(empty);
+        return;
+      }
+      for (const e of rows) {
+        const tr = document.createElement('tr');
+        tr.style.cssText = 'border-bottom: 1px solid rgba(48,54,61,.5);';
+        const time = new Date(e.notifiedAt || e.effectiveAtEpoch);
+        const timeStr = time.toLocaleString(CONFIG.locale === 'de' ? 'de-DE' : 'en-US', {
+          month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'
+        });
+        const countryName = e.countryName || e.country || '?';
+        const sideLabel = e.side === 'attacker' ? t('bountyAttackerSide') : t('bountyDefenderSide');
+        tr.innerHTML = `
+          <td style="padding: 4px 6px; white-space: nowrap; color: #8b949e;">${timeStr}</td>
+          <td style="padding: 4px 6px; white-space: nowrap;">${countryName.length > 15 ? countryName.slice(0, 15) + '...' : countryName}</td>
+          <td style="padding: 4px 6px; white-space: nowrap;">${sideLabel}</td>
+          <td style="padding: 4px 6px; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums;">${e.moneyPool != null ? fmt(e.moneyPool) : '-'}</td>
+          <td style="padding: 4px 6px; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums;">${e.ratePer1k != null ? fmt(e.ratePer1k) : '-'}</td>
+        `;
+        tbody.appendChild(tr);
+      }
+      // Load more button
+      const loadMoreRow = document.getElementById('wia-history-loadmore');
+      if (loadMoreRow) loadMoreRow.remove();
+      if (limit < allEntries.length) {
+        const lmTr = document.createElement('tr');
+        lmTr.id = 'wia-history-loadmore';
+        lmTr.innerHTML = `<td colspan="5" style="padding: 8px; text-align: center;">
+          <button class="wia-btn" style="padding: 4px 16px; font-size: 11px; border-radius: 4px; cursor: pointer; border: 1px solid #30363d; background: #21262d; color: #58a6ff;">${t('bountyHistoryLoadMore')} (${allEntries.length - limit})</button>
+        </td>`;
+        const btn = lmTr.querySelector('button');
+        btn.onclick = () => {
+          displayCount = Math.min(displayCount + pageSize, allEntries.length);
+          renderRows(displayCount);
+        };
+        tbody.appendChild(lmTr);
+      }
+    }
+
+    renderRows(displayCount);
+    table.appendChild(tbody);
+    tableWrap.appendChild(table);
+    modal.appendChild(tableWrap);
+
+    bg.appendChild(modal);
+    document.body.appendChild(bg);
+    bountyHistoryBg = bg;
+    bg.onclick = (e) => { if (e.target === bg) { bg.remove(); bountyHistoryBg = null; } };
+  }
+
+  globalThis.bountyHistoryAdd = bountyHistoryAdd;
+  globalThis.bountyHistoryGetAll = bountyHistoryGetAll;
+  globalThis.bountyHistoryGetStats = bountyHistoryGetStats;
+  globalThis.bountyHistoryClear = bountyHistoryClear;
+  globalThis.renderBountyHistoryModal = renderBountyHistoryModal;
 
   function start() {
     migrateTransactionsCache();
