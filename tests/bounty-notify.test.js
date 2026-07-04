@@ -122,3 +122,13 @@ const nowMs = 1000000000000;
 const kept = pruneSeen({ old: nowMs - BOUNTY_SEEN_TTL_MS - 1, fresh: nowMs - 1000 }, nowMs);
 assert.deepStrictEqual(Object.keys(kept), ['fresh']);
 console.log('bounty-notify: prune OK');
+
+function buildTopicLink(baseTopic, hasSecret) {
+  const t = (baseTopic || '').trim();
+  if (!t || hasSecret) return null;
+  return `https://ntfy.sh/${t}`;
+}
+assert.strictEqual(buildTopicLink('wia-bounty-beer-casc', false), 'https://ntfy.sh/wia-bounty-beer-casc');
+assert.strictEqual(buildTopicLink('wia-bounty-beer-casc', true), null);
+assert.strictEqual(buildTopicLink('', false), null);
+console.log('bounty-notify: buildTopicLink OK');

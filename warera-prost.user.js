@@ -341,6 +341,7 @@
         bountyStatPool: 'Pool',
         bountyStatRate: 'Rate/1k',
         bountyPopupClose: 'Close',
+        bountyTopicLinkLabel: 'Open topic',
         bountyLabelAll: 'Bounty',
         bountyLabelAllies: 'Ally-Bounty',
         bountyLabelCascade: 'Ally-Casc-Bounty',
@@ -550,6 +551,7 @@
         bountyStatPool: 'Topf',
         bountyStatRate: 'Rate/1k',
         bountyPopupClose: 'Schließen',
+        bountyTopicLinkLabel: 'Topic öffnen',
         bountyLabelAll: 'Kopfgeld',
         bountyLabelAllies: 'Ally-Bounty',
         bountyLabelCascade: 'Ally-Casc-Bounty',
@@ -9487,6 +9489,12 @@ function checkInventoryDeltaWear() {
     return id;
   }
 
+  function buildTopicLink(baseTopic, hasSecret) {
+    const t = (baseTopic || '').trim();
+    if (!t || hasSecret) return null;
+    return `https://ntfy.sh/${t}`;
+  }
+
   // POST to ntfy; resolves true on 2xx. Text via t()/fmt() (no hardcoded strings).
   async function sendNtfy(bounty, customTopic) {
     const topic = customTopic || getEffectiveTopic();
@@ -9510,20 +9518,29 @@ function checkInventoryDeltaWear() {
       moneyPool: fmt(bounty.moneyPool || 0),
       ratePer1k: fmt(bounty.ratePer1k || 0)
     });
+    const isMirror = customTopic === 'wia-bounty-all';
+    const baseTopic = (CONFIG.ntfyTopic || '').trim() || GM_getValue(KEYS.bountyAutoTopic, '');
+    const hasSecret = !!(CONFIG.ntfyTopicSecret || '').trim();
+    const topicLink = isMirror ? buildTopicLink(baseTopic, hasSecret) : null;
+    const bodyWithLink = topicLink ? `${body}\n${baseTopic}: ${topicLink}` : body;
+
     // HTTP header values must be Latin-1 (≤0xFF). Emoji/Unicode (e.g. ⚔️ U+2694)
     // make the header invalid → GM request errors with "network error". Strip
     // out-of-range chars from the Title; carry the emoji via a ntfy tag instead.
     const asciiTitle = title.replace(/[^\x00-\xFF]/g, '').trim();
+    const headers = {
+      Title: asciiTitle,
+      Priority: 'default',
+      Tags: `crossed_swords,${bountyKey(bounty.battleId, bounty.side, bounty.effectiveAt)}`,
+      Click: `https://app.warera.io/battle/${bounty.battleId}`
+    };
+    if (topicLink) headers.Actions = `view, ${t('bountyTopicLinkLabel')}, ${topicLink}`;
+
     const res = await gmRequest({
       method: 'POST',
       url: `${NTFY_BASE}/${topic}`,
-      data: body,
-      headers: {
-        Title: asciiTitle,
-        Priority: 'default',
-        Tags: `crossed_swords,${bountyKey(bounty.battleId, bounty.side, bounty.effectiveAt)}`,
-        Click: `https://app.warera.io/battle/${bounty.battleId}`
-      }
+      data: bodyWithLink,
+      headers
     });
     const ok = res.status >= 200 && res.status < 300;
     dbg('bountyNotify', ok ? 'debug' : 'error', 'ntfy send', res.status, bounty.battleId, topic);
