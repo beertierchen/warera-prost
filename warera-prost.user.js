@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.7.20
+// @version      0.8.0
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -16,6 +16,7 @@
 // @grant        unsafeWindow
 // @connect      api2.warera.io
 // @connect      gateway.warerastats.io
+// @connect      ntfy.sh
 // @license MIT
 // ==/UserScript==
 
@@ -47,7 +48,7 @@
     // --- API ---
     // tRPC base. The script probes both until one answers; first success wins
     // and is cached for the session.
-    apiBases: ['https://api2.warera.io/trpc', 'https://api2.warera.io/api/trpc'],
+    apiBases: ['https://gateway.warerastats.io/trpc', 'https://api2.warera.io/trpc', 'https://api2.warera.io/api/trpc'],
     authHeaderMode: 'bearer',           // 'bearer' -> "Authorization: Bearer <t>", or 'x-api-token' / 'x-api-key'
     pricesEndpoint: 'itemTrading.getPrices',
     // getPrices returns MATERIALS only; the scrap unit price is the 'scraps' key.
@@ -227,6 +228,11 @@
 
     showScrapFlip: false,
     featPillReminder: false,
+    featBountyNotify: false,
+    ntfyTopic: 'wia-bounty-beer',
+    ntfyTopicSecret: '',
+    bountyOwnCountryOverride: '',
+    bountyScope: 'cascade',
     pillBuffH: 8,
     pillKnifeH: 6,
     pillDebuffH: 15.5,
@@ -308,9 +314,7 @@
         settingsFeatNotesCheckbox: 'User notes on player links 📒 (experimental)',
         settingsFeatNotesHint: 'Adds a note icon next to player links. Disable if the standalone Warera User Notes script is also active.',
         settingsFeatBattleCheckbox: 'Battle advisor ⚔️ (experimental)',
-        settingsFeatBattleHint: 'Highlights the button for your side on battle pages. Enter your allied country codes below.',
-        settingsAlliedCodesLabel: 'Allied country codes (comma-separated, e.g. de,pt)',
-        settingsAlliedCodesPlaceholder: 'de,pt,...',
+        settingsFeatBattleHint: 'Highlights the button for your side on battle pages using automatically resolved allied country codes.',
         settingsTitle: 'WareEra Inventory Advisor',
         gearTitle: 'WareEra Inventory Advisor-Settings',
         settingsAdvisorSettingsLabel: 'Inventory Advisor Options',
@@ -328,6 +332,18 @@
         hintToggleLabel: 'Explanation',
         settingsFeatPillCheckbox: 'Pill Reminder (configurable pill-timing overlay) 💊',
         settingsFeatPillHint: 'Shows a top-bar status and countdown timer for the pill cycle, highlights ready pills, and checks health/hunger levels.',
+        ntfyBountyTitle: '⚔️ Ally-Bounty: {attacker} vs {defender}',
+        ntfyBountyBody: 'Bounty on {allyCountry} ({side}) · Pool {moneyPool} · {ratePer1k}/1k',
+        bountyAttackerSide: 'Attacker',
+        bountyDefenderSide: 'Defender',
+        settingsFeatBounty: 'Bounty push notifications (ntfy.sh)',
+        settingsNtfyTopic: 'ntfy topic (base)',
+        settingsNtfyTopicSecret: 'Topic secret (optional)',
+        settingsBountyOwnCountry: 'Own country / ally override (name or countryIds)',
+        settingsBountyScope: 'Notification scope',
+        bountyScopeAll: 'All battles (no filter)',
+        bountyScopeAllies: 'Only allies (own country + alliance + own allies/pacts)',
+        bountyScopeCascade: 'Allies + Cascading (alliance members\' allies/pacts)',
         settingsPillSettingsLabel: 'Pill timing options',
         settingsPillBuffLabel: 'Buff Duration (hours)',
         settingsPillKnifeLabel: 'Knife Duration (hours)',
@@ -484,6 +500,7 @@
         resist: 'Widerstehen',
         allies: 'Verbündete',
         enemies: 'Gegner',
+        
         yourCountry: 'Dein Land',
         editNote: 'Notiz bearbeiten',
         editNoteAria: 'Notiz für {user} bearbeiten',
@@ -498,9 +515,7 @@
         settingsFeatNotesCheckbox: 'Spieler-Notizen bei Spieler-Links 📒 (experimentell)',
         settingsFeatNotesHint: 'Fügt ein Notiz-Icon neben Spieler-Links hinzu. Deaktivieren, wenn das separate Warera User Notes-Script ebenfalls aktiv ist.',
         settingsFeatBattleCheckbox: 'Battle-Advisor ⚔️ (experimentell)',
-        settingsFeatBattleHint: 'Hebt den richtigen Angriffs-/Verteidigungsbutton auf Kampfseiten hervor. Verbündete Ländercodes unten eingeben.',
-        settingsAlliedCodesLabel: 'Verbündete Ländercodes (Komma-getrennt, z.B. de,pt)',
-        settingsAlliedCodesPlaceholder: 'de,pt,...',
+        settingsFeatBattleHint: 'Hebt den richtigen Angriffs-/Verteidigungsbutton auf Kampfseiten hervor unter Verwendung automatisch ermittelter verbündeter Ländercodes.',
         settingsTitle: 'WareEra Inventory Advisor',
         gearTitle: 'WareEra Inventory Advisor-Einstellungen',
         settingsAdvisorSettingsLabel: 'Optionen für den Item Advisor',
@@ -518,6 +533,18 @@
         hintToggleLabel: 'Erklärung',
         settingsFeatPillCheckbox: 'Pill-Reminder (konfigurierbares Pillen-Timing Overlay)',
         settingsFeatPillHint: 'Zeigt einen Status und Countdown in der Menüleiste, markiert nimmbereite Pillen und prüft HP/Hunger-Werte.',
+        ntfyBountyTitle: '⚔️ Ally-Bounty: {attacker} vs {defender}',
+        ntfyBountyBody: 'Bounty auf {allyCountry} ({side}) · Topf {moneyPool} · {ratePer1k}/1k',
+        bountyAttackerSide: 'Angreifer',
+        bountyDefenderSide: 'Verteidiger',
+        settingsFeatBounty: 'Bounty-Push-Benachrichtigungen (ntfy.sh)',
+        settingsNtfyTopic: 'ntfy-Topic (Basis)',
+        settingsNtfyTopicSecret: 'Topic-Secret (optional)',
+        settingsBountyOwnCountry: 'Eigenes Land / Ally-Override (Name oder countryIds)',
+        settingsBountyScope: 'Benachrichtigungs-Umfang',
+        bountyScopeAll: 'Alle Schlachten (kein Filter)',
+        bountyScopeAllies: 'Nur Verbündete (eigenes Land + Allianz + eigene Allies/Pakte)',
+        bountyScopeCascade: 'Verbündete + Kaskade (Allianz-Mitglieder Allies/Pakte)',
         settingsPillSettingsLabel: 'Optionen für Pillen-Timing',
         settingsPillBuffLabel: 'Buff-Dauer (Stunden)',
         settingsPillKnifeLabel: 'Messer-Dauer (Stunden)',
@@ -662,6 +689,15 @@
     featBattleAdvisor: NS + 'featBattle',
     alliedCountryCodes: NS + 'alliedCodes',
     featPillReminder: NS + 'featPill',
+    featBountyNotify: NS + 'featBounty',
+    ntfyTopic: NS + 'ntfyTopic',
+    ntfyTopicSecret: NS + 'ntfyTopicSecret',
+    bountyOwnCountryOverride: NS + 'bountyOwnCountry',
+    bountyLastPollAt: NS + 'bountyLastPollAt',
+    bountyPollLock: NS + 'bountyPollLock',
+    bountySeen: NS + 'bountySeen',
+    bountyAllyCache: NS + 'bountyAllyCache',
+    bountyCountryMap: NS + 'bountyCountryMap',
     pillTakenAt: NS + 'pillTakenAt',
     pillState: NS + 'pillState',
     pillBuffH: NS + 'pillBuffH',
@@ -684,6 +720,9 @@
     consumablePrices: NS + 'consumablePrices', // { [code]: price } harvested from #item-code-selector-* tiles
     pnlProcessedTxs: NS + 'pnl.processedTxs',  // persistent (history-spanning) tx-id dedup for cost-basis + booking
     pnlBadTx: NS + 'pnl.badTx',                // quarantine retry attempts mapping for bad transactions
+    bountyScope: NS + 'bountyScope',
+    bountyAllianceNameCache: NS + 'bountyAllianceNameCache',
+    apiBaseGatewayMigrated: NS + 'apiBaseGatewayMigrated',
   };
 
   const memoryCache = {};
@@ -1092,6 +1131,12 @@
       if (typeof isRateLimited === 'function' && isRateLimited()) return ['warn', 'rate-limited'];
       return ['ok', ''];
     },
+    bountyNotify() {
+      if (!CONFIG.featBountyNotify) return ['idle', 'disabled in settings'];
+      if (!getEffectiveTopic()) return ['idle', 'no ntfy topic'];
+      const scope = CONFIG.bountyScope || 'cascade';
+      return ['ok', `scope: ${scope}`];
+    },
   };
 
   function runProbe(id) {
@@ -1276,6 +1321,39 @@
       try {
         await throttle();
         const res = await gmRequest({ method: 'GET', url: trpcUrl(base, procedure, args), headers: authHeaders() });
+        if (res.status === 429) { tripRateLimit(); throw new Error('429'); }
+        if (res.status >= 200 && res.status < 300) {
+          GM_setValue(KEYS.apiBase, base);
+          return { base, payload: unwrapTrpc(res.text) };
+        }
+        lastErr = new Error('HTTP ' + res.status);
+      } catch (e) {
+        lastErr = e;
+        if (String(e.message).includes('429')) break;
+      }
+    }
+    throw lastErr || new Error('all API bases failed');
+  }
+
+  async function resolveApiPost(procedure, args) {
+    if (isRateLimited()) throw new Error('429');
+    const cached = GM_getValue(KEYS.apiBase, '');
+    const bases = cached ? [cached, ...CONFIG.apiBases.filter((b) => b !== cached)] : CONFIG.apiBases;
+    let lastErr;
+    for (const base of bases) {
+      try {
+        await throttle();
+        const url = `${base}/${encodeURIComponent(procedure)}`;
+        const res = await gmRequest({
+          method: 'POST',
+          url,
+          headers: {
+            ...authHeaders(),
+            'Content-Type': 'application/json',
+            'accept': '*/*'
+          },
+          data: JSON.stringify(args)
+        });
         if (res.status === 429) { tripRateLimit(); throw new Error('429'); }
         if (res.status >= 200 && res.status < 300) {
           GM_setValue(KEYS.apiBase, base);
@@ -1924,6 +2002,23 @@
     globalThis.injectCompactOrders = injectCompactOrders;
     globalThis.renderSettingsModal = renderSettingsModal;
     globalThis.getCurrentUserId = getCurrentUserId;
+    globalThis.WIA_resolve = resolveApiBase;
+    globalThis.WIA_post = resolveApiPost;
+    globalThis.getEffectiveTopic = getEffectiveTopic;
+    globalThis.testBountyPush = testBountyPush;
+    const bountyAllies = () => resolveAllyCountryIds().then((s) => [...s]);
+    globalThis.bountyAllies = bountyAllies;
+    globalThis.extractAllyBounties = extractAllyBounties;
+    if (typeof unsafeWindow !== 'undefined') {
+      unsafeWindow.getCurrentUserId = getCurrentUserId;
+      unsafeWindow.WIA_resolve = resolveApiBase;
+      unsafeWindow.WIA_post = resolveApiPost;
+      unsafeWindow.WIA_gmRequest = gmRequest;
+      unsafeWindow.testBountyPush = testBountyPush;
+      unsafeWindow.getEffectiveTopic = getEffectiveTopic;
+      unsafeWindow.bountyAllies = bountyAllies;
+      unsafeWindow.extractAllyBounties = extractAllyBounties;
+    }
     globalThis.parseHealthAndHunger = parseHealthAndHunger;
     globalThis.updatePillState = updatePillState;
     globalThis.injectPillBadge = injectPillBadge;
@@ -4271,7 +4366,6 @@ async function scanInventory(force) {
     const prevScrapFlip = bg.querySelector('.wia-scrap-flip')?.checked ?? CONFIG.showScrapFlip;
     const prevFeatNotes = bg.querySelector('.wia-feat-notes')?.checked ?? CONFIG.featNotes;
     const prevFeatBattle = bg.querySelector('.wia-feat-battle')?.checked ?? CONFIG.featBattleAdvisor;
-    const prevAlliedCodes = bg.querySelector('.wia-allied-codes')?.value ?? CONFIG.alliedCountryCodes.join(',');
     const prevFeatPill = bg.querySelector('.wia-feat-pill')?.checked ?? CONFIG.featPillReminder;
     const prevFeatMarketGraph = bg.querySelector('.wia-feat-market-graph')?.checked ?? CONFIG.featMarketGraph;
     const prevFeatPnlTracker = bg.querySelector('.wia-feat-pnl-tracker')?.checked ?? CONFIG.featPnlTracker;
@@ -4281,6 +4375,11 @@ async function scanInventory(force) {
     const prevPillPrefFrom = bg.querySelector('.wia-pill-pref-from')?.value ?? CONFIG.pillPrefWindowFrom;
     const prevPillPrefTo = bg.querySelector('.wia-pill-pref-to')?.value ?? CONFIG.pillPrefWindowTo;
     const prevStockKeepCount = bg.querySelector('.wia-stock-keep-count')?.value ?? CONFIG.stockKeepCount;
+    const prevFeatBounty = bg.querySelector('.wia-feat-bounty')?.checked ?? CONFIG.featBountyNotify;
+    const prevNtfyTopic = bg.querySelector('.wia-ntfy-topic')?.value ?? CONFIG.ntfyTopic;
+    const prevNtfySecret = bg.querySelector('.wia-ntfy-secret')?.value ?? CONFIG.ntfyTopicSecret;
+    const prevBountyOwn = bg.querySelector('.wia-bounty-own')?.value ?? CONFIG.bountyOwnCountryOverride;
+    const prevBountyScope = bg.querySelector('.wia-bounty-scope')?.value ?? CONFIG.bountyScope;
 
     bg.innerHTML = `
       <div class="wia-modal">
@@ -4342,12 +4441,6 @@ async function scanInventory(force) {
             <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
           </div>
           <div class="wia-hint" hidden>${t('settingsFeatBattleHint')}</div>
-          <details class="wia-allied-codes-row" style="margin-top: 4px; margin-left: 24px;" ${prevFeatBattle ? 'open' : ''}>
-            <summary style="font-size: 11px; color: #8b949e; cursor: pointer; user-select: none; font-weight: bold; outline: none; margin-bottom: 4px;">
-              ${t('settingsAlliedCodesLabel')}
-            </summary>
-            <input type="text" class="wia-allied-codes" placeholder="${t('settingsAlliedCodesPlaceholder')}" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px; margin-top: 2px;" value="${prevAlliedCodes}" />
-          </details>
         </div>
         <div class="wia-feat-row" style="margin-top: 6px;">
           <div style="display: flex; align-items: center; gap: 8px;">
@@ -4401,6 +4494,40 @@ async function scanInventory(force) {
             <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
           </div>
           <div class="wia-hint" hidden>${t('settingsFeatPnlTrackerHint')}</div>
+        </div>
+        <div class="wia-feat-row" style="margin-top: 6px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <input type="checkbox" class="wia-feat-bounty" style="width: auto;" ${prevFeatBounty ? 'checked' : ''} />
+            <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatBounty')}</label>
+          </div>
+          <details class="wia-bounty-settings-row" style="margin-top: 6px; margin-left: 24px;" ${prevFeatBounty ? 'open' : ''}>
+            <summary style="font-size: 11px; color: #8b949e; cursor: pointer; user-select: none; font-weight: bold; outline: none; margin-bottom: 6px;">
+              Bounty Options
+            </summary>
+            <div style="display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 6px; margin-top: 4px;">
+              <div style="flex: 1; min-width: 120px;">
+                <label style="font-size: 11px; color: #8b949e; display: block; margin: 0 0 2px;">${t('settingsNtfyTopic')}</label>
+                <input type="text" class="wia-ntfy-topic" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;" value="${prevNtfyTopic}" />
+              </div>
+              <div style="flex: 1; min-width: 120px;">
+                <label style="font-size: 11px; color: #8b949e; display: block; margin: 0 0 2px;">${t('settingsNtfyTopicSecret')}</label>
+                <input type="text" class="wia-ntfy-secret" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;" value="${prevNtfySecret}" />
+              </div>
+            </div>
+            <div style="margin-top: 4px;">
+              <label style="font-size: 11px; color: #8b949e; display: block; margin: 0 0 2px;">${t('settingsBountyScope')}</label>
+              <select class="wia-bounty-scope" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px; outline: none; cursor: pointer;">
+                <option value="cascade" ${prevBountyScope === 'cascade' ? 'selected' : ''}>${t('bountyScopeCascade')}</option>
+                <option value="allies" ${prevBountyScope === 'allies' ? 'selected' : ''}>${t('bountyScopeAllies')}</option>
+                <option value="all" ${prevBountyScope === 'all' ? 'selected' : ''}>${t('bountyScopeAll')}</option>
+              </select>
+            </div>
+            <div style="margin-top: 4px;">
+              <label style="font-size: 11px; color: #8b949e; display: block; margin: 0 0 2px;">${t('settingsBountyOwnCountry')}</label>
+              <input type="text" class="wia-bounty-own" placeholder="name or id,id,id..." style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;" value="${prevBountyOwn}" />
+              <div class="wia-bounty-detected-identity" style="font-size: 10px; color: #8b949e; margin-top: 2px;">Erkenne Identität...</div>
+            </div>
+          </details>
         </div>
         <button type="button" class="wia-help-toggle" aria-expanded="false">${t('settingsHelpSummary')}</button>
         <aside class="wia-help-panel" hidden>
@@ -4461,17 +4588,7 @@ async function scanInventory(force) {
       }
     };
 
-    const featBattleCheckbox = modal.querySelector('.wia-feat-battle');
-    const alliedCodesRow = modal.querySelector('.wia-allied-codes-row');
-    if (featBattleCheckbox && alliedCodesRow) {
-      featBattleCheckbox.onchange = () => {
-        if (featBattleCheckbox.checked) {
-          alliedCodesRow.setAttribute('open', '');
-        } else {
-          alliedCodesRow.removeAttribute('open');
-        }
-      };
-    }
+    // alliedCodesRow removed as allied country codes are resolved automatically.
 
     const featPillCheckbox = modal.querySelector('.wia-feat-pill');
     const pillSettingsRow = modal.querySelector('.wia-pill-settings-row');
@@ -4527,6 +4644,21 @@ async function scanInventory(force) {
     });
     window.setTimeout(() => tokenInput.focus(), 0);
 
+    resolveOwnIdentity().then((identity) => {
+      const infoDiv = bg.querySelector('.wia-bounty-detected-identity');
+      const input = bg.querySelector('.wia-bounty-own');
+      if (identity && infoDiv && input) {
+        const displayStr = identity.allianceName ? `${identity.countryName} / ${identity.allianceName}` : identity.countryName;
+        input.setAttribute('placeholder', `${displayStr} (leer = automatisch)`);
+        infoDiv.textContent = `Erkannt: ${displayStr}`;
+      } else if (infoDiv) {
+        infoDiv.textContent = 'Identität konnte nicht automatisch aufgelöst werden.';
+      }
+    }).catch(() => {
+      const infoDiv = bg.querySelector('.wia-bounty-detected-identity');
+      if (infoDiv) infoDiv.textContent = 'Identität konnte nicht automatisch aufgelöst werden.';
+    });
+
     bg.querySelector('.wia-save').onclick = () => {
       const newToken = tokenInput.value.trim();
       const tokenChanged = prevToken !== newToken;
@@ -4550,12 +4682,8 @@ async function scanInventory(force) {
       if (featNotes) { initNotes(); } else { teardownNotes(); }
 
       const featBattle = bg.querySelector('.wia-feat-battle').checked;
-      const rawCodes = bg.querySelector('.wia-allied-codes').value;
-      const alliedCodes = rawCodes.split(',').map(c => c.trim().toLowerCase()).filter(Boolean);
       GM_setValue(KEYS.featBattleAdvisor, featBattle);
-      GM_setValue(KEYS.alliedCountryCodes, alliedCodes);
       CONFIG.featBattleAdvisor = featBattle;
-      CONFIG.alliedCountryCodes = alliedCodes;
       if (featBattle && isBattlePage()) { applyBattleAdvisory(); } else { teardownBattleAdvisory(); }
 
       const featPill = bg.querySelector('.wia-feat-pill').checked;
@@ -4593,6 +4721,24 @@ async function scanInventory(force) {
       GM_setValue(KEYS.featPnlTracker, featPnlTracker);
       CONFIG.featPnlTracker = featPnlTracker;
       if (featPnlTracker) { initPnlTracker(); } else { teardownPnlTracker(); }
+
+      const featBounty = bg.querySelector('.wia-feat-bounty').checked;
+      const ntfyTopic = bg.querySelector('.wia-ntfy-topic').value.trim();
+      const ntfySecret = bg.querySelector('.wia-ntfy-secret').value.trim();
+      const bountyOwn = bg.querySelector('.wia-bounty-own').value.trim();
+      const bountyScope = bg.querySelector('.wia-bounty-scope').value;
+      GM_setValue(KEYS.featBountyNotify, featBounty);
+      GM_setValue(KEYS.ntfyTopic, ntfyTopic);
+      GM_setValue(KEYS.ntfyTopicSecret, ntfySecret);
+      GM_setValue(KEYS.bountyOwnCountryOverride, bountyOwn);
+      GM_setValue(KEYS.bountyScope, bountyScope);
+      CONFIG.featBountyNotify = featBounty;
+      CONFIG.ntfyTopic = ntfyTopic;
+      CONFIG.ntfyTopicSecret = ntfySecret;
+      CONFIG.bountyOwnCountryOverride = bountyOwn;
+      CONFIG.bountyScope = bountyScope;
+      bountyResetAllyCache();
+      if (featBounty) { guard('bountyNotify', initBountyNotify); } else { teardownBountyNotify(); }
 
       if (tokenChanged) {
         clearCache();
@@ -6062,8 +6208,12 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
     const status = parseHealthAndHunger();
     const now = Date.now();
 
+    const isFloating = badge.classList.contains('wia-pill-badge--float');
     badge.className = '';
     badge.classList.add(info.badgeClass);
+    if (isFloating) {
+      badge.classList.add('wia-pill-badge--float');
+    }
 
     const lowestPct = Math.round(Math.min(status.hpPercent, status.hungerPercent));
     const hpNeeded = status.hpMax - status.hpCurrent;
@@ -9209,8 +9359,396 @@ function checkInventoryDeltaWear() {
   return curByCode;
 }
 
+
+
+  // ── Bounty-Notify module ──
+  function getEffectiveTopic() {
+    const t = (CONFIG.ntfyTopic || '').trim();
+    const s = (CONFIG.ntfyTopicSecret || '').trim();
+    if (!t) return '';
+    return s ? `${t}-${s}` : t;
+  }
+
+  const NTFY_BASE = 'https://ntfy.sh';
+
+  function bountyKey(battleId, side, effectiveAt) {
+    return `bkey_${battleId}_${side}_${Date.parse(effectiveAt)}`;
+  }
+
+  // Whole-world country map from ONE call (country.getAllCountries): id → { name,
+  // code, allies, defensivePacts, allianceId }. Cached ~24h (GM + in-memory). Powers
+  // both cascading ally resolution and human-readable names — no per-country fetches.
+  const BOUNTY_MAP_TTL_MS = 86400000;   // 24h
+  let countryMapMem = null;
+  async function loadCountryMap() {
+    if (countryMapMem) return countryMapMem;
+    const cached = GM_getValue(KEYS.bountyCountryMap, null);
+    if (cached && (now() - cached.at) < BOUNTY_MAP_TTL_MS && cached.map) { countryMapMem = cached.map; return countryMapMem; }
+    const list = (await resolveApiPost('country.getAllCountries', {})).payload || [];
+    const map = {};
+    for (const c of list) {
+      if (c && c._id) map[c._id] = {
+        name: c.name || c.code || c._id, code: c.code,
+        allies: c.allies || [], defensivePacts: c.defensivePacts || [], allianceId: c.allianceId || null,
+      };
+    }
+    countryMapMem = map;
+    GM_setValue(KEYS.bountyCountryMap, { at: now(), map });
+    dbg('bountyNotify', 'debug', 'country map loaded', Object.keys(map).length);
+    return map;
+  }
+
+  async function resolveCountryName(id) {
+    if (!id) return '?';
+    try { const m = await loadCountryMap(); if (m[id]) return m[id].name; } catch (e) { /* fall through */ }
+    return id;
+  }
+
+  // POST to ntfy; resolves true on 2xx. Text via t()/fmt() (no hardcoded strings).
+  async function sendNtfy(bounty) {
+    const topic = getEffectiveTopic();
+    if (!topic) return false;
+    const sideLabel = t(bounty.side === 'attacker' ? 'bountyAttackerSide' : 'bountyDefenderSide');
+    const [attacker, defender, allyCountry] = await Promise.all([
+      resolveCountryName(bounty.attackerCountry),
+      resolveCountryName(bounty.defenderCountry),
+      resolveCountryName(bounty.country)
+    ]);
+    const title = t('ntfyBountyTitle', { attacker, defender });
+    const body = t('ntfyBountyBody', {
+      allyCountry,
+      side: sideLabel,
+      moneyPool: fmt(bounty.moneyPool || 0),
+      ratePer1k: fmt(bounty.ratePer1k || 0)
+    });
+    // HTTP header values must be Latin-1 (≤0xFF). Emoji/Unicode (e.g. ⚔️ U+2694)
+    // make the header invalid → GM request errors with "network error". Strip
+    // out-of-range chars from the Title; carry the emoji via a ntfy tag instead.
+    const asciiTitle = title.replace(/[^\x00-\xFF]/g, '').trim();
+    const res = await gmRequest({
+      method: 'POST',
+      url: `${NTFY_BASE}/${topic}`,
+      data: body,
+      headers: {
+        Title: asciiTitle,
+        Priority: 'default',
+        Tags: `crossed_swords,${bountyKey(bounty.battleId, bounty.side, bounty.effectiveAt)}`,
+        Click: `https://app.warera.io/battle/${bounty.battleId}`
+      }
+    });
+    const ok = res.status >= 200 && res.status < 300;
+    dbg('bountyNotify', ok ? 'debug' : 'error', 'ntfy send', res.status, bounty.battleId);
+    return ok;
+  }
+
+  // Function declaration (hoisted) so the early exposure block (~line 1996) can
+  // reference it at load time without a ReferenceError.
+  function testBountyPush() {
+    return sendNtfy({
+      battleId: '6a46743c4afd8ef24e3d2569',
+      side: 'attacker',
+      country: '6813b6d446e731854c7ac79c',
+      attackerCountry: '6813b6d446e731854c7ac79c',
+      defenderCountry: '6813b6d446e731854c7ac802',
+      effectiveAt: new Date().toISOString(),
+      moneyPool: 62.15,
+      ratePer1k: 0.05,
+      regionId: 'TEST'
+    });
+  }
+
+  globalThis.testBountyPush = testBountyPush;
+  globalThis.sendNtfy = sendNtfy;
+  globalThis.bountyKey = bountyKey;
+
+  const BOUNTY_ALLY_TTL_MS = 86400000;   // 24h — allies change slowly; resolve ~once a day
+
+  function parseSearchCountryAndAlliance(p) {
+    const d = (p && p.result && p.result.data) ? p.result.data : p;
+    return { countryIds: d.countryIds || [], allianceIds: d.allianceIds || [] };
+  }
+
+  // alliance.getById → memberCountries: [{ country: <id>, coreDevelopment, suspended, ... }].
+  // Extract the countryId from item.country; tolerate plain-string / _id shapes too.
+  function parseAllianceCountryIds(alliancePayload) {
+    const p = alliancePayload || {};
+    const arr = p.memberCountries || p.countries || p.countryIds || [];
+    return arr.map((x) => (typeof x === 'string' ? x : (x && (x.country || x._id)))).filter(Boolean);
+  }
+
+  async function resolveAllyCountryIds(cascade = true) {
+    const cached = GM_getValue(KEYS.bountyAllyCache, null);
+    if (cached && (now() - cached.at) < BOUNTY_ALLY_TTL_MS && Array.isArray(cached.ids) && cached.ids.length) {
+      return new Set(cached.ids);
+    }
+    const ids = new Set();
+    try {
+      const ov = (CONFIG.bountyOwnCountryOverride || '').trim();
+      if (ov) {
+        if (/^[a-f0-9]{24}(\s*,\s*[a-f0-9]{24})*$/i.test(ov)) {
+          ov.split(',').forEach((x) => ids.add(x.trim()));
+        } else {
+          const s = await resolveApiBase('search.searchAnything', { searchText: ov });
+          const { countryIds, allianceIds } = parseSearchCountryAndAlliance(s.payload);
+          countryIds.forEach((c) => ids.add(c));
+          for (const aid of allianceIds) {
+            const a = await resolveApiPost('alliance.getById', { allianceId: aid });
+            parseAllianceCountryIds(a.payload).forEach((c) => ids.add(c));
+          }
+        }
+      }
+      if (!ids.size) {
+        const uid = getCurrentUserId();
+        if (uid) {
+          // Whole-world map (1 call, cached 24h) → cascading is free:
+          // own country + its allies/pacts + every alliance member + each member's
+          // allies/pacts. Alliance = countries sharing the same allianceId.
+          const u = await resolveApiPost('user.getUserById', { userId: uid });
+          const ownCountry = u.payload?.country;
+          if (ownCountry) {
+            const map = await loadCountryMap();
+            const addCountry = (cid, addRelations = true) => {
+              if (!cid) return;
+              ids.add(cid);
+              const c = map[cid];
+              if (c && addRelations) {
+                (c.allies || []).forEach((x) => ids.add(x));
+                (c.defensivePacts || []).forEach((x) => ids.add(x));
+              }
+            };
+            addCountry(ownCountry, true);
+            const aid = (map[ownCountry] && map[ownCountry].allianceId) || u.payload?.alliance || u.payload?.allianceId;
+            if (aid) {
+              for (const cid of Object.keys(map)) {
+                if (map[cid].allianceId === aid) addCountry(cid, cascade);   // member + cascade its allies/pacts
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      dbg('bountyNotify', 'error', 'ally resolve failed', e.message);
+    }
+    if (ids.size) GM_setValue(KEYS.bountyAllyCache, { at: now(), ids: [...ids] });
+    dbg('bountyNotify', 'debug', 'ally set', ids.size, [...ids]);
+    return ids;
+  }
+
+  globalThis.bountyAllies = () => resolveAllyCountryIds(CONFIG.bountyScope === 'cascade').then((s) => [...s]);
+  // Clears the cached ally set + country map so the next resolve re-fetches (TTL 24h).
+  function bountyResetAllyCache() {
+    GM_setValue(KEYS.bountyAllyCache, null);
+    GM_setValue(KEYS.bountyCountryMap, null);
+    countryMapMem = null;
+    return 'ally + country-map cache cleared';
+  }
+  globalThis.bountyResetAllyCache = bountyResetAllyCache;
+  if (typeof unsafeWindow !== 'undefined') unsafeWindow.bountyResetAllyCache = bountyResetAllyCache;
+
+  const BOUNTY_POLL_MS = 30000;
+  const BOUNTY_PAGE_CAP = 10;
+  const BOUNTY_LOCK_TTL_MS = 5000;
+  const BOUNTY_JITTER_MS = 10000;   // cross-device dedup: random 0–10s stagger before the topic re-check
+
+  function extractAllyBounties(items, allySet) {
+    const out = [];
+    for (const b of (items || [])) {
+      for (const side of ['attacker', 'defender']) {
+        const s = b[side];
+        if (!s || !s.bountyEffectiveAt) continue;
+        if (allySet && !allySet.has(s.country)) continue;
+        out.push({
+          battleId: b._id,
+          side,
+          country: s.country,
+          attackerCountry: b.attacker && b.attacker.country,
+          defenderCountry: b.defender && b.defender.country,
+          effectiveAt: s.bountyEffectiveAt,
+          effectiveAtEpoch: Date.parse(s.bountyEffectiveAt),
+          moneyPool: s.moneyPool,
+          ratePer1k: s.moneyPer1kDamages,
+          regionId: (b.defender && b.defender.region) || null,
+          warId: b.war
+        });
+      }
+    }
+    return out;
+  }
+
+  function parseNtfyNdjson(text) {
+    const out = [];
+    for (const line of (text || '').split('\n')) {
+      const s = line.trim(); if (!s) continue;
+      try { out.push(JSON.parse(s)); } catch (_) { /* skip partial/blank */ }
+    }
+    return out;
+  }
+
+  async function topicHasBounty(key) {
+    const topic = getEffectiveTopic();
+    if (!topic) return false;
+    try {
+      const res = await gmRequest({ method: 'GET', url: `${NTFY_BASE}/${topic}/json?poll=1&since=12h` });
+      return parseNtfyNdjson(res.text).some((m) => (m.tags || []).includes(key));
+    } catch (e) {
+      dbg('bountyNotify', 'error', 'topic read failed', e.message);
+      return false;
+    }
+  }
+
+  // ── SeenStore (local dedup) ──
+  const BOUNTY_SEEN_TTL_MS = 86400000;   // 24h; pure time-based prune (pagination-safe)
+  let bountyColdStartDone = false;
+  function loadSeen() { return GM_getValue(KEYS.bountySeen, {}) || {}; }
+  function saveSeen(store) { GM_setValue(KEYS.bountySeen, store); }
+  function pruneSeen(store, nowMs) {
+    const out = {};
+    for (const k of Object.keys(store)) if (nowMs - store[k] <= BOUNTY_SEEN_TTL_MS) out[k] = store[k];
+    return out;
+  }
+
+  function acquirePollSlot() {
+    const nowMs = now();
+    if (nowMs - GM_getValue(KEYS.bountyLastPollAt, 0) < BOUNTY_POLL_MS) return false;
+    const lock = GM_getValue(KEYS.bountyPollLock, 0);
+    if (nowMs - lock < BOUNTY_LOCK_TTL_MS) return false;   // another tab holds a fresh lock
+    GM_setValue(KEYS.bountyPollLock, nowMs);
+    // Claim the 30s window UP-FRONT: a full paginated poll takes ~30s (3s throttle ×
+    // pages) — far longer than the 5s lock TTL — so without this a second tab (or the
+    // next interval) would re-poll mid-flight and send a duplicate notification.
+    GM_setValue(KEYS.bountyLastPollAt, nowMs);
+    return true;
+  }
+
+  async function pollBounties() {
+    if (!CONFIG.featBountyNotify || !getEffectiveTopic()) return;
+    if (!acquirePollSlot()) return;
+    try {
+      const allySet = CONFIG.bountyScope === 'all' ? null : await resolveAllyCountryIds(CONFIG.bountyScope === 'cascade');
+      if (allySet && !allySet.size) { setHealth('bountyNotify', 'warn', 'ally set unresolved'); return; }
+      let cursor, pages = 0; const all = [];
+      do {
+        const args = { isActive: true, filter: 'all', limit: 100 };
+        if (cursor) { args.cursor = cursor; args.direction = 'forward'; }
+        // POST honours `limit` (GET/tRPC-batch ignores it → only 10/page). 100/page
+        // → 10-page cap covers up to 1000 battles AND fewer round-trips = faster poll.
+        const res = await resolveApiPost('battle.getBattles', args);
+        const items = res.payload.items || [];
+        all.push(...items);
+        cursor = res.payload.nextCursor;
+        pages++;
+        if (pages >= BOUNTY_PAGE_CAP && cursor) { dbg('bountyNotify', 'debug', 'page cap hit', pages); break; }
+      } while (cursor);
+      const bounties = extractAllyBounties(all, allySet);
+      dbg('bountyNotify', 'debug', 'poll ok', 'battles', all.length, 'allyBounties', bounties.length);
+      let seen = pruneSeen(loadSeen(), now());
+      if (!bountyColdStartDone) {
+        // Seed existing bounties WITHOUT notifying (avoid flood on tab open).
+        for (const b of bounties) seen[bountyKey(b.battleId, b.side, b.effectiveAt)] = now();
+        bountyColdStartDone = true; saveSeen(seen);
+        dbg('bountyNotify', 'debug', 'cold-start seeded', bounties.length);
+        setHealth('bountyNotify', 'ok', ''); return;
+      }
+      // Dedup within this poll too: pagination can return the same battle on
+      // overlapping pages → same bounty key twice → duplicate notification.
+      const seenInPoll = new Set();
+      const fresh = bounties.filter((b) => {
+        const k = bountyKey(b.battleId, b.side, b.effectiveAt);
+        if (seen[k] || seenInPoll.has(k)) return false;
+        seenInPoll.add(k);
+        return true;
+      });
+      for (const b of fresh) {
+        const key = bountyKey(b.battleId, b.side, b.effectiveAt);
+        // Cross-device dedup: GM storage is per-browser, so independent devices poll
+        // in parallel and would all send. A random 0–4s jitter staggers them; the
+        // first publish then shows up in the others' topic re-check → they skip.
+        await new Promise((r) => setTimeout(r, Math.floor(Math.random() * BOUNTY_JITTER_MS)));
+        if (await topicHasBounty(key)) { seen[key] = now(); continue; }   // cross-client dedup
+        if (await sendNtfy(b)) seen[key] = now();                          // mark seen only on 2xx
+      }
+      saveSeen(seen);
+      setHealth('bountyNotify', 'ok', '');
+    } catch (e) {
+      if (String(e.message).includes('429')) { setHealth('bountyNotify', 'warn', 'rate-limited'); }
+      else { setHealth('bountyNotify', 'warn', 'poll failed: ' + e.message); }
+      dbg('bountyNotify', 'error', 'poll failed', e.message);
+    } finally {
+      GM_setValue(KEYS.bountyLastPollAt, now());
+      GM_setValue(KEYS.bountyPollLock, 0);
+    }
+  }
+
+  globalThis.extractAllyBounties = extractAllyBounties;
+  globalThis.parseNtfyNdjson = parseNtfyNdjson;
+
+  async function resolveOwnIdentity() {
+    const uid = getCurrentUserId();
+    if (!uid) return null;
+    try {
+      const u = await resolveApiPost('user.getUserById', { userId: uid });
+      const ownCountry = u.payload?.country;
+      if (!ownCountry) return null;
+      const map = await loadCountryMap();
+      const countryName = map[ownCountry]?.name || ownCountry;
+      let allianceName = '';
+      const aid = (map[ownCountry] && map[ownCountry].allianceId) || u.payload?.alliance || u.payload?.allianceId;
+      if (aid) {
+        const cacheKey = KEYS.bountyAllianceNameCache;
+        const cache = GM_getValue(cacheKey, null);
+        if (cache && cache.id === aid && (now() - cache.at) < 86400000) {
+          allianceName = cache.name;
+        } else {
+          const a = await resolveApiPost('alliance.getById', { allianceId: aid });
+          allianceName = a.payload?.name || a.payload?.code || aid;
+          GM_setValue(cacheKey, { id: aid, at: now(), name: allianceName });
+        }
+      }
+      return { countryName, allianceName };
+    } catch (e) {
+      dbg('bountyNotify', 'error', 'identity resolve failed', e.message);
+      return null;
+    }
+  }
+
+  async function refreshAlliedCodes() {
+    try {
+      const allyIds = await resolveAllyCountryIds(true);
+      if (!allyIds || !allyIds.size) return;
+      const map = await loadCountryMap();
+      const codes = [];
+      for (const id of allyIds) {
+        if (map[id] && map[id].code) codes.push(map[id].code.toLowerCase());
+      }
+      if (codes.length) {
+        CONFIG.alliedCountryCodes = codes;
+        GM_setValue(KEYS.alliedCountryCodes, codes);
+        dbg('battleAdvisor', 'debug', 'allied codes updated from bountyNotify', codes);
+      }
+    } catch (e) {
+      dbg('battleAdvisor', 'error', 'failed to refresh allied codes', e.message);
+    }
+  }
+
+  let bountyInterval = null;
+  function initBountyNotify() {
+    regFeature('bountyNotify', 'Bounty-Push');
+    if (bountyInterval) clearInterval(bountyInterval);
+    bountyInterval = setInterval(() => { guard('bountyNotify', pollBounties); }, BOUNTY_POLL_MS);
+    guard('bountyNotify', pollBounties);
+  }
+  function teardownBountyNotify() {
+    if (bountyInterval) { clearInterval(bountyInterval); bountyInterval = null; }
+    bountyColdStartDone = false;
+    setHealth('bountyNotify', 'idle', 'disabled in settings');
+  }
+
   function start() {
     migrateTransactionsCache();
+    if (!GM_getValue(KEYS.apiBaseGatewayMigrated, false)) {
+      GM_setValue(KEYS.apiBase, null);
+      GM_setValue(KEYS.apiBaseGatewayMigrated, true);
+    }
     CONFIG.debug = GM_getValue(KEYS.debug, false);
     if (typeof location !== 'undefined' && /(?:^|[#&])wia-debug/.test(location.hash)) CONFIG.debug = true;
     // Register all features so the registry/HUD knows about them up front.
@@ -9221,6 +9759,7 @@ function checkInventoryDeltaWear() {
     regFeature('pillReminder', 'Pill Reminder');
     regFeature('notes', 'User Notes');
     regFeature('api', 'API Layer');
+    regFeature('bountyNotify', 'Bounty-Push');
     CONFIG.locale = GM_getValue(KEYS.locale, CONFIG.locale || 'de') || 'de';
     if (typeof window !== 'undefined') {
       window.__WIA_LOCALE__ = CONFIG.locale;
@@ -9232,6 +9771,11 @@ function checkInventoryDeltaWear() {
     CONFIG.featBattleAdvisor = GM_getValue(KEYS.featBattleAdvisor, false);
     CONFIG.alliedCountryCodes = GM_getValue(KEYS.alliedCountryCodes, CONFIG.alliedCountryCodes);
     CONFIG.featPillReminder = GM_getValue(KEYS.featPillReminder, false);
+    CONFIG.featBountyNotify = GM_getValue(KEYS.featBountyNotify, CONFIG.featBountyNotify);
+    CONFIG.ntfyTopic = GM_getValue(KEYS.ntfyTopic, CONFIG.ntfyTopic);
+    CONFIG.ntfyTopicSecret = GM_getValue(KEYS.ntfyTopicSecret, CONFIG.ntfyTopicSecret);
+    CONFIG.bountyOwnCountryOverride = GM_getValue(KEYS.bountyOwnCountryOverride, CONFIG.bountyOwnCountryOverride);
+    CONFIG.bountyScope = GM_getValue(KEYS.bountyScope, CONFIG.bountyScope || 'cascade') || 'cascade';
     CONFIG.featMarketGraph = GM_getValue(KEYS.featMarketGraph, false);
     CONFIG.featPnlTracker = GM_getValue(KEYS.featPnlTracker, true);
     CONFIG.pillBuffH = GM_getValue(KEYS.pillBuffH, CONFIG.pillBuffH);
@@ -9243,6 +9787,7 @@ function checkInventoryDeltaWear() {
     // Each entrypoint guarded → a crash in one feature can't abort the rest of start().
     if (CONFIG.featNotes) guard('notes', initNotes); else setHealth('notes', 'idle', 'disabled in settings');
     if (CONFIG.featBattleAdvisor) {
+      guard('battleAdvisor', refreshAlliedCodes);
       if (isBattlePage()) {
         guard('battleAdvisor', applyBattleAdvisory);
         initSharedBodyObserver();
@@ -9252,6 +9797,7 @@ function checkInventoryDeltaWear() {
     if (CONFIG.featPillReminder) guard('pillReminder', initPillReminder); else setHealth('pillReminder', 'idle', 'disabled in settings');
     if (CONFIG.featMarketGraph) guard('marketGraph', initMarketGraph); else setHealth('marketGraph', 'idle', 'disabled in settings');
     if (CONFIG.featPnlTracker) guard('pnl', initPnlTracker); else setHealth('pnl', 'idle', 'disabled in settings');
+    if (CONFIG.featBountyNotify) guard('bountyNotify', initBountyNotify); else setHealth('bountyNotify', 'idle', 'disabled in settings');
     injectGear();
     refreshMenuCommands();
     if (CONFIG.debug) { setTimeout(() => { runProbes(); updateDebugHud(); }, 1500); }

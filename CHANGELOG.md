@@ -1,5 +1,25 @@
 # CHANGELOG
 
+## 2026-07-04 | Ally-Bounty ntfy-Push-Benachrichtigungen (v0.8.0)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/bounty-notify.test.js`, `tests/test-advisor-load.js`
+
+**Änderungen (Deutsch):**
+- **Ally-Bounty Push-Benachrichtigungen (ntfy.sh)**: Neues Hintergrund-Feature sendet Benachrichtigungen aufs Handy, sobald ein verbündetes Kopfgeld aktiv wird. Konfigurierbar über das Einstellungsmenü (Checkbox, ntfy-Topic und optionaler Secret-Zusatz).
+- **Konfigurierbarer Benachrichtigungs-Umfang**: Drei Stufen einstellbar: `all` (alle Schlachten ohne Filter), `allies` (nur eigenes Land, Allianz-Mitglieder und eigene Verbündete/Pakte) und `cascade` (Allianzen plus Allies/Pakte aller Mitgliedsländer).
+- **Automatische Identitätserkennung**: Ermittelt Heimatland und Allianzname des Spielers im Hintergrund und zeigt diese im Einstellungsmenü als Placeholder für Overrides an.
+- **Automatische Allianz-Ländercodes im Battle-Advisor**: Das manuelle Textfeld zur Eingabe verbündeter Ländercodes im Einstellungsmenü wurde entfernt. Der Battle-Advisor bezieht die Ländercodes nun vollautomatisch und tagesaktuell aus dem Ländersuchdienst des Pollers.
+- **Robustes Staggering gegen Mehrfach-Pushes**: Ein breiterer Jitter (10s) und ein zweifacher Read-back-Check auf ntfy.sh vor jedem POST verhindern doppelte Benachrichtigungen über mehrere offene Browserfenster hinweg.
+- **Gateway-Priorisierung**: Der API-Layer nutzt standardmäßig das Gateway `gateway.warerastats.io` als primären Endpunkt und schaltet bei Verbindungsproblemen automatisch auf `api2.warera.io` um.
+
+**Changes (English):**
+- **Ally-Bounty Push Notifications (ntfy.sh)**: New background poller triggers mobile pushes via ntfy.sh when a new allied bounty is active. Configure via the settings menu (toggle, ntfy topic, and optional topic secret suffix).
+- **Configurable Notification Scope**: Three selectable scopes: `all` (all battles, no filter), `allies` (own country, alliance members, and own allies/pacts), and `cascade` (all allies plus the allies/pacts of all alliance member countries).
+- **Automatic Identity Detection**: Asynchronously resolves own country and alliance name, displaying them as placeholders and status labels in settings.
+- **Automatic Allied Codes in Battle Advisor**: Removed the manual allied country codes text field from settings. The Battle Advisor now resolves and updates allied country codes dynamically using the poller's country database.
+- **Timing-Race Deduplication**: A 10-second jitter stagger and double read-back check on ntfy.sh history prevent duplicate pushes across multiple open browser profiles.
+- **Gateway Prioritization**: Prioritizes `gateway.warerastats.io` as the primary API endpoint with automatic fallback to `api2.warera.io`.
+
 ## 2026-07-02 | Topbar Layout & Bar Label Optimizations (v0.7.20)
 
 **Geänderte Dateien:** `warera-prost.user.js`

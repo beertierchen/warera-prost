@@ -689,21 +689,9 @@ try {
   modalEl.dispatchEvent('click', { target: helpBtn });
   assert.strictEqual(helpPanel.attributes.has('hidden'), false, 'Cheatsheet panel should be visible after toggling');
 
-  // Verify progressive disclosure of allied codes row
+  // Battle advisor codes row is removed as allied country codes are resolved automatically.
   const featBattleCheckbox = bg.querySelector('.wia-feat-battle');
-  const alliedCodesRow = bg.querySelector('.wia-allied-codes-row');
   assert.ok(featBattleCheckbox, 'Battle advisor checkbox should be present');
-  assert.ok(alliedCodesRow, 'Allied codes container row should be present');
-  
-  // Toggle the battle checkbox to unchecked and trigger change
-  featBattleCheckbox.checked = false;
-  if (featBattleCheckbox.onchange) featBattleCheckbox.onchange();
-  assert.strictEqual(alliedCodesRow.attributes.has('open'), false, 'Allied codes row should be closed when battle advisor is unchecked');
-
-  // Toggle it back to checked
-  featBattleCheckbox.checked = true;
-  if (featBattleCheckbox.onchange) featBattleCheckbox.onchange();
-  assert.strictEqual(alliedCodesRow.attributes.has('open'), true, 'Allied codes row should be open when battle advisor is checked');
 
   console.log('Settings cheatsheet and hints UI tests passed successfully.');
 
