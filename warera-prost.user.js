@@ -9910,8 +9910,13 @@ function checkInventoryDeltaWear() {
       let seen = pruneSeen(loadSeen(), now());
       if (!bountyColdStartDone) {
         // Seed existing bounties WITHOUT notifying (avoid flood on tab open).
-        for (const b of bounties) seen[bountyKey(b.battleId, b.side, b.effectiveAt)] = now();
-        bountyColdStartDone = true; saveSeen(seen);
+        let localSeen = pruneSeen(loadLocalSeen(), now());
+        for (const b of bounties) {
+          const k = bountyKey(b.battleId, b.side, b.effectiveAt);
+          seen[k] = now();
+          localSeen[k] = now();
+        }
+        bountyColdStartDone = true; saveSeen(seen); saveLocalSeen(localSeen);
         dbg('bountyNotify', 'debug', 'cold-start seeded', bounties.length);
         setHealth('bountyNotify', 'ok', ''); return;
       }
@@ -9924,6 +9929,17 @@ function checkInventoryDeltaWear() {
         seenInPoll.add(k);
         return true;
       });
+      // Local channels (popup + browser notif) fire independently of ntfy
+      // cross-device dedup and send success — own dedup store, fired up-front.
+      let localSeen = pruneSeen(loadLocalSeen(), now());
+      for (const b of fresh) {
+        const k = bountyKey(b.battleId, b.side, b.effectiveAt);
+        if (localSeen[k]) continue;
+        localSeen[k] = now();
+        await emitLocalBounty(b);
+      }
+      saveLocalSeen(localSeen);
+
       for (const b of fresh) {
         const key = bountyKey(b.battleId, b.side, b.effectiveAt);
         // Cross-device dedup: GM storage is per-browser, so independent devices poll
