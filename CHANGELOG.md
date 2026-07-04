@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 2026-07-04 | ntfy-Topic Platzhalter-Standardwert (v0.8.2)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`
+
+**Änderungen (Deutsch):**
+- **Platzhalter für ntfy-Topic**: Das Eingabefeld für das ntfy-Topic ist standardmäßig leer und zeigt das dynamisch generierte Topic (z.B. `wia-bounty-beer-casc`) als grauen Platzhalter (Placeholder) im Hintergrund an.
+- **Fehlerfreie Abo-Hinweise**: Der Abo-Hinweis und das effektive Topic fallen bei leerem Eingabefeld nun korrekt auf das automatisch generierte Topic zurück.
+
+**Changes (English):**
+- **Placeholder Default for ntfyTopic Input**: The ntfy topic text field is now empty by default, displaying the dynamically resolved topic name (e.g. `wia-bounty-beer-casc`) as a placeholder in the background.
+- **Fixed Subscription Guidance Fallback**: The dynamic subscription hint now properly falls back to the placeholder topic when the text input is left empty.
+
 ## 2026-07-04 | Bounty-Benachrichtigungen UI-Fixes & Topic-Registrierung (v0.8.1)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.8.1
+// @version      0.8.2
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -229,7 +229,7 @@
     showScrapFlip: false,
     featPillReminder: false,
     featBountyNotify: false,
-    ntfyTopic: 'wia-bounty-beer',
+    ntfyTopic: '',
     ntfyTopicSecret: '',
     bountyOwnCountryOverride: '',
     bountyScope: 'cascade',
@@ -4685,8 +4685,10 @@ async function scanInventory(force) {
       if (autoTopic) {
         autoInfo.textContent = `Automatisch generiert: ${autoTopic}`;
         GM_setValue(KEYS.bountyAutoTopic, autoTopic);
+        topicInput.setAttribute('placeholder', autoTopic);
       } else {
         autoInfo.textContent = 'Automatisch generiert: wia-bounty-all (Standard)';
+        topicInput.setAttribute('placeholder', 'wia-bounty-all');
       }
 
       let activeTopic = topicInput.value.trim();
