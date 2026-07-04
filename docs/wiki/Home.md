@@ -26,6 +26,7 @@ browser game [**WareEra**](https://app.warera.io).
 | [Crafting Calculator](Crafting-Calculator) | *Experimental.* Profit estimate for crafting — resource cost vs. market value. |
 | [Battle Advisor](Battle-Advisor) | *Experimental.* Highlights your side's button on battle pages and previews active orders inline. |
 | [Pill Reminder](Pill-Reminder) | *Experimental.* Topbar status + countdown for the pill cycle, with health/hunger checks. |
+| [Bounty Notifications](Bounty-Notify) | *Experimental.* Background poller sending allied bounty alerts to your phone or desktop via ntfy.sh. |
 | [Player Notes](Player-Notes) | *Experimental.* A private note icon next to player links, stored locally. |
 | [Diagnostics](Diagnostics) | Feature-health panel, scan-performance traffic-light, and a debug dump. |
 | [Settings & Cheat Sheet](Settings) | Gear menu: feature toggles, optional API token, locale (DE/EN), and an in-app cheat sheet. |

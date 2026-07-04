@@ -27,6 +27,7 @@ Browserspiel [**WareEra**](https://app.warera.io).
 | [Crafting-Rechner](Crafting-Calculator.de) | *Experimentell.* Profit-Schätzung fürs Herstellen - Ressourcenkosten vs. Marktwert. |
 | [Battle Advisor](Battle-Advisor.de) | *Experimentell.* Hebt auf Kampfseiten den Button deiner Seite hervor und zeigt aktive Befehle inline. |
 | [Pill Reminder](Pill-Reminder.de) | *Experimentell.* Topbar-Status + Countdown für den Pillen-Zyklus, mit HP-/Hunger-Prüfung. |
+| [Bounty-Push-Meldungen](Bounty-Notify.de) | *Experimentell.* Hintergrunddienst sendet Kopfgeld-Benachrichtigungen aufs Handy oder den Desktop via ntfy.sh. |
 | [Spieler-Notizen](Player-Notes.de) | *Experimentell.* Privates Notiz-Icon neben Spieler-Links, lokal gespeichert. |
 | [Diagnose](Diagnostics.de) | Feature-Health-Panel, Scan-Performance-Ampel und Debug-Dump. |
 | [Einstellungen & Spickzettel](Settings.de) | Zahnrad-Menü: Feature-Schalter, optionaler API-Token, Sprache (DE/EN) und ein In-App-Spickzettel. |

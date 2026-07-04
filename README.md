@@ -27,7 +27,7 @@ PROST is a **client-side visual assistant only**. It reads the page (and, option
 
 | Script | What it does |
 |--------|--------------|
-| **PROST** (`warera-prost.user.js`) | KEEP / SELL / SCRAP advice from local stats + market floors. Scrap-flip profitability badges on the market. Optional WareEra API integration via your own key. i18n (DE/EN). Includes built-in 📒 **player notes** (enable in settings). |
+| **PROST** (`warera-prost.user.js`) | KEEP / SELL / SCRAP advice from local stats + market floors. Scrap-flip profitability badges on the market. Optional WareEra API integration via your own key. i18n (DE/EN). Includes built-in 📒 **player notes** and ⚔️ **ntfy push notifications** for active allied bounties (configurable in settings). |
 | **User Notes** (`warera-notes.user.js`) | Standalone script for local, persistent notes on player links. Use this *or* the built-in notes in PROST — not both at the same time. |
 
 ## Install
