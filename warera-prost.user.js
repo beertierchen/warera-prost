@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         PROST
+// @name         TEST PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.8.5
+// @version      0.8.6-unstable
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -9563,7 +9563,8 @@ function checkInventoryDeltaWear() {
   }
   
   async function emitLocalBounty(bounty) {
-    await Promise.allSettled([showBountyPopup(bounty), showBrowserNotif(bounty)]);
+    addPopupTrigger(bounty);
+    await showBrowserNotif(bounty);
   }
 
   function testLocalBounty() {
@@ -9724,6 +9725,51 @@ function checkInventoryDeltaWear() {
 
   function bountyEsc(s) {
     return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  }
+
+  const POPUP_TRIGGER_KEY = 'wia-bounty-popups';
+  const POPUP_MAX_AGE_MS = 600000; // 10 minutes
+  const shownPopups = new Set();
+
+  function getPopupTriggers() {
+    try {
+      const list = JSON.parse(localStorage.getItem(POPUP_TRIGGER_KEY)) || [];
+      const nowMs = now();
+      return list.filter(item => nowMs - item.time < POPUP_MAX_AGE_MS);
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function addPopupTrigger(bounty) {
+    try {
+      const key = bountyKey(bounty.battleId, bounty.side, bounty.effectiveAt);
+      const list = getPopupTriggers();
+      if (!list.some(item => item.key === key)) {
+        list.push({ key, bounty, time: now() });
+        localStorage.setItem(POPUP_TRIGGER_KEY, JSON.stringify(list));
+        window.dispatchEvent(new Event('wia-bounty-trigger'));
+      }
+    } catch (_) {}
+  }
+
+  function checkAndShowPendingPopups() {
+    if (!CONFIG.featBountyNotify) return;
+    if (document.visibilityState !== 'visible') return;
+    const triggers = getPopupTriggers();
+    let changed = false;
+    for (const item of triggers) {
+      if (!shownPopups.has(item.key)) {
+        shownPopups.add(item.key);
+        showBountyPopup(item.bounty);
+        changed = true;
+      }
+    }
+    if (changed) {
+      try {
+        localStorage.setItem(POPUP_TRIGGER_KEY, JSON.stringify(getPopupTriggers()));
+      } catch (_) {}
+    }
   }
 
   let bountyStyleInjected = false;
@@ -9932,6 +9978,7 @@ function checkInventoryDeltaWear() {
           const k = bountyKey(b.battleId, b.side, b.effectiveAt);
           seen[k] = now();
           localSeen[k] = now();
+          shownPopups.add(k);
         }
         bountyColdStartDone = true; saveSeen(seen); saveLocalSeen(localSeen);
         dbg('bountyNotify', 'debug', 'cold-start seeded', bounties.length);
@@ -9963,7 +10010,23 @@ function checkInventoryDeltaWear() {
         // in parallel and would all send. A random 0–10s jitter staggers them; the
         // first publish then shows up in the others' topic re-check → they skip.
         await new Promise((r) => setTimeout(r, Math.floor(Math.random() * BOUNTY_JITTER_MS)));
-        if (await topicHasBounty(key)) { seen[key] = now(); continue; }   // cross-client dedup
+        if (await topicHasBounty(key)) {
+          seen[key] = now();
+          // Even if another client pushed to our primary topic first, we should still
+          // check if it was mirrored to wia-bounty-all and mirror it if missing (e.g. if the
+          // other client was running an older version).
+          const activeTopic = getEffectiveTopic();
+          if (activeTopic && !activeTopic.startsWith('wia-bounty-all')) {
+            try {
+              if (!(await topicHasBounty(key, 'wia-bounty-all'))) {
+                await sendNtfy(b, 'wia-bounty-all');
+              }
+            } catch (e) {
+              dbg('bountyNotify', 'error', 'global mirror failed', e.message);
+            }
+          }
+          continue;
+        }
         if (await sendNtfy(b)) {
           seen[key] = now();                          // mark seen only on 2xx
           
@@ -10092,6 +10155,22 @@ function checkInventoryDeltaWear() {
     } catch (e) {
       dbg('bountyNotify', 'error', 'failed to register topic on wia-bounty-topics', e.message);
     }
+  }
+
+  if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+    window.addEventListener('storage', (e) => {
+      if (e.key === POPUP_TRIGGER_KEY) {
+        checkAndShowPendingPopups();
+      }
+    });
+    window.addEventListener('wia-bounty-trigger', () => {
+      checkAndShowPendingPopups();
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        checkAndShowPendingPopups();
+      }
+    });
   }
 
   let bountyInterval = null;
