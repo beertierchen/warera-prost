@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## 2026-07-05 | Kopfgeld-Benachrichtigungen ASCII-Header Fix (v0.8.7)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/bounty-notify.test.js`
+
+**Änderungen (Deutsch):**
+- **Sichere HTTP-Header**: Alle ntfy-Header (`Title` und `Actions`) werden nun vor dem Senden über eine Bereinigungsfunktion bereinigt. Deutsche Umlaute werden in ASCII-Entsprechungen umschrieben (z.B. `ä -> ae`, `ö -> oe`) und verbleibende Emojis/Sonderzeichen entfernt. Dies verhindert Übertragungsfehler und Netzwerk-Abbrüche auf HTTP/2 / HTTP/3-Verbindungen, wodurch die globale Spiegelung nach `wia-bounty-all` nun stabil funktioniert.
+
+**Changes (English):**
+- **ASCII Header Sanitisation**: All custom ntfy HTTP headers (`Title` and `Actions`) are now sanitised before transmission. German umlauts are replaced with ASCII equivalents (e.g. `ä -> ae`, `ö -> oe`) and any remaining emojis/special characters are stripped. This prevents protocol and network errors on HTTP/2 / HTTP/3 streams, fixing the `wia-bounty-all` mirroring issue.
+
 ## 2026-07-04 | Kopfgeld-Popup Sichtbarkeits-Synchronisierung & globaler Spiegel-Fix (v0.8.6)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`
