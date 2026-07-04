@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         PROST
+// @name         TEST PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.8.3
+// @version      0.8.4-unstable
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -702,6 +702,7 @@
     bountyLastPollAt: NS + 'bountyLastPollAt',
     bountyPollLock: NS + 'bountyPollLock',
     bountySeen: NS + 'bountySeen',
+    bountyLocalSeen: NS + 'bountyLocalSeen',
     bountyAllyCache: NS + 'bountyAllyCache',
     bountyCountryMap: NS + 'bountyCountryMap',
     pillTakenAt: NS + 'pillTakenAt',
@@ -9674,9 +9675,12 @@ function checkInventoryDeltaWear() {
 
   // ── SeenStore (local dedup) ──
   const BOUNTY_SEEN_TTL_MS = 86400000;   // 24h; pure time-based prune (pagination-safe)
+  const BOUNTY_POPUP_MS = 8000;   // in-game toast auto-dismiss
   let bountyColdStartDone = false;
   function loadSeen() { return GM_getValue(KEYS.bountySeen, {}) || {}; }
   function saveSeen(store) { GM_setValue(KEYS.bountySeen, store); }
+  function loadLocalSeen() { return GM_getValue(KEYS.bountyLocalSeen, {}) || {}; }
+  function saveLocalSeen(store) { GM_setValue(KEYS.bountyLocalSeen, store); }
   function pruneSeen(store, nowMs) {
     const out = {};
     for (const k of Object.keys(store)) if (nowMs - store[k] <= BOUNTY_SEEN_TTL_MS) out[k] = store[k];
