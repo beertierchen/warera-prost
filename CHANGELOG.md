@@ -1,5 +1,21 @@
 # CHANGELOG
 
+## 2026-07-04 | Bounty-Benachrichtigungen UI-Fixes & Topic-Registrierung (v0.8.1)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`
+
+**Änderungen (Deutsch):**
+- **Reihenfolge Verteiler vs. Angreifer korrigiert**: In den Push-Benachrichtigungen wird nun die gewohnte Anordnung aus dem Spiel (Verteidiger links, Angreifer rechts) angezeigt.
+- **Dynamischer Titel-Präfix**: Der Titel-Präfix der Push-Benachrichtigungen passt sich nun automatisch an den gewählten Scope an (`Kopfgeld` bei *Alle*, `Ally-Bounty` bei *Verbündete* und `Ally-Casc-Bounty` bei *Kaskade*).
+- **Automatisierte ntfy-Topic-Abonnement-Hinweise**: Im Einstellungsfenster wird nun live das automatisch generierte Standard-Topic angezeigt. Ein dynamischer Abo-Hinweis zeigt direkt die passende Adresse (inkl. Topic-Secret) an.
+- **Zentrales Verzeichnis-Topic `wia-bounty-topics`**: Um genutzte Topics zu koordinieren, kündigt der Client sein genutztes Topic (anonymisiert ohne Secret), seine Allianz/Heimatland und den Aktivierungs-Zeitstempel einmalig im Verzeichnis-Topic `wia-bounty-topics` an. Doppelte Registrierungen werden durch Abgleich des 12h-Verlaufs verhindert.
+
+**Changes (English):**
+- **Corrected Attacker/Defender Display Order**: Swapped the positions in notifications to match the in-game UI layout (Defender on the left, Attacker on the right).
+- **Scope-Dependent Title Prefixes**: The notification title prefix now changes dynamically according to the active scope (`Bounty` for *All*, `Ally-Bounty` for *Allies*, and `Ally-Casc-Bounty` for *Cascade*).
+- **Dynamic Settings Subscription Guidance**: The settings dialog now renders the auto-generated topic name. A dynamic helper message displays the exact subscription address (including topic secrets) in real-time.
+- **Central Topic Registry `wia-bounty-topics`**: When initialized, the client registers the base topic name (without the secret to preserve privacy), resolved country/alliance, and timestamp to a public directory topic `wia-bounty-topics`. Duplicate registrations are prevented by reading the 12-hour history first.
+
 ## 2026-07-04 | Ally-Bounty ntfy-Push-Benachrichtigungen (v0.8.0)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/bounty-notify.test.js`, `tests/test-advisor-load.js`

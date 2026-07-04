@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.8.0
+// @version      0.8.1
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -332,10 +332,13 @@
         hintToggleLabel: 'Explanation',
         settingsFeatPillCheckbox: 'Pill Reminder (configurable pill-timing overlay) 💊',
         settingsFeatPillHint: 'Shows a top-bar status and countdown timer for the pill cycle, highlights ready pills, and checks health/hunger levels.',
-        ntfyBountyTitle: '⚔️ Ally-Bounty: {attacker} vs {defender}',
+        ntfyBountyTitle: '⚔️ {type}: {defender} vs {attacker}',
         ntfyBountyBody: 'Bounty on {allyCountry} ({side}) · Pool {moneyPool} · {ratePer1k}/1k',
         bountyAttackerSide: 'Attacker',
         bountyDefenderSide: 'Defender',
+        bountyLabelAll: 'Bounty',
+        bountyLabelAllies: 'Ally-Bounty',
+        bountyLabelCascade: 'Ally-Casc-Bounty',
         settingsFeatBounty: 'Bounty push notifications (ntfy.sh)',
         settingsNtfyTopic: 'ntfy topic (base)',
         settingsNtfyTopicSecret: 'Topic secret (optional)',
@@ -533,10 +536,13 @@
         hintToggleLabel: 'Erklärung',
         settingsFeatPillCheckbox: 'Pill-Reminder (konfigurierbares Pillen-Timing Overlay)',
         settingsFeatPillHint: 'Zeigt einen Status und Countdown in der Menüleiste, markiert nimmbereite Pillen und prüft HP/Hunger-Werte.',
-        ntfyBountyTitle: '⚔️ Ally-Bounty: {attacker} vs {defender}',
+        ntfyBountyTitle: '⚔️ {type}: {defender} vs {attacker}',
         ntfyBountyBody: 'Bounty auf {allyCountry} ({side}) · Topf {moneyPool} · {ratePer1k}/1k',
         bountyAttackerSide: 'Angreifer',
         bountyDefenderSide: 'Verteidiger',
+        bountyLabelAll: 'Kopfgeld',
+        bountyLabelAllies: 'Ally-Bounty',
+        bountyLabelCascade: 'Ally-Casc-Bounty',
         settingsFeatBounty: 'Bounty-Push-Benachrichtigungen (ntfy.sh)',
         settingsNtfyTopic: 'ntfy-Topic (Basis)',
         settingsNtfyTopicSecret: 'Topic-Secret (optional)',
@@ -723,6 +729,7 @@
     bountyScope: NS + 'bountyScope',
     bountyAllianceNameCache: NS + 'bountyAllianceNameCache',
     apiBaseGatewayMigrated: NS + 'apiBaseGatewayMigrated',
+    bountyAutoTopic: NS + 'bountyAutoTopic',
   };
 
   const memoryCache = {};
@@ -4514,6 +4521,10 @@ async function scanInventory(force) {
                 <input type="text" class="wia-ntfy-secret" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;" value="${prevNtfySecret}" />
               </div>
             </div>
+            <div style="margin-top: 2px; margin-bottom: 6px;">
+              <div class="wia-bounty-auto-topic-info" style="font-size: 10px; color: #8b949e;">Lade automatische Topic...</div>
+              <div class="wia-bounty-subscribe-hint" style="font-size: 10px; color: #58a6ff; margin-top: 2px; font-weight: bold;"></div>
+            </div>
             <div style="margin-top: 4px;">
               <label style="font-size: 11px; color: #8b949e; display: block; margin: 0 0 2px;">${t('settingsBountyScope')}</label>
               <select class="wia-bounty-scope" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px; outline: none; cursor: pointer;">
@@ -4644,7 +4655,59 @@ async function scanInventory(force) {
     });
     window.setTimeout(() => tokenInput.focus(), 0);
 
+    let resolvedIdentity = null;
+    function updateTopicHints() {
+      const topicInput = bg.querySelector('.wia-ntfy-topic');
+      const secretInput = bg.querySelector('.wia-ntfy-secret');
+      const scopeSelect = bg.querySelector('.wia-bounty-scope');
+      const autoInfo = bg.querySelector('.wia-bounty-auto-topic-info');
+      const subHint = bg.querySelector('.wia-bounty-subscribe-hint');
+      if (!topicInput || !secretInput || !scopeSelect || !autoInfo || !subHint) return;
+
+      const currentScope = scopeSelect.value;
+      let tName = '';
+      if (currentScope === 'all') {
+        tName = 'all';
+      } else if (resolvedIdentity && resolvedIdentity.allianceName) {
+        tName = resolvedIdentity.allianceName.toLowerCase().replace(/[^a-z0-9]/g, '');
+      } else if (resolvedIdentity && resolvedIdentity.countryName) {
+        tName = resolvedIdentity.countryName.toLowerCase().replace(/[^a-z0-9]/g, '');
+      }
+
+      let autoTopic = '';
+      if (tName) {
+        autoTopic = `wia-bounty-${tName}`;
+        if (currentScope === 'cascade' && currentScope !== 'all') {
+          autoTopic += '-casc';
+        }
+      }
+
+      if (autoTopic) {
+        autoInfo.textContent = `Automatisch generiert: ${autoTopic}`;
+        GM_setValue(KEYS.bountyAutoTopic, autoTopic);
+      } else {
+        autoInfo.textContent = 'Automatisch generiert: wia-bounty-all (Standard)';
+      }
+
+      let activeTopic = topicInput.value.trim();
+      if (!activeTopic) {
+        activeTopic = autoTopic || 'wia-bounty-all';
+      }
+      const secret = secretInput.value.trim();
+      const effective = secret ? `${activeTopic}-${secret}` : activeTopic;
+
+      subHint.textContent = `Abonniere dieses Topic in der ntfy-App: ${effective}`;
+    }
+
+    const topicInput = bg.querySelector('.wia-ntfy-topic');
+    const secretInput = bg.querySelector('.wia-ntfy-secret');
+    const scopeSelect = bg.querySelector('.wia-bounty-scope');
+    if (topicInput) topicInput.oninput = updateTopicHints;
+    if (secretInput) secretInput.oninput = updateTopicHints;
+    if (scopeSelect) scopeSelect.onchange = updateTopicHints;
+
     resolveOwnIdentity().then((identity) => {
+      resolvedIdentity = identity;
       const infoDiv = bg.querySelector('.wia-bounty-detected-identity');
       const input = bg.querySelector('.wia-bounty-own');
       if (identity && infoDiv && input) {
@@ -4654,9 +4717,11 @@ async function scanInventory(force) {
       } else if (infoDiv) {
         infoDiv.textContent = 'Identität konnte nicht automatisch aufgelöst werden.';
       }
+      updateTopicHints();
     }).catch(() => {
       const infoDiv = bg.querySelector('.wia-bounty-detected-identity');
       if (infoDiv) infoDiv.textContent = 'Identität konnte nicht automatisch aufgelöst werden.';
+      updateTopicHints();
     });
 
     bg.querySelector('.wia-save').onclick = () => {
@@ -9363,7 +9428,10 @@ function checkInventoryDeltaWear() {
 
   // ── Bounty-Notify module ──
   function getEffectiveTopic() {
-    const t = (CONFIG.ntfyTopic || '').trim();
+    let t = (CONFIG.ntfyTopic || '').trim();
+    if (!t) {
+      t = GM_getValue(KEYS.bountyAutoTopic, '') || 'wia-bounty-all';
+    }
     const s = (CONFIG.ntfyTopicSecret || '').trim();
     if (!t) return '';
     return s ? `${t}-${s}` : t;
@@ -9414,7 +9482,13 @@ function checkInventoryDeltaWear() {
       resolveCountryName(bounty.defenderCountry),
       resolveCountryName(bounty.country)
     ]);
-    const title = t('ntfyBountyTitle', { attacker, defender });
+    const scope = CONFIG.bountyScope || 'cascade';
+    let typeLabel = '';
+    if (scope === 'all') typeLabel = t('bountyLabelAll');
+    else if (scope === 'allies') typeLabel = t('bountyLabelAllies');
+    else typeLabel = t('bountyLabelCascade');
+
+    const title = t('ntfyBountyTitle', { type: typeLabel, defender, attacker });
     const body = t('ntfyBountyBody', {
       allyCountry,
       side: sideLabel,
@@ -9704,7 +9778,24 @@ function checkInventoryDeltaWear() {
           GM_setValue(cacheKey, { id: aid, at: now(), name: allianceName });
         }
       }
-      return { countryName, allianceName };
+
+      // Generate dynamic auto-topic
+      const scope = CONFIG.bountyScope || 'cascade';
+      let tName = '';
+      if (scope === 'all') {
+        tName = 'all';
+      } else if (allianceName) {
+        tName = allianceName.toLowerCase().replace(/[^a-z0-9]/g, '');
+      } else if (countryName) {
+        tName = countryName.toLowerCase().replace(/[^a-z0-9]/g, '');
+      }
+      let autoTopic = `wia-bounty-${tName}`;
+      if (scope === 'cascade' && scope !== 'all') {
+        autoTopic += '-casc';
+      }
+      GM_setValue(KEYS.bountyAutoTopic, autoTopic);
+
+      return { countryName, allianceName, autoTopic };
     } catch (e) {
       dbg('bountyNotify', 'error', 'identity resolve failed', e.message);
       return null;
@@ -9730,12 +9821,47 @@ function checkInventoryDeltaWear() {
     }
   }
 
+  async function registerBountyTopic() {
+    if (!CONFIG.featBountyNotify) return;
+    const baseTopic = (CONFIG.ntfyTopic || '').trim() || GM_getValue(KEYS.bountyAutoTopic, '');
+    if (!baseTopic) return;
+    try {
+      const res = await gmRequest({ method: 'GET', url: `${NTFY_BASE}/wia-bounty-topics/json?poll=1&since=12h` });
+      const tagToCheck = baseTopic.toLowerCase().replace(/[^a-z0-9_-]/g, '');
+      const alreadyRegistered = parseNtfyNdjson(res.text).some((m) => (m.tags || []).includes(tagToCheck));
+      if (alreadyRegistered) {
+        dbg('bountyNotify', 'debug', 'topic already registered on wia-bounty-topics', baseTopic);
+        return;
+      }
+      const identity = await resolveOwnIdentity();
+      if (!identity) return;
+      const displayStr = identity.allianceName ? `${identity.countryName} / ${identity.allianceName}` : identity.countryName;
+      const hasSecret = !!(CONFIG.ntfyTopicSecret || '').trim();
+      const body = `Topic: ${baseTopic}${hasSecret ? ' (mit Secret)' : ''}\nRegistriert von: ${displayStr}\nZeit: ${new Date().toISOString()}`;
+      
+      await gmRequest({
+        method: 'POST',
+        url: `${NTFY_BASE}/wia-bounty-topics`,
+        data: body,
+        headers: {
+          Title: 'Bounty Topic Aktivierung',
+          Priority: 'min',
+          Tags: `crossed_swords,${tagToCheck}`
+        }
+      });
+      dbg('bountyNotify', 'debug', 'registered topic on wia-bounty-topics', baseTopic);
+    } catch (e) {
+      dbg('bountyNotify', 'error', 'failed to register topic on wia-bounty-topics', e.message);
+    }
+  }
+
   let bountyInterval = null;
   function initBountyNotify() {
     regFeature('bountyNotify', 'Bounty-Push');
     if (bountyInterval) clearInterval(bountyInterval);
     bountyInterval = setInterval(() => { guard('bountyNotify', pollBounties); }, BOUNTY_POLL_MS);
     guard('bountyNotify', pollBounties);
+    guard('bountyNotify', registerBountyTopic);
   }
   function teardownBountyNotify() {
     if (bountyInterval) { clearInterval(bountyInterval); bountyInterval = null; }
