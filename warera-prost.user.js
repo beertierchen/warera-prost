@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.8.2
+// @version      0.8.3
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -9475,8 +9475,8 @@ function checkInventoryDeltaWear() {
   }
 
   // POST to ntfy; resolves true on 2xx. Text via t()/fmt() (no hardcoded strings).
-  async function sendNtfy(bounty) {
-    const topic = getEffectiveTopic();
+  async function sendNtfy(bounty, customTopic) {
+    const topic = customTopic || getEffectiveTopic();
     if (!topic) return false;
     const sideLabel = t(bounty.side === 'attacker' ? 'bountyAttackerSide' : 'bountyDefenderSide');
     const [attacker, defender, allyCountry] = await Promise.all([
@@ -9484,7 +9484,7 @@ function checkInventoryDeltaWear() {
       resolveCountryName(bounty.defenderCountry),
       resolveCountryName(bounty.country)
     ]);
-    const scope = CONFIG.bountyScope || 'cascade';
+    const scope = customTopic ? 'all' : (CONFIG.bountyScope || 'cascade');
     let typeLabel = '';
     if (scope === 'all') typeLabel = t('bountyLabelAll');
     else if (scope === 'allies') typeLabel = t('bountyLabelAllies');
@@ -9513,7 +9513,7 @@ function checkInventoryDeltaWear() {
       }
     });
     const ok = res.status >= 200 && res.status < 300;
-    dbg('bountyNotify', ok ? 'debug' : 'error', 'ntfy send', res.status, bounty.battleId);
+    dbg('bountyNotify', ok ? 'debug' : 'error', 'ntfy send', res.status, bounty.battleId, topic);
     return ok;
   }
 
@@ -9660,14 +9660,14 @@ function checkInventoryDeltaWear() {
     return out;
   }
 
-  async function topicHasBounty(key) {
-    const topic = getEffectiveTopic();
+  async function topicHasBounty(key, customTopic) {
+    const topic = customTopic || getEffectiveTopic();
     if (!topic) return false;
     try {
       const res = await gmRequest({ method: 'GET', url: `${NTFY_BASE}/${topic}/json?poll=1&since=12h` });
       return parseNtfyNdjson(res.text).some((m) => (m.tags || []).includes(key));
     } catch (e) {
-      dbg('bountyNotify', 'error', 'topic read failed', e.message);
+      dbg('bountyNotify', 'error', 'topic read failed', e.message, topic);
       return false;
     }
   }
@@ -9737,11 +9737,25 @@ function checkInventoryDeltaWear() {
       for (const b of fresh) {
         const key = bountyKey(b.battleId, b.side, b.effectiveAt);
         // Cross-device dedup: GM storage is per-browser, so independent devices poll
-        // in parallel and would all send. A random 0–4s jitter staggers them; the
+        // in parallel and would all send. A random 0–10s jitter staggers them; the
         // first publish then shows up in the others' topic re-check → they skip.
         await new Promise((r) => setTimeout(r, Math.floor(Math.random() * BOUNTY_JITTER_MS)));
         if (await topicHasBounty(key)) { seen[key] = now(); continue; }   // cross-client dedup
-        if (await sendNtfy(b)) seen[key] = now();                          // mark seen only on 2xx
+        if (await sendNtfy(b)) {
+          seen[key] = now();                          // mark seen only on 2xx
+          
+          // Mirror to global topic wia-bounty-all if the current active topic is not already wia-bounty-all
+          const activeTopic = getEffectiveTopic();
+          if (activeTopic && !activeTopic.startsWith('wia-bounty-all')) {
+            try {
+              if (!(await topicHasBounty(key, 'wia-bounty-all'))) {
+                await sendNtfy(b, 'wia-bounty-all');
+              }
+            } catch (e) {
+              dbg('bountyNotify', 'error', 'global mirror failed', e.message);
+            }
+          }
+        }
       }
       saveSeen(seen);
       setHealth('bountyNotify', 'ok', '');

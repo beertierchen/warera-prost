@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 2026-07-04 | Automatische Spiegelung auf wia-bounty-all (v0.8.3)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`
+
+**Änderungen (Deutsch):**
+- **Automatische Spiegelung auf wia-bounty-all**: Jede gesendete Kopfgeld-Benachrichtigung wird nun zusätzlich im globalen, öffentlichen Topic `wia-bounty-all` veröffentlicht.
+- **Deduplizierung**: Um doppelten Spam zu vermeiden, prüft der Client vor dem Spiegeln den 12-Stunden-Verlauf von `wia-bounty-all`. Das Feature greift nur, wenn das eigene aktive Topic nicht bereits auf `wia-bounty-all` steht.
+
+**Changes (English):**
+- **Automatic Mirroring to wia-bounty-all**: Every sent bounty notification is now additionally published to the global public topic `wia-bounty-all`.
+- **Deduplication Safeguard**: To prevent duplicate spam, the client checks the 12-hour history of `wia-bounty-all` before mirroring. This mirroring step is bypassed if the user's active topic is already configured to be `wia-bounty-all`.
+
 ## 2026-07-04 | ntfy-Topic Platzhalter-Standardwert (v0.8.2)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`
