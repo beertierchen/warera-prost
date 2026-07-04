@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## 2026-07-04 | Lokaler Kopfgeld-Popup Position-Fix (v0.8.5)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`
+
+**Änderungen (Deutsch):**
+- **Kopfgeld-Popup-Position**: Die zentrierte Position der In-Game-Popup-Benachrichtigung wurde von der Bildschirmmitte ganz nach oben in die Mitte verschoben (16px Abstand vom oberen Rand), damit sie den Spielverlauf weniger überdeckt.
+
+**Changes (English):**
+- **Bounty Popup Repositioning**: Moved the centered in-game popup alert from the center of the screen to the top-center (16px spacing from the top margin) to prevent blocking game content.
+
 ## 2026-07-04 | Lokale Kopfgeld-Anzeige & wia-bounty-all Topic-Verlinkung (v0.8.4)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/bounty-notify.test.js`, `docs/wiki/Bounty-Notify.md`, `docs/wiki/Bounty-Notify.de.md`
