@@ -1,5 +1,21 @@
 # CHANGELOG
 
+## 2026-07-04 | Lokale Kopfgeld-Anzeige & wia-bounty-all Topic-Verlinkung (v0.8.4)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/bounty-notify.test.js`, `docs/wiki/Bounty-Notify.md`, `docs/wiki/Bounty-Notify.de.md`
+
+**Änderungen (Deutsch):**
+- **Lokale Kopfgeld-Anzeige (Browser & In-Game-Popup)**: Bei erkannten Kopfgeldern wird zusätzlich zum Push-Versand eine lokale Browser-Benachrichtigung und ein zentriertes, 8 Sekunden sichtbares In-Game-Popup auf dem abfragenden Tab eingeblendet.
+- **Entkoppeltes Deduplizieren**: Die lokale Benachrichtigung läuft unabhängig von ntfy-Sendefehlern oder der Staggering-Verzögerung über einen eigenen Deduplizierungs-Speicher.
+- **Automatische Verlinkung im wia-bounty-all Mirror**: Die gespiegelten Benachrichtigungen auf `wia-bounty-all` erhalten nun ein "Topic öffnen"-Aktions-Button sowie einen Link-Hinweis, der direkt zum Quell-Feed führt. Wenn ein Topic-Secret gesetzt ist, entfällt dieser Link (Datenschutz).
+- **Text-Verbesserung**: Alle Benachrichtigungs-Texte verwenden nun eine klarere Formulierung ("Kämpfe für [Land]" statt "Bounty auf [Land]"), um Missverständnisse über das Ziel des Kopfgeldes zu vermeiden.
+
+**Changes (English):**
+- **Local Bounty Alerts (Browser & In-Game Popup)**: Detected bounties now trigger a native browser notification and a centered in-game popup toast (8-second duration) on the active polling tab.
+- **Decoupled Local Deduplication**: Local alerts run on their own seen store, completely independent of ntfy stagger delays or transmission failures.
+- **Origin Topic Links in wia-bounty-all Mirror**: Mirrored alerts on `wia-bounty-all` now carry an "Open topic" action and a link pointing back to the source feed. If a Topic Secret is configured, no link is sent to protect the feed's privacy.
+- **Clarified Alert Wording**: Updated all alert texts to read "Fight for [Country]" instead of "Bounty on [Country]" to clearly convey which side has the bounty pool.
+
 ## 2026-07-04 | Automatische Spiegelung auf wia-bounty-all (v0.8.3)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`

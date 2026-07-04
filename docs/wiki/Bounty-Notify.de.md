@@ -10,6 +10,7 @@ Das Feature **Bounty-Push-Benachrichtigungen** ist ein Hintergrunddienst (Poller
 2. **Tab-Deduplizierung:** Wenn du WareEra in mehreren Browser-Tabs geöffnet hast, sorgt eine tabübergreifende Sperre (Lock) dafür, dass immer nur ein einziger Tab den Server abfragt.
 3. **Multi-Geräte-Staggering:** Wenn du das Spiel auf verschiedenen Profilen oder Geräten geöffnet hast, verhindern ein zufälliger Jitter (0–10s) und eine ntfy.sh-Historienprüfung doppelte Push-Meldungen für dasselbe Kopfgeld.
 4. **Ziel-Filterung:** Push-Nachrichten werden nur ausgelöst, wenn ein Kopfgeld aktiv ist, das deinem konfigurierten Benachrichtigungs-Umfang entspricht.
+5. **Lokale Anzeige (Browser-Benachrichtigung & In-Game-Popup):** Zusätzlich zum Push-Versand wird die Erkennung auf dem abfragenden Tab sofort lokal angezeigt: per nativer Browser-Benachrichtigung (Lazy-Berechtigungsabfrage beim ersten Mal) und als zentriertes, stapelbares In-Game-Popup (8s Anzeigezeit, Klick öffnet Schlachtseite).
 
 ---
 
@@ -35,6 +36,11 @@ Standardmäßig generiert das Script den ntfy-Topic-Namen vollautomatisch basier
 Wenn du ein eigenes Topic nutzen möchtest, kannst du dieses im Feld **ntfy-Topic (Basis)** eintragen.
 
 Um zu verhindern, dass gegnerische Spieler dein Topic erraten und mitlesen, kannst du im Feld **Topic-Secret (optional)** einen geheimen Zusatz eintragen. Dieser wird an das Topic angehängt (z. B. `wia-bounty-beer-x7q2`), sodass nur Personen mit Kenntnis des Secrets die Benachrichtigungen empfangen können.
+
+### Spiegelung nach `wia-bounty-all` & Topic-Verlinkung
+Jedes erkannte Kopfgeld wird an das globale Topic `wia-bounty-all` gespiegelt.
+* **Verlinkung ohne Secret:** Wenn kein Secret gesetzt ist, enthält die gespiegelte Nachricht eine ntfy-Aktion ("Topic öffnen") und einen Link-Hinweis auf das Quell-Topic, damit Mitspieler diesem leicht beitreten können.
+* **Schutz bei Secrets:** Ist ein Secret konfiguriert, wird die gespiegelte Benachrichtigung anonymisiert übertragen — es wird kein Link oder Hinweis auf das Quell-Topic angehängt, um dessen Geheimhaltung zu wahren.
 
 ---
 

@@ -10,6 +10,7 @@ The **Bounty Push Notifications** feature is a background poller that checks for
 2. **Tab Deduplication:** If you have WareEra open in multiple browser tabs, a cross-tab lock ensures only one tab polls the server at a time.
 3. **Multi-device Staggering:** If you have WareEra open on different devices (e.g. PC and laptop), a randomized stagger delay (0–10s) and a double read-back check on the ntfy.sh history prevent duplicate notifications for the same bounty.
 4. **Target Filtering:** Pushes are only triggered for active, unpaid bounties matching your configured notification scope.
+5. **Local Display (Browser Notification & In-Game Popup):** In addition to the push notification, detection is shown locally on the polling tab: via a native browser notification (lazy permission request on first display) and a centered, stacking in-game popup toast (8s duration, click redirects to the battle page).
 
 ---
 
@@ -35,6 +36,11 @@ By default, the script dynamically generates a public ntfy topic name based on y
 If you want to use a custom topic name, you can type it in the **ntfy topic (base)** field. 
 
 To keep your notifications private and prevent other players from spying on your alerts, add a secret key in the **Topic secret (optional)** field. This will append the secret to your topic URL (e.g. `wia-bounty-beer-x7q2`), ensuring only those who know the secret can listen.
+
+### Mirroring to `wia-bounty-all` & Topic Linking
+Every detected bounty is mirrored to the global topic `wia-bounty-all`.
+* **Linking without Secret:** If no secret is configured, the mirrored notification includes a ntfy action ("Open topic") and a body line referencing the source topic, allowing other players to easily join your feed.
+* **Protection with Secrets:** If a secret is set, the mirrored notification is anonymized — no link or topic reference is attached, preserving the secrecy of your private feed.
 
 ---
 
