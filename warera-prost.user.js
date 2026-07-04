@@ -315,6 +315,8 @@
         settingsFeatNotesHint: 'Adds a note icon next to player links. Disable if the standalone Warera User Notes script is also active.',
         settingsFeatBattleCheckbox: 'Battle advisor ⚔️ (experimental)',
         settingsFeatBattleHint: 'Highlights the button for your side on battle pages using automatically resolved allied country codes.',
+        bountyQuickOpen: '⚡ Open country',
+        bountyQuickOpenTitle: 'Open country profile in new tab',
         settingsTitle: 'WareEra Inventory Advisor',
         gearTitle: 'WareEra Inventory Advisor-Settings',
         settingsAdvisorSettingsLabel: 'Inventory Advisor Options',
@@ -519,6 +521,8 @@
         settingsFeatNotesHint: 'Fügt ein Notiz-Icon neben Spieler-Links hinzu. Deaktivieren, wenn das separate Warera User Notes-Script ebenfalls aktiv ist.',
         settingsFeatBattleCheckbox: 'Battle-Advisor ⚔️ (experimentell)',
         settingsFeatBattleHint: 'Hebt den richtigen Angriffs-/Verteidigungsbutton auf Kampfseiten hervor unter Verwendung automatisch ermittelter verbündeter Ländercodes.',
+        bountyQuickOpen: '⚡ Land öffnen',
+        bountyQuickOpenTitle: 'Länderprofil in neuem Tab öffnen',
         settingsTitle: 'WareEra Inventory Advisor',
         gearTitle: 'WareEra Inventory Advisor-Einstellungen',
         settingsAdvisorSettingsLabel: 'Optionen für den Item Advisor',
@@ -4159,6 +4163,25 @@ async function scanInventory(force) {
         vertical-align: middle;
         flex-shrink: 0;
       }
+      .wia-quick-open {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        margin: 4px 0 0 4px;
+        padding: 2px 8px;
+        font: 500 11px/1.4 system-ui, sans-serif;
+        color: #58a6ff;
+        background: rgba(13, 17, 23, 0.7);
+        border: 1px solid rgba(88, 166, 255, 0.3);
+        border-radius: 4px;
+        text-decoration: none;
+        cursor: pointer;
+        transition: background 0.15s, border-color 0.15s;
+      }
+      .wia-quick-open:hover {
+        background: rgba(88, 166, 255, 0.15);
+        border-color: #58a6ff;
+      }
 
       /* ── Resource Market Intraday Graph ── */
       .wia-mkt-toggle-row {
@@ -5136,6 +5159,26 @@ function updateObserverTarget() {
     }
   }
 
+  function injectQuickOpenLink(btnEl) {
+    if (!btnEl) return;
+    const existing = btnEl.parentElement?.querySelector('.wia-quick-open');
+    if (existing) return;
+
+    const code = battleFlagCode(btnEl);
+    if (!code) return;
+
+    const link = document.createElement('a');
+    link.className = 'wia-quick-open';
+    link.href = `/country/${code}`;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.title = t('bountyQuickOpenTitle');
+    link.textContent = t('bountyQuickOpen');
+    link.setAttribute('data-wia-injected', 'true');
+
+    btnEl.parentElement?.appendChild(link);
+  }
+
   let battleGen = 0;
   let battleRetryTimer = null;
 
@@ -5171,6 +5214,8 @@ function updateObserverTarget() {
 
     allyBtn.classList.add('wia-battle-primary');
     enemyBtn.classList.add('wia-battle-muted');
+
+    injectQuickOpenLink(allyBtn);
   }
 
   function teardownBattleAdvisory() {
