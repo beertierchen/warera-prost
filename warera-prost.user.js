@@ -9803,6 +9803,42 @@ function checkInventoryDeltaWear() {
     } catch (e) { dbg('bountyNotify', 'error', 'popup failed', e.message); }
   }
 
+  async function ensureNotifPermission() {
+    try {
+      const N = PAGE_WINDOW.Notification;
+      if (!N) return 'unsupported';
+      if (N.permission === 'default') {
+        try { return await N.requestPermission(); } catch (_) { return N.permission; }
+      }
+      return N.permission;
+    } catch (e) { dbg('bountyNotify', 'error', 'permission check failed', e.message); return 'error'; }
+  }
+
+  async function showBrowserNotif(bounty) {
+    try {
+      const N = PAGE_WINDOW.Notification;
+      if (!N) return;
+      const perm = await ensureNotifPermission();
+      if (perm !== 'granted') { dbg('bountyNotify', 'debug', 'browser notif skipped', perm); return; }
+      const [attacker, defender, allyCountry] = await Promise.all([
+        resolveCountryName(bounty.attackerCountry),
+        resolveCountryName(bounty.defenderCountry),
+        resolveCountryName(bounty.country)
+      ]);
+      const scope = CONFIG.bountyScope || 'cascade';
+      const typeLabel = scope === 'all' ? t('bountyLabelAll') : scope === 'allies' ? t('bountyLabelAllies') : t('bountyLabelCascade');
+      const sideLabel = t(bounty.side === 'attacker' ? 'bountyAttackerSide' : 'bountyDefenderSide');
+      const title = t('ntfyBountyTitle', { type: typeLabel, defender, attacker });
+      const body = t('ntfyBountyBody', {
+        allyCountry, side: sideLabel,
+        moneyPool: fmt(bounty.moneyPool || 0), ratePer1k: fmt(bounty.ratePer1k || 0)
+      });
+      const n = new N(title, { body, tag: bountyKey(bounty.battleId, bounty.side, bounty.effectiveAt) });
+      n.onclick = () => { try { PAGE_WINDOW.focus(); PAGE_WINDOW.open(`https://app.warera.io/battle/${bounty.battleId}`, '_blank'); n.close(); } catch (_) {} };
+      dbg('bountyNotify', 'debug', 'browser notif shown', bounty.battleId);
+    } catch (e) { dbg('bountyNotify', 'error', 'browser notif failed', e.message); }
+  }
+
   // ── SeenStore (local dedup) ──
   const BOUNTY_SEEN_TTL_MS = 86400000;   // 24h; pure time-based prune (pagination-safe)
   const BOUNTY_POPUP_MS = 8000;   // in-game toast auto-dismiss
