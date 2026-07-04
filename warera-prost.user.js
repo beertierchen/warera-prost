@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         PROST
+// @name         TEST PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.8.4
+// @version      0.8.5-unstable
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -9732,7 +9732,7 @@ function checkInventoryDeltaWear() {
     bountyStyleInjected = true;
     GM_addStyle(`
       #${POPUP_CONTAINER_ID} {
-        position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+        position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
         z-index: 2147483600; display: flex; flex-direction: column-reverse;
         gap: 8px; align-items: center; pointer-events: none;
         max-width: calc(100vw - 24px);
