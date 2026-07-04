@@ -2024,6 +2024,7 @@
     globalThis.WIA_post = resolveApiPost;
     globalThis.getEffectiveTopic = getEffectiveTopic;
     globalThis.testBountyPush = testBountyPush;
+    globalThis.testLocalBounty = testLocalBounty;
     const bountyAllies = () => resolveAllyCountryIds().then((s) => [...s]);
     globalThis.bountyAllies = bountyAllies;
     globalThis.extractAllyBounties = extractAllyBounties;
@@ -2033,6 +2034,7 @@
       unsafeWindow.WIA_post = resolveApiPost;
       unsafeWindow.WIA_gmRequest = gmRequest;
       unsafeWindow.testBountyPush = testBountyPush;
+      unsafeWindow.testLocalBounty = testLocalBounty;
       unsafeWindow.getEffectiveTopic = getEffectiveTopic;
       unsafeWindow.bountyAllies = bountyAllies;
       unsafeWindow.extractAllyBounties = extractAllyBounties;
@@ -9540,11 +9542,29 @@ function checkInventoryDeltaWear() {
       effectiveAt: new Date().toISOString(),
       moneyPool: 62.15,
       ratePer1k: 0.05,
+    });
+  }
+  
+  async function emitLocalBounty(bounty) {
+    await Promise.allSettled([showBountyPopup(bounty), showBrowserNotif(bounty)]);
+  }
+
+  function testLocalBounty() {
+    return emitLocalBounty({
+      battleId: '6a46743c4afd8ef24e3d2569',
+      side: 'attacker',
+      country: '6813b6d446e731854c7ac79c',
+      attackerCountry: '6813b6d446e731854c7ac79c',
+      defenderCountry: '6813b6d446e731854c7ac802',
+      effectiveAt: new Date().toISOString(),
+      moneyPool: 62.15,
+      ratePer1k: 0.05,
       regionId: 'TEST'
     });
   }
 
   globalThis.testBountyPush = testBountyPush;
+  globalThis.testLocalBounty = testLocalBounty;
   globalThis.sendNtfy = sendNtfy;
   globalThis.bountyKey = bountyKey;
 
