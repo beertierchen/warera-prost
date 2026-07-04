@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         PROST
+// @name         TEST PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.8.6
+// @version      0.8.7-unstable
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -9495,6 +9495,17 @@ function checkInventoryDeltaWear() {
     return `https://ntfy.sh/${t}`;
   }
 
+  function cleanHeaderValue(str) {
+    if (!str) return '';
+    return str
+      .replace(/Ä/g, 'Ae').replace(/ä/g, 'ae')
+      .replace(/Ö/g, 'Oe').replace(/ö/g, 'oe')
+      .replace(/Ü/g, 'Ue').replace(/ü/g, 'ue')
+      .replace(/ß/g, 'ss')
+      .replace(/[^\x20-\x7E]/g, '') // Keep only printable US-ASCII characters
+      .trim();
+  }
+
   // POST to ntfy; resolves true on 2xx. Text via t()/fmt() (no hardcoded strings).
   async function sendNtfy(bounty, customTopic) {
     const topic = customTopic || getEffectiveTopic();
@@ -9524,17 +9535,16 @@ function checkInventoryDeltaWear() {
     const topicLink = isMirror ? buildTopicLink(baseTopic, hasSecret) : null;
     const bodyWithLink = topicLink ? `${body}\n${baseTopic}: ${topicLink}` : body;
 
-    // HTTP header values must be Latin-1 (≤0xFF). Emoji/Unicode (e.g. ⚔️ U+2694)
-    // make the header invalid → GM request errors with "network error". Strip
-    // out-of-range chars from the Title; carry the emoji via a ntfy tag instead.
-    const asciiTitle = title.replace(/[^\x00-\xFF]/g, '').trim();
+    // HTTP header values must be US-ASCII (≤0x7F) in HTTP/2 / strict XHR.
+    // Replace German umlauts and strip non-ASCII/Emoji to prevent network/protocol errors.
+    const safeTitle = cleanHeaderValue(title);
     const headers = {
-      Title: asciiTitle,
+      Title: safeTitle,
       Priority: 'default',
       Tags: `crossed_swords,${bountyKey(bounty.battleId, bounty.side, bounty.effectiveAt)}`,
       Click: `https://app.warera.io/battle/${bounty.battleId}`
     };
-    if (topicLink) headers.Actions = `view, ${t('bountyTopicLinkLabel')}, ${topicLink}`;
+    if (topicLink) headers.Actions = `view, ${cleanHeaderValue(t('bountyTopicLinkLabel'))}, ${topicLink}`;
 
     const res = await gmRequest({
       method: 'POST',

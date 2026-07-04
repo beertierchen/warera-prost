@@ -132,3 +132,19 @@ assert.strictEqual(buildTopicLink('wia-bounty-beer-casc', false), 'https://ntfy.
 assert.strictEqual(buildTopicLink('wia-bounty-beer-casc', true), null);
 assert.strictEqual(buildTopicLink('', false), null);
 console.log('bounty-notify: buildTopicLink OK');
+
+function cleanHeaderValue(str) {
+  if (!str) return '';
+  return str
+    .replace(/Ä/g, 'Ae').replace(/ä/g, 'ae')
+    .replace(/Ö/g, 'Oe').replace(/ö/g, 'oe')
+    .replace(/Ü/g, 'Ue').replace(/ü/g, 'ue')
+    .replace(/ß/g, 'ss')
+    .replace(/[^\x20-\x7E]/g, '') // Nur druckbare US-ASCII-Zeichen erlauben
+    .trim();
+}
+assert.strictEqual(cleanHeaderValue('Topic öffnen'), 'Topic oeffnen');
+assert.strictEqual(cleanHeaderValue('⚔️ Ally-Casc-Bounty: Dänemark vs Österreich'), 'Ally-Casc-Bounty: Daenemark vs Oesterreich');
+assert.strictEqual(cleanHeaderValue('   Spaces und ß   '), 'Spaces und ss');
+assert.strictEqual(cleanHeaderValue(''), '');
+console.log('bounty-notify: cleanHeaderValue OK');
