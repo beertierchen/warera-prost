@@ -333,9 +333,14 @@
         settingsFeatPillCheckbox: 'Pill Reminder (configurable pill-timing overlay) 💊',
         settingsFeatPillHint: 'Shows a top-bar status and countdown timer for the pill cycle, highlights ready pills, and checks health/hunger levels.',
         ntfyBountyTitle: '⚔️ {type}: {defender} vs {attacker}',
-        ntfyBountyBody: 'Bounty on {allyCountry} ({side}) · Pool {moneyPool} · {ratePer1k}/1k',
+        ntfyBountyBody: 'Fight for {allyCountry} ({side}) · Pool {moneyPool} · {ratePer1k}/1k',
         bountyAttackerSide: 'Attacker',
         bountyDefenderSide: 'Defender',
+        bountyPopupAction: 'Fight for',
+        bountyPopupContext: '{side} · vs {opponent}',
+        bountyStatPool: 'Pool',
+        bountyStatRate: 'Rate/1k',
+        bountyPopupClose: 'Close',
         bountyLabelAll: 'Bounty',
         bountyLabelAllies: 'Ally-Bounty',
         bountyLabelCascade: 'Ally-Casc-Bounty',
@@ -537,9 +542,14 @@
         settingsFeatPillCheckbox: 'Pill-Reminder (konfigurierbares Pillen-Timing Overlay)',
         settingsFeatPillHint: 'Zeigt einen Status und Countdown in der Menüleiste, markiert nimmbereite Pillen und prüft HP/Hunger-Werte.',
         ntfyBountyTitle: '⚔️ {type}: {defender} vs {attacker}',
-        ntfyBountyBody: 'Bounty auf {allyCountry} ({side}) · Topf {moneyPool} · {ratePer1k}/1k',
+        ntfyBountyBody: 'Kämpfe für {allyCountry} ({side}) · Topf {moneyPool} · {ratePer1k}/1k',
         bountyAttackerSide: 'Angreifer',
         bountyDefenderSide: 'Verteidiger',
+        bountyPopupAction: 'Kämpfe für',
+        bountyPopupContext: '{side} · gegen {opponent}',
+        bountyStatPool: 'Topf',
+        bountyStatRate: 'Rate/1k',
+        bountyPopupClose: 'Schließen',
         bountyLabelAll: 'Kopfgeld',
         bountyLabelAllies: 'Ally-Bounty',
         bountyLabelCascade: 'Ally-Casc-Bounty',
@@ -9626,6 +9636,8 @@ function checkInventoryDeltaWear() {
   const BOUNTY_PAGE_CAP = 10;
   const BOUNTY_LOCK_TTL_MS = 5000;
   const BOUNTY_JITTER_MS = 10000;   // cross-device dedup: random 0–10s stagger before the topic re-check
+  const POPUP_CONTAINER_ID = 'wia-bounty-popup-container';
+  const BOUNTY_POPUP_COMPACT_PX = 430;   // below this viewport width → compact (variant C) layout
 
   function extractAllyBounties(items, allySet) {
     const out = [];
@@ -9671,6 +9683,124 @@ function checkInventoryDeltaWear() {
       dbg('bountyNotify', 'error', 'topic read failed', e.message, topic);
       return false;
     }
+  }
+
+  function bountyEsc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  }
+
+  let bountyStyleInjected = false;
+  function ensureBountyPopupStyle() {
+    if (bountyStyleInjected) return;
+    bountyStyleInjected = true;
+    GM_addStyle(`
+      #${POPUP_CONTAINER_ID} {
+        position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+        z-index: 2147483600; display: flex; flex-direction: column-reverse;
+        gap: 8px; align-items: center; pointer-events: none;
+        max-width: calc(100vw - 24px);
+      }
+      .wia-bounty-toast {
+        pointer-events: auto; cursor: pointer; position: relative;
+        width: 400px; max-width: calc(100vw - 24px);
+        color: #f9fafb;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        background: linear-gradient(180deg, #111a2e 0%, #0d1526 100%);
+        border: 1px solid rgba(148,163,184,.42); border-left: 4px solid #f59e0b;
+        border-radius: 10px; box-shadow: 0 10px 34px rgba(0,0,0,.5);
+        padding: 12px 34px 13px 15px; animation: wia-bt-rise .22s ease-out;
+      }
+      .wia-bounty-toast:focus-visible { outline: 2px solid #fbbf24; outline-offset: 3px; }
+      .wia-bt-close {
+        position: absolute; top: 8px; right: 10px; border: 0; background: none;
+        color: #6b7688; font-size: 17px; line-height: 1; cursor: pointer; padding: 2px;
+      }
+      .wia-bt-close:hover { color: #f9fafb; }
+      .wia-bt-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+      .wia-bt-chip {
+        font-size: 10px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase;
+        color: #fbbf24; background: rgba(245,158,11,.14);
+        border: 1px solid rgba(245,158,11,.35); padding: 2px 7px; border-radius: 4px;
+      }
+      .wia-bt-swords { margin-left: auto; font-size: 13px; opacity: .8; }
+      .wia-bt-action { font-size: 16px; font-weight: 800; letter-spacing: -.01em; line-height: 1.2; }
+      .wia-bt-ally { color: #fbbf24; }
+      .wia-bt-ctx { color: #8b949e; font-size: 12.5px; margin-top: 4px; }
+      .wia-bt-side { color: #f9fafb; font-weight: 600; }
+      .wia-bt-stats { display: flex; gap: 20px; margin-top: 11px; padding-top: 10px; border-top: 1px solid rgba(148,163,184,.18); }
+      .wia-bt-lbl { font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; color: #6b7688; display: block; margin-bottom: 2px; }
+      .wia-bt-val { font-size: 15px; font-weight: 700; color: #f9fafb; font-variant-numeric: tabular-nums; font-family: ui-monospace, Menlo, Consolas, monospace; }
+      .wia-bt-val.money { color: #fbbf24; }
+      .wia-bt-dot, .wia-bt-amt { display: none; }
+      /* ── compact fallback (variant C) — JS adds .compact when innerWidth < 430 ── */
+      .wia-bounty-toast.compact { display: flex; align-items: center; gap: 12px; width: auto; padding: 11px 34px 11px 14px; }
+      .wia-bounty-toast.compact .wia-bt-head, .wia-bounty-toast.compact .wia-bt-stats { display: none; }
+      .wia-bounty-toast.compact .wia-bt-dot { display: block; width: 8px; height: 8px; border-radius: 50%; background: #fbbf24; flex: none; box-shadow: 0 0 8px #f59e0b; }
+      .wia-bounty-toast.compact .wia-bt-col { min-width: 0; flex: 1; display: flex; flex-direction: column; }
+      .wia-bounty-toast.compact .wia-bt-action { font-size: 14px; }
+      .wia-bounty-toast.compact .wia-bt-ctx { margin-top: 2px; font-size: 12px; }
+      .wia-bounty-toast.compact .wia-bt-amt { display: block; font-size: 15px; font-weight: 800; color: #fbbf24; flex: none; font-variant-numeric: tabular-nums; font-family: ui-monospace, Menlo, Consolas, monospace; }
+      @keyframes wia-bt-rise { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: none; } }
+      @media (prefers-reduced-motion: reduce) { .wia-bounty-toast { animation: none; } }
+    `);
+  }
+
+  async function showBountyPopup(bounty) {
+    try {
+      ensureBountyPopupStyle();
+      const doc = document;
+      let box = doc.getElementById(POPUP_CONTAINER_ID);
+      if (!box) { box = doc.createElement('div'); box.id = POPUP_CONTAINER_ID; doc.body.appendChild(box); }
+
+      const [attacker, defender, allyCountry] = await Promise.all([
+        resolveCountryName(bounty.attackerCountry),
+        resolveCountryName(bounty.defenderCountry),
+        resolveCountryName(bounty.country)
+      ]);
+      const scope = CONFIG.bountyScope || 'cascade';
+      const chip = scope === 'all' ? t('bountyLabelAll') : scope === 'allies' ? t('bountyLabelAllies') : t('bountyLabelCascade');
+      const sideLabel = t(bounty.side === 'attacker' ? 'bountyAttackerSide' : 'bountyDefenderSide');
+      const opponent = bounty.side === 'attacker' ? defender : attacker;
+      const pool = fmt(bounty.moneyPool || 0);
+      const rate = fmt(bounty.ratePer1k || 0);
+      const actionHtml = `${bountyEsc(t('bountyPopupAction'))} <span class="wia-bt-ally">${bountyEsc(allyCountry)}</span>`;
+      const ctxText = t('bountyPopupContext', { side: sideLabel, opponent });
+      const closeBtn = `<button class="wia-bt-close" aria-label="${bountyEsc(t('bountyPopupClose'))}">×</button>`;
+      const compact = (PAGE_WINDOW.innerWidth || 9999) < BOUNTY_POPUP_COMPACT_PX;
+
+      const toast = doc.createElement('div');
+      toast.className = compact ? 'wia-bounty-toast compact' : 'wia-bounty-toast';
+      toast.setAttribute('role', 'alert');
+      toast.tabIndex = 0;
+      if (compact) {
+        toast.innerHTML = closeBtn +
+          `<span class="wia-bt-dot" aria-hidden="true"></span>` +
+          `<span class="wia-bt-col">` +
+            `<span class="wia-bt-action">${actionHtml}</span>` +
+            `<span class="wia-bt-ctx">${bountyEsc(ctxText)} · ${bountyEsc(rate)}/1k</span>` +
+          `</span>` +
+          `<span class="wia-bt-amt">${bountyEsc(pool)}</span>`;
+      } else {
+        toast.innerHTML = closeBtn +
+          `<div class="wia-bt-head"><span class="wia-bt-chip">${bountyEsc(chip)}</span><span class="wia-bt-swords" aria-hidden="true">⚔</span></div>` +
+          `<div class="wia-bt-action">${actionHtml}</div>` +
+          `<div class="wia-bt-ctx">${bountyEsc(ctxText)}</div>` +
+          `<div class="wia-bt-stats">` +
+            `<div class="wia-bt-stat"><span class="wia-bt-lbl">${bountyEsc(t('bountyStatPool'))}</span><span class="wia-bt-val money">${bountyEsc(pool)}</span></div>` +
+            `<div class="wia-bt-stat"><span class="wia-bt-lbl">${bountyEsc(t('bountyStatRate'))}</span><span class="wia-bt-val">${bountyEsc(rate)}</span></div>` +
+          `</div>`;
+      }
+
+      const url = `https://app.warera.io/battle/${bounty.battleId}`;
+      const dismiss = () => { if (toast.parentNode) toast.parentNode.removeChild(toast); };
+      toast.addEventListener('click', (e) => {
+        if (e.target && e.target.classList && e.target.classList.contains('wia-bt-close')) { dismiss(); return; }
+        try { PAGE_WINDOW.open(url, '_blank'); } catch (_) {}
+      });
+      box.appendChild(toast);
+      setTimeout(dismiss, BOUNTY_POPUP_MS);
+      dbg('bountyNotify', 'debug', 'popup shown', compact ? 'compact' : 'full', bounty.battleId);
+    } catch (e) { dbg('bountyNotify', 'error', 'popup failed', e.message); }
   }
 
   // ── SeenStore (local dedup) ──
