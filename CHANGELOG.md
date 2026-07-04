@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 2026-07-04 | Kopfgeld-Popup Sichtbarkeits-Synchronisierung & globaler Spiegel-Fix (v0.8.6)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`
+
+**Änderungen (Deutsch):**
+- **Sichtbarkeits-Synchronisierung**: In-Game-Popup-Benachrichtigungen werden nun über den `localStorage` tabübergreifend koordiniert. Sie erscheinen nur auf dem gerade aktiven (sichtbaren) Tab. Wenn kein Tab aktiv war, werden verpasste Popups beim nächsten Aktivieren des Tabs nachgeholt (bis zu 10 Minuten rückwirkend).
+- **Robuste wia-bounty-all Spiegelung**: Auch wenn ein anderer (z.B. veralteter) Client ein Kopfgeld vor uns an das Primär-Topic gesendet hat (Deduplizierung greift), prüft der aktuelle Client nun `wia-bounty-all` und spiegelt das Kopfgeld dort hin, falls es im globalen Verlauf noch fehlt.
+
+**Changes (English):**
+- **Popup Tab Visibility Sync**: In-game popup alerts are now synchronized across tabs via `localStorage`. The toast only displays on the currently focused/visible tab. Inactive tabs store pending popups and display them upon focus (with a 10-minute maximum age limit).
+- **Robust Mirroring Fallback**: Even if another client (running an older version) pushed the bounty to the primary topic first (triggering cross-client deduplication), the current client now checks `wia-bounty-all` and mirrors the event if it is missing from the global feed history.
+
 ## 2026-07-04 | Lokaler Kopfgeld-Popup Position-Fix (v0.8.5)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`
