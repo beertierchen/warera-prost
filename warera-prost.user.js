@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         PROST
+// @name         TEST PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.8.7
+// @version      0.8.8-unstable
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -715,6 +715,8 @@
     bountyPollLock: NS + 'bountyPollLock',
     bountySeen: NS + 'bountySeen',
     bountyLocalSeen: NS + 'bountyLocalSeen',
+    bountyMirrorSeen: NS + 'bountyMirrorSeen',
+    bountyTopicBase: NS + 'bountyTopicBase',
     bountyAllyCache: NS + 'bountyAllyCache',
     bountyCountryMap: NS + 'bountyCountryMap',
     pillTakenAt: NS + 'pillTakenAt',
@@ -9507,7 +9509,7 @@ function checkInventoryDeltaWear() {
   }
 
   // POST to ntfy; resolves true on 2xx. Text via t()/fmt() (no hardcoded strings).
-  async function sendNtfy(bounty, customTopic) {
+  async function sendNtfy(bounty, customTopic, labelScope) {
     const topic = customTopic || getEffectiveTopic();
     if (!topic) return false;
     const sideLabel = t(bounty.side === 'attacker' ? 'bountyAttackerSide' : 'bountyDefenderSide');
@@ -9516,7 +9518,7 @@ function checkInventoryDeltaWear() {
       resolveCountryName(bounty.defenderCountry),
       resolveCountryName(bounty.country)
     ]);
-    const scope = customTopic ? 'all' : (CONFIG.bountyScope || 'cascade');
+    const scope = labelScope || (customTopic ? 'all' : (CONFIG.bountyScope || 'cascade'));
     let typeLabel = '';
     if (scope === 'all') typeLabel = t('bountyLabelAll');
     else if (scope === 'allies') typeLabel = t('bountyLabelAllies');
@@ -9940,6 +9942,8 @@ function checkInventoryDeltaWear() {
   function saveSeen(store) { GM_setValue(KEYS.bountySeen, store); }
   function loadLocalSeen() { return GM_getValue(KEYS.bountyLocalSeen, {}) || {}; }
   function saveLocalSeen(store) { GM_setValue(KEYS.bountyLocalSeen, store); }
+  function loadMirrorSeen() { return GM_getValue(KEYS.bountyMirrorSeen, {}) || {}; }
+  function saveMirrorSeen(store) { GM_setValue(KEYS.bountyMirrorSeen, store); }
   function pruneSeen(store, nowMs) {
     const out = {};
     for (const k of Object.keys(store)) if (nowMs - store[k] <= BOUNTY_SEEN_TTL_MS) out[k] = store[k];
@@ -9959,12 +9963,27 @@ function checkInventoryDeltaWear() {
     return true;
   }
 
+  async function topicPresentKeys(topic) {
+    try {
+      const res = await gmRequest({ method: 'GET', url: `${NTFY_BASE}/${topic}/json?poll=1&since=12h` });
+      return new Set(parseNtfyNdjson(res.text).flatMap(m => m.tags || []));
+    } catch (e) {
+      dbg('bountyNotify', 'error', 'mirror readback failed', topic, e.message);
+      return null;
+    }
+  }
+
   async function pollBounties() {
     if (!CONFIG.featBountyNotify || !getEffectiveTopic()) return;
     if (!acquirePollSlot()) return;
     try {
-      const allySet = CONFIG.bountyScope === 'all' ? null : await resolveAllyCountryIds(CONFIG.bountyScope === 'cascade');
+      const alliesSet = await resolveAllyCountryIds(false);
+      const cascadeSet = await resolveAllyCountryIds(true);
+      const base = GM_getValue(KEYS.bountyTopicBase, '');
+
+      const allySet = CONFIG.bountyScope === 'all' ? null : (CONFIG.bountyScope === 'cascade' ? cascadeSet : alliesSet);
       if (allySet && !allySet.size) { setHealth('bountyNotify', 'warn', 'ally set unresolved'); return; }
+
       let cursor, pages = 0; const all = [];
       do {
         const args = { isActive: true, filter: 'all', limit: 100 };
@@ -9978,9 +9997,14 @@ function checkInventoryDeltaWear() {
         pages++;
         if (pages >= BOUNTY_PAGE_CAP && cursor) { dbg('bountyNotify', 'debug', 'page cap hit', pages); break; }
       } while (cursor);
+
       const bounties = extractAllyBounties(all, allySet);
+      const allBounties = extractAllyBounties(all, null);
       dbg('bountyNotify', 'debug', 'poll ok', 'battles', all.length, 'allyBounties', bounties.length);
+
       let seen = pruneSeen(loadSeen(), now());
+      let mirrorSeen = pruneSeen(loadMirrorSeen(), now());
+
       if (!bountyColdStartDone) {
         // Seed existing bounties WITHOUT notifying (avoid flood on tab open).
         let localSeen = pruneSeen(loadLocalSeen(), now());
@@ -9990,10 +10014,25 @@ function checkInventoryDeltaWear() {
           localSeen[k] = now();
           shownPopups.add(k);
         }
-        bountyColdStartDone = true; saveSeen(seen); saveLocalSeen(localSeen);
+        const feeds = [
+          { topic: 'wia-bounty-all', set: allBounties }
+        ];
+        if (base) {
+          feeds.push({ topic: `wia-bounty-${base}`, set: extractAllyBounties(all, alliesSet) });
+          feeds.push({ topic: `wia-bounty-${base}-casc`, set: extractAllyBounties(all, cascadeSet) });
+        }
+        for (const feed of feeds) {
+          for (const b of feed.set) {
+            const mk = `${feed.topic}|${bountyKey(b.battleId, b.side, b.effectiveAt)}`;
+            mirrorSeen[mk] = now();
+          }
+        }
+        bountyColdStartDone = true;
+        saveSeen(seen); saveLocalSeen(localSeen); saveMirrorSeen(mirrorSeen);
         dbg('bountyNotify', 'debug', 'cold-start seeded', bounties.length);
         setHealth('bountyNotify', 'ok', ''); return;
       }
+
       // Dedup within this poll too: pagination can return the same battle on
       // overlapping pages → same bounty key twice → duplicate notification.
       const seenInPoll = new Set();
@@ -10003,6 +10042,7 @@ function checkInventoryDeltaWear() {
         seenInPoll.add(k);
         return true;
       });
+
       // Local channels (popup + browser notif) fire independently of ntfy
       // cross-device dedup and send success — own dedup store, fired up-front.
       let localSeen = pruneSeen(loadLocalSeen(), now());
@@ -10014,46 +10054,70 @@ function checkInventoryDeltaWear() {
       }
       saveLocalSeen(localSeen);
 
-      for (const b of fresh) {
-        const key = bountyKey(b.battleId, b.side, b.effectiveAt);
-        // Cross-device dedup: GM storage is per-browser, so independent devices poll
-        // in parallel and would all send. A random 0–10s jitter staggers them; the
-        // first publish then shows up in the others' topic re-check → they skip.
-        await new Promise((r) => setTimeout(r, Math.floor(Math.random() * BOUNTY_JITTER_MS)));
-        if (await topicHasBounty(key)) {
-          seen[key] = now();
-          // Even if another client pushed to our primary topic first, we should still
-          // check if it was mirrored to wia-bounty-all and mirror it if missing (e.g. if the
-          // other client was running an older version).
-          const activeTopic = getEffectiveTopic();
-          if (activeTopic && !activeTopic.startsWith('wia-bounty-all')) {
-            try {
-              if (!(await topicHasBounty(key, 'wia-bounty-all'))) {
-                await sendNtfy(b, 'wia-bounty-all');
-              }
-            } catch (e) {
-              dbg('bountyNotify', 'error', 'global mirror failed', e.message);
-            }
+      // Primary user push loop (only if own topic is not a feed topic)
+      const isFeedTopic = (t) => t === 'wia-bounty-all' || (base && (t === `wia-bounty-${base}` || t === `wia-bounty-${base}-casc`));
+      const primaryTopic = getEffectiveTopic();
+      const skipPrimaryPush = isFeedTopic(primaryTopic);
+
+      if (!skipPrimaryPush) {
+        for (const b of fresh) {
+          const key = bountyKey(b.battleId, b.side, b.effectiveAt);
+          // Cross-device dedup: GM storage is per-browser, so independent devices poll
+          // in parallel and would all send. A random 0–10s jitter staggers them; the
+          // first publish then shows up in the others' topic re-check → they skip.
+          await new Promise((r) => setTimeout(r, Math.floor(Math.random() * BOUNTY_JITTER_MS)));
+          if (await topicHasBounty(key)) { seen[key] = now(); continue; }   // cross-client dedup
+          if (await sendNtfy(b)) {
+            seen[key] = now();                          // mark seen only on 2xx
           }
-          continue;
         }
-        if (await sendNtfy(b)) {
-          seen[key] = now();                          // mark seen only on 2xx
-          
-          // Mirror to global topic wia-bounty-all if the current active topic is not already wia-bounty-all
-          const activeTopic = getEffectiveTopic();
-          if (activeTopic && !activeTopic.startsWith('wia-bounty-all')) {
-            try {
-              if (!(await topicHasBounty(key, 'wia-bounty-all'))) {
-                await sendNtfy(b, 'wia-bounty-all');
-              }
-            } catch (e) {
-              dbg('bountyNotify', 'error', 'global mirror failed', e.message);
-            }
+        saveSeen(seen);
+      }
+
+      // ── Feed Mirror Loop ──
+      const feeds = [
+        { topic: 'wia-bounty-all', label: 'all', set: allBounties }
+      ];
+      if (base) {
+        feeds.push({ topic: `wia-bounty-${base}`, label: 'allies', set: extractAllyBounties(all, alliesSet) });
+        feeds.push({ topic: `wia-bounty-${base}-casc`, label: 'cascade', set: extractAllyBounties(all, cascadeSet) });
+      }
+
+      let mirrorChanged = false;
+      for (const feed of feeds) {
+        const toSend = feed.set.filter(b => {
+          const mk = `${feed.topic}|${bountyKey(b.battleId, b.side, b.effectiveAt)}`;
+          return !mirrorSeen[mk];
+        });
+        if (toSend.length === 0) continue;
+
+        const present = await topicPresentKeys(feed.topic);
+        if (!present) continue;
+
+        // One Jitter per feed to stagger clients
+        await new Promise((r) => setTimeout(r, Math.floor(Math.random() * BOUNTY_JITTER_MS)));
+
+        for (const b of toSend) {
+          const k = bountyKey(b.battleId, b.side, b.effectiveAt);
+          const mk = `${feed.topic}|${k}`;
+          if (mirrorSeen[mk]) continue;
+
+          if (present.has(k)) {
+            mirrorSeen[mk] = now();
+            mirrorChanged = true;
+            continue;
+          }
+
+          if (await sendNtfy(b, feed.topic, feed.label)) {
+            mirrorSeen[mk] = now();
+            mirrorChanged = true;
           }
         }
       }
-      saveSeen(seen);
+      if (mirrorChanged) {
+        saveMirrorSeen(mirrorSeen);
+      }
+
       setHealth('bountyNotify', 'ok', '');
     } catch (e) {
       if (String(e.message).includes('429')) { setHealth('bountyNotify', 'warn', 'rate-limited'); }
@@ -10091,15 +10155,18 @@ function checkInventoryDeltaWear() {
         }
       }
 
+      const base = allianceName ? allianceName.toLowerCase().replace(/[^a-z0-9]/g, '')
+                 : countryName ? countryName.toLowerCase().replace(/[^a-z0-9]/g, '')
+                 : '';
+      GM_setValue(KEYS.bountyTopicBase, base);
+
       // Generate dynamic auto-topic
       const scope = CONFIG.bountyScope || 'cascade';
       let tName = '';
       if (scope === 'all') {
         tName = 'all';
-      } else if (allianceName) {
-        tName = allianceName.toLowerCase().replace(/[^a-z0-9]/g, '');
-      } else if (countryName) {
-        tName = countryName.toLowerCase().replace(/[^a-z0-9]/g, '');
+      } else {
+        tName = base;
       }
       let autoTopic = `wia-bounty-${tName}`;
       if (scope === 'cascade' && scope !== 'all') {

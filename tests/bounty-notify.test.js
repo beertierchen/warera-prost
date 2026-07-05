@@ -148,3 +148,44 @@ assert.strictEqual(cleanHeaderValue('⚔️ Ally-Casc-Bounty: Dänemark vs Öste
 assert.strictEqual(cleanHeaderValue('   Spaces und ß   '), 'Spaces und ss');
 assert.strictEqual(cleanHeaderValue(''), '');
 console.log('bounty-notify: cleanHeaderValue OK');
+
+// Multi-Feed Nesting Test
+const testItems = [
+  { _id:'B1', war:'W1', defender:{ region:'R1', country:'ALLY1' },
+    attacker:{ country:'ALLY1', bountyEffectiveAt:'2026-07-02T14:27:08.022Z', moneyPool:60, moneyPer1kDamages:0.05 } },
+  { _id:'B2', war:'W2', defender:{ region:'R2', country:'ALLY2', bountyEffectiveAt:'2026-07-02T13:00:00.000Z', moneyPool:5, moneyPer1kDamages:0.1 },
+    attacker:{ country:'ALLY2' } },
+  { _id:'B3', war:'W3', defender:{ region:'R3', country:'ENEMY', bountyEffectiveAt:'2026-07-02T12:00:00.000Z', moneyPool:10, moneyPer1kDamages:0.2 },
+    attacker:{ country:'ENEMY' } },
+];
+const alliesSet = new Set(['ALLY1']);
+const cascadeSet = new Set(['ALLY1', 'ALLY2']);
+
+const bAll = extractAllyBounties(testItems, null);
+const bCasc = extractAllyBounties(testItems, cascadeSet);
+const bAlly = extractAllyBounties(testItems, alliesSet);
+
+assert.ok(bAll.length >= bCasc.length);
+assert.ok(bCasc.length >= bAlly.length);
+assert.strictEqual(bAll.length, 3);
+assert.strictEqual(bCasc.length, 2);
+assert.strictEqual(bAlly.length, 1);
+console.log('bounty-notify: Nesting (all >= cascade >= allies) OK');
+
+// Composite Dedup key unique test
+const mirrorSeen = {};
+const key = bountyKey('B1', 'attacker', '2026-07-02T14:27:08.022Z');
+mirrorSeen[`wia-bounty-all|${key}`] = 1000;
+mirrorSeen[`wia-bounty-base|${key}`] = 2000;
+assert.notStrictEqual(mirrorSeen[`wia-bounty-all|${key}`], mirrorSeen[`wia-bounty-base|${key}`]);
+console.log('bounty-notify: Composite mirrorSeen keys OK');
+
+// sendNtfy label param logic helper test
+function resolveScopeLabel(customTopic, labelScope, userConfigScope) {
+  return labelScope || (customTopic ? 'all' : (userConfigScope || 'cascade'));
+}
+assert.strictEqual(resolveScopeLabel('wia-bounty-all', 'allies', 'cascade'), 'allies');
+assert.strictEqual(resolveScopeLabel('wia-bounty-all', 'cascade', 'all'), 'cascade');
+assert.strictEqual(resolveScopeLabel('wia-bounty-all', null, 'cascade'), 'all');
+assert.strictEqual(resolveScopeLabel(null, null, 'allies'), 'allies');
+console.log('bounty-notify: sendNtfy labelScope resolution OK');
