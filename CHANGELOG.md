@@ -1,5 +1,21 @@
 # CHANGELOG
 
+## 2026-07-05 | Kopfgeld-Multi-Feed (entkoppelte Tier-Spiegelung) (v0.8.8)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/bounty-notify.test.js`
+
+**Änderungen (Deutsch):**
+- **Multi-Feed-Spiegelung**: Bountys werden jetzt unabhängig vom eigenen `bountyScope`-Filter des Users direkt in drei genestete ntfy-Topics gespiegelt: globales Topic `wia-bounty-all`, sowie das Allies-Topic (`wia-bounty-<base>`) und Cascade-Topic (`wia-bounty-<base>-casc`) der eigenen Allianz (bzw. Land-Fallback).
+- **Vollständige Entkopplung**: Der Mirror-Prozess besitzt nun einen eigenen tab- und geräteübergreifenden Dedup-Store (`mirrorSeen` mit Composite-Keys) und läuft vollkommen eigenständig. Er ist unabhängig vom lokalen Popup-Verlauf und dem Erfolg des primären Pushs.
+- **Performance & Stabilität**: Zur Schonung von Rate-Limits wird die Topic-History pro Poll-Zyklus nur noch einmal abgerufen (1 GET statt N GETs) und in-memory abgeglichen. Ein einzelner Jitter pro Feed entlastet den Server und verhindert Timing-Probleme.
+- **Label-Muss-Fix**: Mirrored-Pushes erhalten das jeweils korrekte Label (`all`, `allies` oder `cascade`) passend zum Topic, statt wie bisher erzwungen das Label "Alle".
+
+**Changes (English):**
+- **Multi-Feed Mirroring**: Bounties are now mirrored directly into three nested ntfy feeds, regardless of the user's local `bountyScope` setting: global feed `wia-bounty-all`, user's Alliance allies feed (`wia-bounty-<base>`), and cascade allies feed (`wia-bounty-<base>-casc`).
+- **Complete Decoupling**: The mirroring logic has its own cross-tab/cross-device storage (`mirrorSeen` using composite keys) and runs fully independently of user popup history and primary push success.
+- **Performance & Stability**: To prevent 429 rate limits, feed history is fetched exactly once per poll cycle (1 GET instead of N GETs) and evaluated in-memory. A single jitter stagger is applied per feed to optimize poll durations.
+- **Label Fix**: Mirrored pushes use their respective correct label (`all`, `allies`, or `cascade`) matching the destination feed, rather than forcing the label "all".
+
 ## 2026-07-05 | Kopfgeld-Benachrichtigungen ASCII-Header Fix (v0.8.7)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/bounty-notify.test.js`
