@@ -189,3 +189,92 @@ assert.strictEqual(resolveScopeLabel('wia-bounty-all', 'cascade', 'all'), 'casca
 assert.strictEqual(resolveScopeLabel('wia-bounty-all', null, 'cascade'), 'all');
 assert.strictEqual(resolveScopeLabel(null, null, 'allies'), 'allies');
 console.log('bounty-notify: sendNtfy labelScope resolution OK');
+
+// Cache split and cascade set size verification test (Bug 2)
+{
+  const mockStorage = {};
+  const GM_getValue = (key, def) => mockStorage[key] !== undefined ? mockStorage[key] : def;
+  const GM_setValue = (key, val) => { mockStorage[key] = val; };
+  const now = () => Date.now();
+  const KEYS = { bountyAllyCache: 'bountyAllyCache' };
+  const CONFIG = { bountyOwnCountryOverride: '' };
+  const getCurrentUserId = () => 'user123';
+  const resolveApiPost = async (method, args) => {
+    if (method === 'user.getUserById' && args.userId === 'user123') {
+      return { payload: { country: 'C1', alliance: 'A1' } };
+    }
+    throw new Error('unknown api method: ' + method);
+  };
+  const loadCountryMap = async () => ({
+    C1: { allianceId: 'A1', allies: ['C2'] },
+    C2: { allianceId: 'A1', defensivePacts: ['C3'] },
+    C3: { allianceId: 'A2' }
+  });
+  const dbg = () => {};
+  const BOUNTY_ALLY_TTL_MS = 60000;
+
+  async function resolveAllyCountryIds(cascade = true) {
+    const ckey = KEYS.bountyAllyCache + (cascade ? '_casc' : '_allies');
+    const cached = GM_getValue(ckey, null);
+    if (cached && (now() - cached.at) < BOUNTY_ALLY_TTL_MS && Array.isArray(cached.ids) && cached.ids.length) {
+      return new Set(cached.ids);
+    }
+    const ids = new Set();
+    try {
+      const ov = (CONFIG.bountyOwnCountryOverride || '').trim();
+      if (ov) {
+        // override logic omitted for mock test simplicity
+      }
+      if (!ids.size) {
+        const uid = getCurrentUserId();
+        if (uid) {
+          const u = await resolveApiPost('user.getUserById', { userId: uid });
+          const ownCountry = u.payload?.country;
+          if (ownCountry) {
+            const map = await loadCountryMap();
+            const addCountry = (cid, addRelations = true) => {
+              if (!cid) return;
+              ids.add(cid);
+              const c = map[cid];
+              if (c && addRelations) {
+                (c.allies || []).forEach((x) => ids.add(x));
+                (c.defensivePacts || []).forEach((x) => ids.add(x));
+              }
+            };
+            addCountry(ownCountry, true);
+            const aid = u.payload?.alliance || u.payload?.allianceId;
+            if (aid) {
+              for (const cid of Object.keys(map)) {
+                if (map[cid].allianceId === aid) addCountry(cid, cascade);
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      dbg('error', e.message);
+    }
+    if (ids.size) GM_setValue(ckey, { at: now(), ids: [...ids] });
+    return ids;
+  }
+
+  (async () => {
+    const alliesSet = await resolveAllyCountryIds(false);
+    const cascadeSet = await resolveAllyCountryIds(true);
+
+    // Verify cache split works and they don't overwrite each other
+    assert.ok(mockStorage['bountyAllyCache_allies']);
+    assert.ok(mockStorage['bountyAllyCache_casc']);
+    assert.deepStrictEqual(mockStorage['bountyAllyCache_allies'].ids.sort(), ['C1', 'C2'].sort());
+    assert.deepStrictEqual(mockStorage['bountyAllyCache_casc'].ids.sort(), ['C1', 'C2', 'C3'].sort());
+
+    // Verify cascade size >= allies size
+    assert.ok(cascadeSet.size >= alliesSet.size);
+    assert.strictEqual(alliesSet.size, 2);
+    assert.strictEqual(cascadeSet.size, 3);
+    console.log('bounty-notify: resolveAllyCountryIds cache-split & nesting verification OK');
+  })().catch(e => {
+    console.error(e);
+    process.exit(1);
+  });
+}

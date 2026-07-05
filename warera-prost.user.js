@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         PROST
+// @name         TEST PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.8.8
+// @version      0.8.9-unstable
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -9614,7 +9614,8 @@ function checkInventoryDeltaWear() {
   }
 
   async function resolveAllyCountryIds(cascade = true) {
-    const cached = GM_getValue(KEYS.bountyAllyCache, null);
+    const ckey = KEYS.bountyAllyCache + (cascade ? '_casc' : '_allies');
+    const cached = GM_getValue(ckey, null);
     if (cached && (now() - cached.at) < BOUNTY_ALLY_TTL_MS && Array.isArray(cached.ids) && cached.ids.length) {
       return new Set(cached.ids);
     }
@@ -9666,7 +9667,7 @@ function checkInventoryDeltaWear() {
     } catch (e) {
       dbg('bountyNotify', 'error', 'ally resolve failed', e.message);
     }
-    if (ids.size) GM_setValue(KEYS.bountyAllyCache, { at: now(), ids: [...ids] });
+    if (ids.size) GM_setValue(ckey, { at: now(), ids: [...ids] });
     dbg('bountyNotify', 'debug', 'ally set', ids.size, [...ids]);
     return ids;
   }
@@ -9674,6 +9675,8 @@ function checkInventoryDeltaWear() {
   globalThis.bountyAllies = () => resolveAllyCountryIds(CONFIG.bountyScope === 'cascade').then((s) => [...s]);
   // Clears the cached ally set + country map so the next resolve re-fetches (TTL 24h).
   function bountyResetAllyCache() {
+    GM_setValue(KEYS.bountyAllyCache + '_casc', null);
+    GM_setValue(KEYS.bountyAllyCache + '_allies', null);
     GM_setValue(KEYS.bountyAllyCache, null);
     GM_setValue(KEYS.bountyCountryMap, null);
     countryMapMem = null;
@@ -10085,17 +10088,19 @@ function checkInventoryDeltaWear() {
 
       let mirrorChanged = false;
       for (const feed of feeds) {
-        const toSend = feed.set.filter(b => {
-          const mk = `${feed.topic}|${bountyKey(b.battleId, b.side, b.effectiveAt)}`;
-          return !mirrorSeen[mk];
-        });
+        const toSend = feed.set.filter(b =>
+          !mirrorSeen[`${feed.topic}|${bountyKey(b.battleId, b.side, b.effectiveAt)}`]);
         if (toSend.length === 0) continue;
 
-        const present = await topicPresentKeys(feed.topic);
-        if (!present) continue;
-
-        // One Jitter per feed to stagger clients
+        // 1) ZUERST staggern, damit ein früherer Client sichtbar wird
         await new Promise((r) => setTimeout(r, Math.floor(Math.random() * BOUNTY_JITTER_MS)));
+
+        // 2) DANN History lesen (1 GET/Feed — NICHT auf per-Item-topicHasBounty zurückbauen -> 429!)
+        const present = await topicPresentKeys(feed.topic);
+        if (!present) {
+          setHealth('bountyNotify', 'warn', 'mirror readback failed');
+          continue;
+        }
 
         for (const b of toSend) {
           const k = bountyKey(b.battleId, b.side, b.effectiveAt);
@@ -10111,6 +10116,7 @@ function checkInventoryDeltaWear() {
           if (await sendNtfy(b, feed.topic, feed.label)) {
             mirrorSeen[mk] = now();
             mirrorChanged = true;
+            dbg('bountyNotify', 'debug', 'mirror sent', feed.topic, k);
           }
         }
       }
