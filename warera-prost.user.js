@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.8.11
+// @version      0.8.12
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -9651,7 +9651,6 @@ function checkInventoryDeltaWear() {
               ids.add(cid);
               const c = map[cid];
               if (c && addRelations) {
-                (c.allies || []).forEach((x) => ids.add(x));
                 (c.defensivePacts || []).forEach((x) => ids.add(x));
               }
             };
@@ -9673,11 +9672,38 @@ function checkInventoryDeltaWear() {
     return ids;
   }
 
+  async function resolveOwnCountry() {
+    const ov = (CONFIG.bountyOwnCountryOverride || '').trim();
+    if (ov) {
+      const match = ov.match(/[a-f0-9]{24}/i);
+      if (match) return match[0];
+    }
+    const ckey = KEYS.bountyAllyCache + '_own';
+    const cached = GM_getValue(ckey, null);
+    if (cached && (now() - cached.at) < BOUNTY_ALLY_TTL_MS) {
+      return cached.country;
+    }
+    const uid = getCurrentUserId();
+    if (!uid) return null;
+    try {
+      const u = await resolveApiPost('user.getUserById', { userId: uid });
+      const country = u.payload?.country || null;
+      if (country) {
+        GM_setValue(ckey, { at: now(), country });
+      }
+      return country;
+    } catch (e) {
+      dbg('bountyNotify', 'error', 'own country resolve failed', e.message);
+      return null;
+    }
+  }
+
   globalThis.bountyAllies = () => resolveAllyCountryIds(CONFIG.bountyScope === 'cascade').then((s) => [...s]);
   // Clears the cached ally set + country map so the next resolve re-fetches (TTL 24h).
   function bountyResetAllyCache() {
     GM_setValue(KEYS.bountyAllyCache + '_casc', null);
     GM_setValue(KEYS.bountyAllyCache + '_allies', null);
+    GM_setValue(KEYS.bountyAllyCache + '_own', null);
     GM_setValue(KEYS.bountyAllyCache, null);
     GM_setValue(KEYS.bountyCountryMap, null);
     countryMapMem = null;
@@ -9710,19 +9736,29 @@ function checkInventoryDeltaWear() {
   const POPUP_CONTAINER_ID = 'wia-bounty-popup-container';
   const BOUNTY_POPUP_COMPACT_PX = 430;   // below this viewport width → compact (variant C) layout
 
-  function extractAllyBounties(items, allySet) {
+  function extractAllyBounties(items, allySet, ownCountry = null) {
     const out = [];
     for (const b of (items || [])) {
+      const attackerCountry = b.attacker && b.attacker.country;
+      const defenderCountry = b.defender && b.defender.country;
+      const isUserSideInvolved = ownCountry && (attackerCountry === ownCountry || defenderCountry === ownCountry);
+
       for (const side of ['attacker', 'defender']) {
         const s = b[side];
         if (!s || !s.bountyEffectiveAt) continue;
+
+        // If the user's country is involved in the battle, they can only claim bounties on their own side.
+        if (isUserSideInvolved && s.country !== ownCountry) {
+          continue;
+        }
+
         if (allySet && !allySet.has(s.country)) continue;
         out.push({
           battleId: b._id,
           side,
           country: s.country,
-          attackerCountry: b.attacker && b.attacker.country,
-          defenderCountry: b.defender && b.defender.country,
+          attackerCountry,
+          defenderCountry,
           effectiveAt: s.bountyEffectiveAt,
           effectiveAtEpoch: Date.parse(s.bountyEffectiveAt),
           moneyPool: s.moneyPool,
@@ -10019,6 +10055,7 @@ function checkInventoryDeltaWear() {
     try {
       const alliesSet = await resolveAllyCountryIds(false);
       const cascadeSet = await resolveAllyCountryIds(true);
+      const ownCountry = await resolveOwnCountry();
       const base = GM_getValue(KEYS.bountyTopicBase, '');
 
       const allySet = CONFIG.bountyScope === 'all' ? null : (CONFIG.bountyScope === 'cascade' ? cascadeSet : alliesSet);
@@ -10038,8 +10075,8 @@ function checkInventoryDeltaWear() {
         if (pages >= BOUNTY_PAGE_CAP && cursor) { dbg('bountyNotify', 'debug', 'page cap hit', pages); break; }
       } while (cursor);
 
-      const bounties = extractAllyBounties(all, allySet);
-      const allBounties = extractAllyBounties(all, null);
+      const bounties = extractAllyBounties(all, allySet, ownCountry);
+      const allBounties = extractAllyBounties(all, null, ownCountry);
       dbg('bountyNotify', 'debug', 'poll ok', 'battles', all.length, 'allyBounties', bounties.length);
 
       let seen = pruneSeen(loadSeen(), now());
@@ -10058,8 +10095,8 @@ function checkInventoryDeltaWear() {
           { topic: 'wia-bounty-all', set: allBounties }
         ];
         if (base) {
-          feeds.push({ topic: `wia-bounty-${base}`, set: extractAllyBounties(all, alliesSet) });
-          feeds.push({ topic: `wia-bounty-${base}-casc`, set: extractAllyBounties(all, cascadeSet) });
+          feeds.push({ topic: `wia-bounty-${base}`, set: extractAllyBounties(all, alliesSet, ownCountry) });
+          feeds.push({ topic: `wia-bounty-${base}-casc`, set: extractAllyBounties(all, cascadeSet, ownCountry) });
         }
         for (const feed of feeds) {
           for (const b of feed.set) {
@@ -10121,8 +10158,8 @@ function checkInventoryDeltaWear() {
         { topic: 'wia-bounty-all', label: 'all', set: allBounties }
       ];
       if (base) {
-        feeds.push({ topic: `wia-bounty-${base}`, label: 'allies', set: extractAllyBounties(all, alliesSet) });
-        feeds.push({ topic: `wia-bounty-${base}-casc`, label: 'cascade', set: extractAllyBounties(all, cascadeSet) });
+        feeds.push({ topic: `wia-bounty-${base}`, label: 'allies', set: extractAllyBounties(all, alliesSet, ownCountry) });
+        feeds.push({ topic: `wia-bounty-${base}-casc`, label: 'cascade', set: extractAllyBounties(all, cascadeSet, ownCountry) });
       }
 
       let mirrorChanged = false;

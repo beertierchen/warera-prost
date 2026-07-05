@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 2026-07-05 | Kopfgeld-Kaskaden-Bereinigung & Gegner-Ausschluss (v0.8.12)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/bounty-notify.test.js`
+
+**Änderungen (Deutsch):**
+- **Veraltete Allianz-Verbindungen entfernt**: Die veraltete `allies`-Länderliste aus der API wird nicht mehr für die Kaskadierung verwendet. Dies verhindert, dass fälschlicherweise gegnerische Länder (wie Marokko oder Frankreich) über veraltete Beziehungen in deiner Kopfgeld-Kaskade landen. Es werden nur noch aktive Verteidigungspakte und die echte Allianz (Coalition) herangezogen.
+- **Ausschluss von Gegner-Kopfgeldern**: Wenn das eigene Land direkt an einer Schlacht beteiligt ist (als Angreifer oder Verteidiger), werden Kopfgeld-Benachrichtigungen für die gegnerische Seite automatisch gefiltert. Dies verhindert unerwünschte Meldungen für Schlachten, in denen du systembedingt nicht auf der Gegnerseite kämpfen kannst.
+
+**Changes (English):**
+- **Removed Stale Allies Cascade**: Stale `allies` list from the country API is no longer used for cascade feeds. This prevents enemy countries (like Morocco or France) from ending up in your bounty feed due to outdated database relations. Only active defensive pacts and the real coalition alliance are used now.
+- **Excluded Enemy Side Bounties**: When your own country is actively participating in a battle (as attacker or defender), bounties placed on the enemy side of the battle are automatically filtered out. This prevents spam notifications for battles where you cannot claim the enemy bounty due to side locking.
+
 ## 2026-07-05 | Gleicher Tab Navigations- und Skin-Erkennungs-Fixes (v0.8.11)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/test-advisor-load.js`

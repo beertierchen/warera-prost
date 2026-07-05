@@ -51,19 +51,29 @@ assert.deepStrictEqual(parseAllianceCountryIds({ countries: [{ _id: 'c1' }, { _i
 
 console.log('bounty-notify: parsers OK');
 
-function extractAllyBounties(items, allySet) {
+function extractAllyBounties(items, allySet, ownCountry = null) {
   const out = [];
   for (const b of (items || [])) {
+    const attackerCountry = b.attacker && b.attacker.country;
+    const defenderCountry = b.defender && b.defender.country;
+    const isUserSideInvolved = ownCountry && (attackerCountry === ownCountry || defenderCountry === ownCountry);
+
     for (const side of ['attacker', 'defender']) {
       const s = b[side];
       if (!s || !s.bountyEffectiveAt) continue;
+
+      // If the user's country is involved in the battle, they can only claim bounties on their own side.
+      if (isUserSideInvolved && s.country !== ownCountry) {
+        continue;
+      }
+
       if (allySet && !allySet.has(s.country)) continue;
       out.push({
         battleId: b._id,
         side,
         country: s.country,
-        attackerCountry: b.attacker && b.attacker.country,
-        defenderCountry: b.defender && b.defender.country,
+        attackerCountry,
+        defenderCountry,
         effectiveAt: s.bountyEffectiveAt,
         effectiveAtEpoch: Date.parse(s.bountyEffectiveAt),
         moneyPool: s.moneyPool,
@@ -82,19 +92,24 @@ const items = [
   { _id:'B2', war:'W2', defender:{ region:'R2', country:'ENEMY', bountyEffectiveAt:'2026-07-02T13:00:00.000Z', moneyPool:5, moneyPer1kDamages:0.1 },
     attacker:{ country:'ENEMY' } },
   { _id:'B3', war:'W3', defender:{ region:'R3', country:'ALLY' }, attacker:{ country:'ALLY' } }, // no bounty
+  // User country is ALLY, fighting ENEMY, bounty is on ENEMY side (should be skipped when ownCountry is ALLY)
+  { _id:'B4', war:'W4', defender:{ region:'R4', country:'ALLY' },
+    attacker:{ country:'ENEMY', bountyEffectiveAt:'2026-07-02T15:00:00.000Z', moneyPool:10, moneyPer1kDamages:0.1 } },
 ];
-const res = extractAllyBounties(items, new Set(['ALLY']));
-assert.strictEqual(res.length, 1);
+const res = extractAllyBounties(items, new Set(['ALLY', 'ENEMY']), 'ALLY');
+assert.strictEqual(res.length, 2);
 assert.strictEqual(res[0].battleId, 'B1');
+assert.strictEqual(res[1].battleId, 'B2');
 assert.strictEqual(res[0].side, 'attacker');
 assert.strictEqual(res[0].moneyPool, 62.15);
 assert.strictEqual(res[0].attackerCountry, 'ALLY');
 assert.strictEqual(res[0].defenderCountry, 'ALLY');
 
 const resAll = extractAllyBounties(items, null);
-assert.strictEqual(resAll.length, 2);
+assert.strictEqual(resAll.length, 3);
 assert.strictEqual(resAll[0].battleId, 'B1');
 assert.strictEqual(resAll[1].battleId, 'B2');
+assert.strictEqual(resAll[2].battleId, 'B4');
 console.log('bounty-notify: extract OK');
 
 function parseNtfyNdjson(text) {
@@ -229,7 +244,6 @@ console.log('bounty-notify: sendNtfy labelScope resolution OK');
               ids.add(cid);
               const c = map[cid];
               if (c && addRelations) {
-                (c.allies || []).forEach((x) => ids.add(x));
                 (c.defensivePacts || []).forEach((x) => ids.add(x));
               }
             };
