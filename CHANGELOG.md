@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## 2026-07-05 | Kopfgeld-Multi-Feed Fehlerbehebungen (v0.8.9)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/bounty-notify.test.js`
+
+**Änderungen (Deutsch):**
+- **Reihenfolge-Fix im Feed-Loop**: Der Jitter-Stagger zur Staffelung konkurrierender Clients läuft nun vor dem Abruf des History-Snapshots (`topicPresentKeys`). Dies stellt sicher, dass spätere Clients die Pushes früherer Clients sehen und überspringen, wodurch Duplikate auf `wia-bounty-all` verhindert werden.
+- **Cache-Key-Aufteilung (Cascade/Allies)**: Die Caching-Funktion `resolveAllyCountryIds` nutzt jetzt getrennte Keys für Allies (`_allies`) und Cascade (`_casc`). Dies behebt das Problem, dass sich beide Listen gegenseitig überschrieben und verfälschten. Die Fehlerbehebung heilt sich nach dem Upgrade von selbst.
+- **Fehler-Diagnose**: Die in-game Status-Anzeige (Health) meldet nun eine Warnung (`mirror readback failed`), falls der Verlauf eines ntfy-Feeds nicht ausgelesen werden kann, statt stumm abzubrechen. Es wurde zudem ein Log-Eintrag für erfolgreich gespiegelte Feeds hinzugefügt.
+
+**Changes (English):**
+- **Feed Loop Order Fix**: The jitter stagger is now executed before retrieving the history snapshot (`topicPresentKeys`). This ensures later clients detect pushes from earlier clients and skip them, eliminating duplicate spams on `wia-bounty-all`.
+- **Cache Key Split (Cascade/Allies)**: `resolveAllyCountryIds` now uses separate cache keys (`_allies` and `_casc`) to prevent them from overwriting and corrupting each other. The fix self-heals immediately upon script load.
+- **Error Diagnostics**: The status HUD now displays a warning (`mirror readback failed`) if the history of an ntfy feed cannot be fetched. A debug log entry has been added for successful feed mirrors.
+
 ## 2026-07-05 | Kopfgeld-Multi-Feed (entkoppelte Tier-Spiegelung) (v0.8.8)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/bounty-notify.test.js`
