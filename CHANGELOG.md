@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 2026-07-05 | Gleicher Tab Navigations- und Skin-Erkennungs-Fixes (v0.8.11)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/test-advisor-load.js`
+
+**Änderungen (Deutsch):**
+- **Navigation im selben Tab**: Klicks auf in-game Bounty-Popups navigieren nun direkt im selben Tab zur Schlacht (via location.href), statt einen neuen Tab zu öffnen. Ein Klick mit gedrückter Strg-/Cmd-Taste oder mittlerer Maustaste öffnet die Schlacht weiterhin in einem neuen Tab.
+- **Sammelkarten-Skins ignorieren**: Im Inventar befindliche Skin-Sammelkarten (wie die Ammo-Skin-Karte für den brennenden Fußball `wc2026` oder andere Munitions-Skins) werden nun korrekt von echten ausgerüsteten/stapelbaren Munitions- und Ausrüstungsgegenständen unterschieden. Dies geschieht anhand des Vorhandenseins von Stats bei gleichzeitigem Fehlen eines Haltbarkeitsbalkens. Sie erhalten kein störendes Advisor-Badge mehr und verfälschen nicht mehr die Tagesgewinn-Kalkulationen (P&L).
+
+**Changes (English):**
+- **Same-Tab Notification Navigation**: Clicking on local in-game notifications now redirects to the battle in the same tab instead of opening a new tab. Ctrl/Cmd+click or middle-click still opens the battle in a new tab.
+- **Ignore Skin Collectible Cards**: Skin collectible cards in the inventory (such as the burning football `wc2026` skin or other ammo skins) are now correctly distinguished from actual equipment or ammunition stacks. They are identified by having stat icons but lacking a durability bar. This prevents incorrect advisor badges and stops false consumable bookings in the Daily P&L Tracker.
+
 ## 2026-07-05 | Kopfgeld-Multi-Feed Zuverlässigkeit & Telemetrie (v0.8.10)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/bounty-notify.test.js`

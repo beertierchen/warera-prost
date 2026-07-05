@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.8.10
+// @version      0.8.11
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -2179,6 +2179,10 @@
     const rawSrc = img.getAttribute('src') || '';
     const skinName = skinNameFromSrc(rawSrc);
     if (skinName) {
+      if (card && card.querySelector('.a6izou0') && !findDurabilityBar(getItemCell(card))) {
+        return { type: 'unknown', alt, code: null, srcBase: skinName, tier: null, isSkin: true };
+      }
+
       const slot = slotForSkin(skinName);
       if (!slot) return { type: 'unknown', alt, code: null, srcBase: skinName, tier: null, isSkin: true };
       const type = CONFIG.typeByAltKeyword[slot] || slot;
@@ -3576,7 +3580,7 @@ async function scanInventory(force) {
           originalTitles.set(card, card.title || '');
         }
 
-        if (type === 'scrap' || type === 'unknown' || shouldSuppressItem(card, stats)) {
+        if (type === 'scrap' || type === 'unknown' || isConsumable(type) || isConsumable(code) || shouldSuppressItem(card, stats)) {
           suppressedCards.push(card);
         } else {
           // Synchronously reserve layout
@@ -9907,7 +9911,14 @@ function checkInventoryDeltaWear() {
       const dismiss = () => { if (toast.parentNode) toast.parentNode.removeChild(toast); };
       toast.addEventListener('click', (e) => {
         if (e.target && e.target.classList && e.target.classList.contains('wia-bt-close')) { dismiss(); return; }
-        try { PAGE_WINDOW.open(url, '_blank'); } catch (_) {}
+        if (e.ctrlKey || e.metaKey || e.button === 1) {
+          try { PAGE_WINDOW.open(url, '_blank'); } catch (_) {}
+        } else {
+          try {
+            PAGE_WINDOW.location.href = url;
+            dismiss();
+          } catch (_) {}
+        }
       });
       box.appendChild(toast);
       setTimeout(dismiss, BOUNTY_POPUP_MS);

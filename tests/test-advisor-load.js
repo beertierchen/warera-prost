@@ -2055,8 +2055,17 @@ try {
       assert.strictEqual(consumableInfo.tier, null, 'Consumable skin tier should be null');
       assert.strictEqual(consumableInfo.isSkin, true, 'Consumable skin isSkin should be true');
 
-      // Helper: build a card carrying a single armor stat icon (primaryPercent),
-      // no tier digit and no tier-tinted border — mirrors a skinned armor card.
+      // Test 6b: detectItem for consumable skin card with stat icon but no durability (should be unknown)
+      const mockSkinCardImg = new MockElement('img');
+      mockSkinCardImg.setAttribute('src', '/images/skins/wc2026.png');
+      mockSkinCardImg.setAttribute('alt', 'wc2026');
+      const mockSkinCard = new MockElement('div');
+      const statIcon = new MockElement('div', 'a6izou0');
+      mockSkinCard.appendChild(statIcon);
+      const skinCardInfo = globalThis.detectItem(mockSkinCardImg, mockSkinCard);
+      assert.strictEqual(skinCardInfo.type, 'unknown', 'Skin card type should be unknown');
+      assert.strictEqual(skinCardInfo.code, null, 'Skin card code should be null');
+
       const makeArmorStatCard = (statVal) => {
         const c = new MockElement('div');
         c.setAttribute('aria-haspopup', 'dialog');
@@ -2072,6 +2081,14 @@ try {
         valSpan.textContent = String(statVal);
         iconC.appendChild(valSpan);
         inner.appendChild(iconC);
+
+        // Add a durability bar so it's not recognized as a skin card
+        const scaleXEl = new MockElement('div');
+        scaleXEl.setAttribute('style', 'scaleX(1.0)');
+        const barParent = new MockElement('div');
+        barParent.appendChild(scaleXEl);
+        inner.appendChild(barParent);
+
         return c;
       };
 
