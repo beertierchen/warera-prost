@@ -123,15 +123,7 @@ const kept = pruneSeen({ old: nowMs - BOUNTY_SEEN_TTL_MS - 1, fresh: nowMs - 100
 assert.deepStrictEqual(Object.keys(kept), ['fresh']);
 console.log('bounty-notify: prune OK');
 
-function buildTopicLink(baseTopic, hasSecret) {
-  const t = (baseTopic || '').trim();
-  if (!t || hasSecret) return null;
-  return `https://ntfy.sh/${t}`;
-}
-assert.strictEqual(buildTopicLink('wia-bounty-beer-casc', false), 'https://ntfy.sh/wia-bounty-beer-casc');
-assert.strictEqual(buildTopicLink('wia-bounty-beer-casc', true), null);
-assert.strictEqual(buildTopicLink('', false), null);
-console.log('bounty-notify: buildTopicLink OK');
+
 
 function cleanHeaderValue(str) {
   if (!str) return '';
@@ -278,3 +270,65 @@ console.log('bounty-notify: sendNtfy labelScope resolution OK');
     process.exit(1);
   });
 }
+
+// New Tests for v0.8.10: Jitter, Client ID, and topicPresentKeys
+const BOUNTY_JITTER_MS = 10000;
+function bhash(s) { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0; return h; }
+function bountyJitter(seed) { return bhash(String(seed)) % BOUNTY_JITTER_MS; }
+
+// Test bhash and bountyJitter determinism
+const seedA = 'client1|wia-bounty-all|bkey_B1_attacker_123';
+const seedB = 'client2|wia-bounty-all|bkey_B1_attacker_123';
+const jitA1 = bountyJitter(seedA);
+const jitA2 = bountyJitter(seedA);
+const jitB = bountyJitter(seedB);
+
+assert.strictEqual(jitA1, jitA2, 'bountyJitter must be deterministic');
+assert.notStrictEqual(jitA1, jitB, 'bountyJitter must yield different offsets for different clients');
+assert.ok(jitA1 >= 0 && jitA1 < BOUNTY_JITTER_MS, 'Jitter must be in bounds');
+console.log('bounty-notify: jitter & bhash OK');
+
+// Test bountyClientId logic
+function bountyClientId(mockStorage) {
+  let id = mockStorage['bountyClientId'] || '';
+  if (!id) {
+    id = ('12345678' + bhash('userAgent').toString(36)).replace(/[^a-z0-9]/gi, '').slice(0, 8);
+    mockStorage['bountyClientId'] = id;
+  }
+  return id;
+}
+const mockStore = {};
+const cid1 = bountyClientId(mockStore);
+const cid2 = bountyClientId(mockStore);
+assert.strictEqual(cid1, cid2, 'Client ID must be persisted and stable');
+assert.strictEqual(cid1.length, 8, 'Client ID must be 8 chars');
+console.log('bounty-notify: clientId OK');
+
+// Test topicPresentKeys keys and legacy count
+function topicPresentKeys(resText) {
+  const msgs = parseNtfyNdjson(resText);
+  const keys = new Set();
+  let legacy = 0;
+  for (const m of msgs) {
+    const tags = m.tags || [];
+    const bkey = tags.find(t => t.startsWith('bkey_'));
+    if (bkey) {
+      keys.add(bkey);
+      const hasVersion = tags.some(t => t.startsWith('v'));
+      if (!hasVersion) legacy++;
+    }
+  }
+  return { keys, legacy };
+}
+
+const mockNdjson = `
+{"id":"1","tags":["crossed_swords","bkey_B1_attacker_123","v0.8.10","cid_c1"]}
+{"id":"2","tags":["crossed_swords","bkey_B2_attacker_456"]}
+{"id":"3","tags":["random"]}
+`;
+const presentKeys = topicPresentKeys(mockNdjson);
+assert.ok(presentKeys.keys.has('bkey_B1_attacker_123'));
+assert.ok(presentKeys.keys.has('bkey_B2_attacker_456'));
+assert.strictEqual(presentKeys.legacy, 1, 'Should have exactly 1 legacy notification');
+console.log('bounty-notify: topicPresentKeys return format OK');
+

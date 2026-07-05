@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.8.9
+// @version      0.8.10
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -716,6 +716,7 @@
     bountySeen: NS + 'bountySeen',
     bountyLocalSeen: NS + 'bountyLocalSeen',
     bountyMirrorSeen: NS + 'bountyMirrorSeen',
+    bountyClientId: NS + 'bountyClientId',
     bountyTopicBase: NS + 'bountyTopicBase',
     bountyAllyCache: NS + 'bountyAllyCache',
     bountyCountryMap: NS + 'bountyCountryMap',
@@ -1155,9 +1156,15 @@
     },
     bountyNotify() {
       if (!CONFIG.featBountyNotify) return ['idle', 'disabled in settings'];
-      if (!getEffectiveTopic()) return ['idle', 'no ntfy topic'];
-      const scope = CONFIG.bountyScope || 'cascade';
-      return ['ok', `scope: ${scope}`];
+      const topic = getEffectiveTopic();
+      if (!topic) return ['idle', 'no ntfy topic'];
+      const lastPoll = GM_getValue(KEYS.bountyLastPollAt, 0);
+      const pollAge = lastPoll ? Math.round((now() - lastPoll) / 1000) : null;
+      const ageStr = pollAge !== null ? `${pollAge}s ago` : 'never';
+      const allies = GM_getValue(KEYS.bountyAllyCache + '_allies', null);
+      const casc = GM_getValue(KEYS.bountyAllyCache + '_casc', null);
+      const resolved = (allies && allies.ids ? allies.ids.length : 0) + '/' + (casc && casc.ids ? casc.ids.length : 0);
+      return ['ok', `topic: ${topic}, resolved: ${resolved}, last poll: ${ageStr}, cid: ${bountyClientId()}`];
     },
   };
 
@@ -9491,11 +9498,7 @@ function checkInventoryDeltaWear() {
     return id;
   }
 
-  function buildTopicLink(baseTopic, hasSecret) {
-    const t = (baseTopic || '').trim();
-    if (!t || hasSecret) return null;
-    return `https://ntfy.sh/${t}`;
-  }
+  const SCRIPT_VERSION = (typeof GM_info !== 'undefined' && GM_info && GM_info.script && GM_info.script.version) || '0.8.10';
 
   function cleanHeaderValue(str) {
     if (!str) return '';
@@ -9531,11 +9534,6 @@ function checkInventoryDeltaWear() {
       moneyPool: fmt(bounty.moneyPool || 0),
       ratePer1k: fmt(bounty.ratePer1k || 0)
     });
-    const isMirror = customTopic === 'wia-bounty-all';
-    const baseTopic = (CONFIG.ntfyTopic || '').trim() || GM_getValue(KEYS.bountyAutoTopic, '');
-    const hasSecret = !!(CONFIG.ntfyTopicSecret || '').trim();
-    const topicLink = isMirror ? buildTopicLink(baseTopic, hasSecret) : null;
-    const bodyWithLink = topicLink ? `${body}\n${baseTopic}: ${topicLink}` : body;
 
     // HTTP header values must be US-ASCII (≤0x7F) in HTTP/2 / strict XHR.
     // Replace German umlauts and strip non-ASCII/Emoji to prevent network/protocol errors.
@@ -9543,15 +9541,14 @@ function checkInventoryDeltaWear() {
     const headers = {
       Title: safeTitle,
       Priority: 'default',
-      Tags: `crossed_swords,${bountyKey(bounty.battleId, bounty.side, bounty.effectiveAt)}`,
+      Tags: `crossed_swords,${bountyKey(bounty.battleId, bounty.side, bounty.effectiveAt)},v${SCRIPT_VERSION},cid_${bountyClientId()}`,
       Click: `https://app.warera.io/battle/${bounty.battleId}`
     };
-    if (topicLink) headers.Actions = `view, ${cleanHeaderValue(t('bountyTopicLinkLabel'))}, ${topicLink}`;
 
     const res = await gmRequest({
       method: 'POST',
       url: `${NTFY_BASE}/${topic}`,
-      data: bodyWithLink,
+      data: body,
       headers
     });
     const ok = res.status >= 200 && res.status < 300;
@@ -9689,6 +9686,23 @@ function checkInventoryDeltaWear() {
   const BOUNTY_PAGE_CAP = 10;
   const BOUNTY_LOCK_TTL_MS = 5000;
   const BOUNTY_JITTER_MS = 10000;   // cross-device dedup: random 0–10s stagger before the topic re-check
+
+  // djb2 hash → deterministischer, stabiler Offset (kein Math.random pro Poll)
+  function bhash(s) { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0; return h; }
+  function bountyJitter(seed) { return bhash(String(seed)) % BOUNTY_JITTER_MS; }
+  // stabile, zufällige Client-ID (einmalig persistiert)
+  function bountyClientId() {
+    let id = GM_getValue(KEYS.bountyClientId, '');
+    if (!id) {
+      id = ((typeof crypto !== 'undefined' && crypto.randomUUID && crypto.randomUUID()) ||
+            (self.crypto && self.crypto.randomUUID && self.crypto.randomUUID()) ||
+            (now().toString(36) + bhash(navigator.userAgent).toString(36)))
+           .replace(/[^a-z0-9]/gi, '')
+           .slice(0, 8);
+      GM_setValue(KEYS.bountyClientId, id);
+    }
+    return id;
+  }
   const POPUP_CONTAINER_ID = 'wia-bounty-popup-container';
   const BOUNTY_POPUP_COMPACT_PX = 430;   // below this viewport width → compact (variant C) layout
 
@@ -9969,7 +9983,19 @@ function checkInventoryDeltaWear() {
   async function topicPresentKeys(topic) {
     try {
       const res = await gmRequest({ method: 'GET', url: `${NTFY_BASE}/${topic}/json?poll=1&since=12h` });
-      return new Set(parseNtfyNdjson(res.text).flatMap(m => m.tags || []));
+      const msgs = parseNtfyNdjson(res.text);
+      const keys = new Set();
+      let legacy = 0;
+      for (const m of msgs) {
+        const tags = m.tags || [];
+        const bkey = tags.find(t => t.startsWith('bkey_'));
+        if (bkey) {
+          keys.add(bkey);
+          const hasVersion = tags.some(t => t.startsWith('v'));
+          if (!hasVersion) legacy++;
+        }
+      }
+      return { keys, legacy };
     } catch (e) {
       dbg('bountyNotify', 'error', 'mirror readback failed', topic, e.message);
       return null;
@@ -10066,9 +10092,11 @@ function checkInventoryDeltaWear() {
         for (const b of fresh) {
           const key = bountyKey(b.battleId, b.side, b.effectiveAt);
           // Cross-device dedup: GM storage is per-browser, so independent devices poll
-          // in parallel and would all send. A random 0–10s jitter staggers them; the
-          // first publish then shows up in the others' topic re-check → they skip.
-          await new Promise((r) => setTimeout(r, Math.floor(Math.random() * BOUNTY_JITTER_MS)));
+          // in parallel and would all send. A stable, determinist jitter staggers them
+          // per client; the first publish then shows up in the others' topic re-check → they skip.
+          const jit = bountyJitter(bountyClientId() + '|' + key);
+          dbg('bountyNotify', 'debug', 'jitter', jit, 'primary');
+          await new Promise((r) => setTimeout(r, jit));
           if (await topicHasBounty(key)) { seen[key] = now(); continue; }   // cross-client dedup
           if (await sendNtfy(b)) {
             seen[key] = now();                          // mark seen only on 2xx
@@ -10093,7 +10121,10 @@ function checkInventoryDeltaWear() {
         if (toSend.length === 0) continue;
 
         // 1) ZUERST staggern, damit ein früherer Client sichtbar wird
-        await new Promise((r) => setTimeout(r, Math.floor(Math.random() * BOUNTY_JITTER_MS)));
+        const seed = bountyClientId() + '|' + feed.topic + '|' + bountyKey(toSend[0].battleId, toSend[0].side, toSend[0].effectiveAt);
+        const jit = bountyJitter(seed);
+        dbg('bountyNotify', 'debug', 'jitter', jit, feed.topic);
+        await new Promise((r) => setTimeout(r, jit));
 
         // 2) DANN History lesen (1 GET/Feed — NICHT auf per-Item-topicHasBounty zurückbauen -> 429!)
         const present = await topicPresentKeys(feed.topic);
@@ -10101,15 +10132,17 @@ function checkInventoryDeltaWear() {
           setHealth('bountyNotify', 'warn', 'mirror readback failed');
           continue;
         }
+        dbg('bountyNotify', 'debug', 'legacy publishers', feed.topic, present.legacy);
 
         for (const b of toSend) {
           const k = bountyKey(b.battleId, b.side, b.effectiveAt);
           const mk = `${feed.topic}|${k}`;
           if (mirrorSeen[mk]) continue;
 
-          if (present.has(k)) {
+          if (present.keys.has(k)) {
             mirrorSeen[mk] = now();
             mirrorChanged = true;
+            dbg('bountyNotify', 'debug', 'dedup hit', feed.topic, k);
             continue;
           }
 

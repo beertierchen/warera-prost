@@ -1,5 +1,21 @@
 # CHANGELOG
 
+## 2026-07-05 | Kopfgeld-Multi-Feed Zuverlässigkeit & Telemetrie (v0.8.10)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/bounty-notify.test.js`
+
+**Änderungen (Deutsch):**
+- **Footer-Link entfernt**: Der Link zum public Feed und das Actions-Menü wurden aus der Push-Nachricht entfernt, um Veröffentlichungs-Leaks zu unterbinden.
+- **Deterministischer Client-Stagger (Jitter)**: Anstelle von zufälligem Jitter wird nun ein stabiler Client-Jitter anhand einer eindeutigen Client-ID (`bountyClientId`) verwendet, wodurch Race Conditions bei zeitgleichen API-Abfragen konkurrierender Geräte minimiert werden.
+- **Versionen- & Client-Tags**: Push-Nachrichten enthalten nun Versions- (`v*`) und Client-ID-Tags (`cid_*`) in der Tag-Liste zur besseren Nachvollziehbarkeit und Diagnose von Mehrfach-Meldungen.
+- **Verbesserte HUD-Diagnose**: Die in-game Status-Anzeige (Health-Probe) zeigt nun detaillierte Infos (Topic, Anzahl aufgelöster Allies/Cascade, Alter des letzten Polls und Client-ID) an. Zudem wird die Anzahl der Legacy-Nachrichten (von Geräten ohne Update) im Konsole-Log erfasst.
+
+**Changes (English):**
+- **Removed Footer Mirror Leak**: The public mirror links and actions are removed from the push message body to prevent accidental privacy leaks.
+- **Deterministic Client Jitter**: Replaced random delay loops with a stable client-specific jitter based on a persistent `bountyClientId` to safely stagger concurrent active devices and eliminate duplicate spams.
+- **Version & Client Telemetry**: Notifications now append version (`v*`) and client ID (`cid_*`) tags to headers, allowing detailed diagnostic checks in topic histories.
+- **Enriched Health Diagnostics**: The in-game Health Probe reports the active topic, resolved cache counts, last poll age, and unique client ID. Legacy publishers (older active versions) are counted and reported in console debug logs.
+
 ## 2026-07-05 | Kopfgeld-Multi-Feed Fehlerbehebungen (v0.8.9)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/bounty-notify.test.js`
