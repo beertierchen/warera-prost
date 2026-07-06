@@ -149,6 +149,29 @@ class MockElement {
     this.listeners[event].push(callback);
   }
 
+  removeEventListener(event, callback) {
+    if (this.listeners && this.listeners[event]) {
+      const idx = this.listeners[event].indexOf(callback);
+      if (idx !== -1) {
+        this.listeners[event].splice(idx, 1);
+      }
+    }
+  }
+
+  setPointerCapture() {}
+  releasePointerCapture() {}
+
+  getBoundingClientRect() {
+    return {
+      left: 100,
+      top: 100,
+      width: this.offsetWidth || 40,
+      height: this.offsetHeight || 40,
+      right: 100 + (this.offsetWidth || 40),
+      bottom: 100 + (this.offsetHeight || 40)
+    };
+  }
+
   dispatchEvent(event, data = {}) {
     if (this.listeners && this.listeners[event]) {
       const e = {
@@ -343,6 +366,9 @@ class MockElement {
 // Mock Browser globals
 global.window = {
   addEventListener: () => {},
+  removeEventListener: () => {},
+  innerWidth: 1920,
+  innerHeight: 1080,
   getComputedStyle: (el) => {
     return {
       color: el.style.color || 'rgb(59, 219, 139)',
