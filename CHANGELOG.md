@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 2026-07-07 | Bounty-History und Statistik (v0.8.13)
+
+**Geaenderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/bounty-notify.test.js`, `docs/wiki/Bounty-Notify.md`
+
+**Aenderungen (Deutsch):**
+- **Lokale Bounty-History**: Erkannte Kopfgelder werden nun fuer sieben Tage lokal mit erstem/letztem Fundzeitpunkt, Sichtungen, Scope, Pool und Rate gespeichert.
+- **Einfache Statistik**: Die Einstellungen zeigen eine kompakte Zusammenfassung mit Gesamtzahl, 24h-Zahl und kurzem Tagesverlauf. Ein Button gibt den History-Log als Tabelle in der Browser-Konsole aus.
+
+**Changes (English):**
+- **Local Bounty History**: Detected bounties are now stored locally for seven days with first/last seen timestamps, sightings, scope, pool, and rate values.
+- **Simple Statistics**: Settings now show a compact summary with total count, 24h count, and a short day timeline. A button prints the history log as a browser console table.
+
 ## 2026-07-05 | Kopfgeld-Kaskaden-Bereinigung & Gegner-Ausschluss (v0.8.12)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/bounty-notify.test.js`
