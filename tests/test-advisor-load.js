@@ -1064,6 +1064,94 @@ try {
   globalThis.CONFIG.pillPrefWindowFrom = '15:05';
   globalThis.renderHnHBudget();
 
+  // --- Test Personal Notifications ---
+  console.log('--- Testing Personal Notifications (H&H, Pill Window, Debuff) ---');
+  let personalRequests = [];
+  global.GM_xmlhttpRequest = (opts) => {
+    personalRequests.push(opts);
+    if (opts.onload) {
+      opts.onload({ status: 200, statusText: 'OK', responseText: '{}' });
+    }
+  };
+
+  // Configure notifications enabled
+  globalThis.CONFIG.featPillNotifHnH = true;
+  globalThis.CONFIG.featPillNotifWindow = true;
+  globalThis.CONFIG.featPillNotifDebuff = true;
+  globalThis.CONFIG.pillPrefWindowFrom = '15:00';
+  globalThis.CONFIG.pillPrefWindowTo = '16:00';
+
+  // 1. Cold start seeding: H&H full on load
+  globalThis.GM_setValue('wia.lastNotifiedHnH', false);
+  globalThis.GM_setValue('wia.lastNotifiedPillWindowDate', '');
+  globalThis.GM_setValue('wia.lastNotifiedDebuffEnd', 0);
+  globalThis.GM_setValue('wia.pillTakenAt', now - 25 * 3600000); // debuff expired
+
+  hpText.textContent = '130/130';
+  hungerText.textContent = '4/4';
+
+  // Mock Date.now() to be inside preferred window (e.g. 15:30)
+  const windowTime = new Date(now);
+  windowTime.setHours(15, 30, 0, 0);
+  Date.now = () => windowTime.getTime();
+
+  // Reset cold start tracking flag by calling teardown
+  globalThis.teardownPillReminder();
+  globalThis.CONFIG.featPillReminder = true;
+  // Trigger first tick (this will trigger cold start seeding)
+  globalThis.checkPersonalNotifications();
+
+  // Assertions for cold start seeding
+  assert.strictEqual(personalRequests.length, 0, 'No notifications should be sent on cold start');
+  assert.strictEqual(globalThis.GM_getValue('wia.lastNotifiedHnH'), true, 'lastNotifiedHnH should be seeded to true');
+  assert.strictEqual(globalThis.GM_getValue('wia.lastNotifiedPillWindowDate'), new Date(windowTime.getTime()).toDateString(), 'lastNotifiedPillWindowDate should be seeded');
+  assert.strictEqual(globalThis.GM_getValue('wia.lastNotifiedDebuffEnd'), now - 25 * 3600000, 'lastNotifiedDebuffEnd should be seeded');
+
+  // 2. Triggering notification: H&H drops then becomes full again
+  hpText.textContent = '120/130'; // drops
+  globalThis.checkPersonalNotifications();
+  assert.strictEqual(globalThis.GM_getValue('wia.lastNotifiedHnH'), false, 'lastNotifiedHnH should reset to false when not full');
+
+  hpText.textContent = '130/130'; // full again
+  globalThis.checkPersonalNotifications();
+  assert.strictEqual(globalThis.GM_getValue('wia.lastNotifiedHnH'), true, 'lastNotifiedHnH should become true');
+  assert.strictEqual(personalRequests.length, 1, 'H&H full notification should be sent');
+  assert.ok(personalRequests[0].headers.Title.includes('Leben & Hunger voll') || personalRequests[0].headers.Title.includes('Health & Hunger Full'), 'H&H notification title is set');
+
+  // 3. Triggering notification: Preferred window transitions
+  // Move time outside window
+  const outsideTime = new Date(now);
+  outsideTime.setHours(14, 0, 0, 0);
+  Date.now = () => outsideTime.getTime();
+  globalThis.checkPersonalNotifications();
+
+  // Move time back into window, but for a new day
+  personalRequests = [];
+  const nextDayWindow = new Date(windowTime.getTime() + 24 * 3600000);
+  Date.now = () => nextDayWindow.getTime();
+  globalThis.checkPersonalNotifications();
+  assert.strictEqual(personalRequests.length, 1, 'Preferred window notification should be sent on a new day');
+  assert.ok(personalRequests[0].headers.Title.includes('Bevorzugtes Pillenfenster') || personalRequests[0].headers.Title.includes('Preferred Pill Window'), 'Pill window notification title is set');
+
+  // 4. Triggering notification: Debuff expired
+  // Take a pill (this sets debuff end tracking, resets notified debuff)
+  globalThis.CONFIG.featPillNotifWindow = false;
+  personalRequests = [];
+  const takePillTime = Date.now();
+  globalThis.GM_setValue('wia.pillTakenAt', takePillTime);
+  globalThis.GM_setValue('wia.pillState', 'BUFF');
+  globalThis.checkPersonalNotifications();
+
+  // Advance time past debuff duration
+  const debuffEndTime = takePillTime + 24 * 3600000; // > 8 + 15.5 = 23.5 hours
+  Date.now = () => debuffEndTime;
+  globalThis.checkPersonalNotifications();
+  assert.strictEqual(personalRequests.length, 1, 'Debuff expired notification should be sent');
+  assert.ok(personalRequests[0].headers.Title.includes('Pillen-Debuff abgelaufen') || personalRequests[0].headers.Title.includes('Pill Debuff Expired'), 'Debuff expired notification title is set');
+
+  // Cleanup mocked functions
+  delete global.GM_xmlhttpRequest;
+
   globalThis.removeHnHBudget();
   Date.now = originalNow;
   console.log('H&H Budget Indicator tests passed successfully.');

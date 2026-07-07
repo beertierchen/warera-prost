@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         PROST
+// @name         TEST PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.8.13
+// @version      0.8.13-unstable
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -228,6 +228,9 @@
 
     showScrapFlip: false,
     featPillReminder: false,
+    featPillNotifHnH: false,
+    featPillNotifWindow: false,
+    featPillNotifDebuff: false,
     featBountyNotify: false,
     ntfyTopic: '',
     ntfyTopicSecret: '',
@@ -359,6 +362,15 @@
         settingsPillDebuffLabel: 'Total Debuff (hours)',
         settingsPillPrefFromLabel: 'Preferred Time From',
         settingsPillPrefToLabel: 'Preferred Time To',
+        settingsFeatPillNotifHnH: 'H&H full notifications (ntfy.sh)',
+        settingsFeatPillNotifWindow: 'Preferred pill window notifications (ntfy.sh)',
+        settingsFeatPillNotifDebuff: 'Debuff expired notifications (ntfy.sh)',
+        ntfyHnHFullTitle: '🍗 Health & Hunger Full',
+        ntfyHnHFullBody: 'Your Health and Hunger are both at 100%. Ready to take a pill.',
+        ntfyPillWindowTitle: '💊 Preferred Pill Window Reached',
+        ntfyPillWindowBody: 'You have entered your preferred pill consumption window ({time}).',
+        ntfyDebuffGoneTitle: '✨ Pill Debuff Expired',
+        ntfyDebuffGoneBody: 'Your pill debuff has expired. You can take your next pill now.',
         pillTakeNowOverlay: 'TAKE NOW',
         pillTopUpOverlay: 'TOP UP FIRST',
         pillPreferredWindow: '{from} - {to}',
@@ -569,6 +581,15 @@
         settingsPillDebuffLabel: 'Debuff gesamt (Stunden)',
         settingsPillPrefFromLabel: 'Bevorzugtes Fenster ab',
         settingsPillPrefToLabel: 'Bevorzugtes Fenster bis',
+        settingsFeatPillNotifHnH: 'H&H voll Benachrichtigungen (ntfy.sh)',
+        settingsFeatPillNotifWindow: 'Bevorzugtes Pillenfenster Benachrichtigungen (ntfy.sh)',
+        settingsFeatPillNotifDebuff: 'Debuff abgelaufen Benachrichtigungen (ntfy.sh)',
+        ntfyHnHFullTitle: '🍗 Leben & Hunger voll',
+        ntfyHnHFullBody: 'Dein Leben und dein Hunger sind beide bei 100%! Bereit für eine Pille.',
+        ntfyPillWindowTitle: '💊 Bevorzugtes Pillenfenster erreicht',
+        ntfyPillWindowBody: 'Du hast dein bevorzugtes Pillenzeitfenster ({time}) erreicht.',
+        ntfyDebuffGoneTitle: '✨ Pillen-Debuff abgelaufen',
+        ntfyDebuffGoneBody: 'Dein Pillen-Debuff ist abgelaufen. Du kannst jetzt die nächste Pille nehmen.',
         pillTakeNowOverlay: 'NEHMEN',
         pillTopUpOverlay: 'ERST FÜLLEN',
         pillPreferredWindow: '{from} - {to}',
@@ -707,6 +728,12 @@
     featBattleAdvisor: NS + 'featBattle',
     alliedCountryCodes: NS + 'alliedCodes',
     featPillReminder: NS + 'featPill',
+    featPillNotifHnH: NS + 'featPillNotifHnH',
+    featPillNotifWindow: NS + 'featPillNotifWindow',
+    featPillNotifDebuff: NS + 'featPillNotifDebuff',
+    lastNotifiedHnH: NS + 'lastNotifiedHnH',
+    lastNotifiedPillWindowDate: NS + 'lastNotifiedPillWindowDate',
+    lastNotifiedDebuffEnd: NS + 'lastNotifiedDebuffEnd',
     featBountyNotify: NS + 'featBounty',
     ntfyTopic: NS + 'ntfyTopic',
     ntfyTopicSecret: NS + 'ntfyTopicSecret',
@@ -2057,6 +2084,8 @@
     globalThis.shouldPillFloat = shouldPillFloat;
     globalThis.highlightCocaineItems = highlightCocaineItems;
     globalThis.teardownPillReminder = teardownPillReminder;
+    globalThis.tickPillReminder = tickPillReminder;
+    globalThis.checkPersonalNotifications = checkPersonalNotifications;
     globalThis.renderHnHBudget = renderHnHBudget;
     globalThis.removeHnHBudget = removeHnHBudget;
     globalThis.nextWindowStart = nextWindowStart;
@@ -4410,6 +4439,9 @@ async function scanInventory(force) {
     const prevPillDebuff = bg.querySelector('.wia-pill-debuff')?.value ?? CONFIG.pillDebuffH;
     const prevPillPrefFrom = bg.querySelector('.wia-pill-pref-from')?.value ?? CONFIG.pillPrefWindowFrom;
     const prevPillPrefTo = bg.querySelector('.wia-pill-pref-to')?.value ?? CONFIG.pillPrefWindowTo;
+    const prevPillNotifHnH = bg.querySelector('.wia-feat-pill-notif-hnh')?.checked ?? CONFIG.featPillNotifHnH;
+    const prevPillNotifWindow = bg.querySelector('.wia-feat-pill-notif-window')?.checked ?? CONFIG.featPillNotifWindow;
+    const prevPillNotifDebuff = bg.querySelector('.wia-feat-pill-notif-debuff')?.checked ?? CONFIG.featPillNotifDebuff;
     const prevStockKeepCount = bg.querySelector('.wia-stock-keep-count')?.value ?? CONFIG.stockKeepCount;
     const prevFeatBounty = bg.querySelector('.wia-feat-bounty')?.checked ?? CONFIG.featBountyNotify;
     const prevNtfyTopic = bg.querySelector('.wia-ntfy-topic')?.value ?? CONFIG.ntfyTopic;
@@ -4511,6 +4543,20 @@ async function scanInventory(force) {
               <div style="flex: 1;">
                 <label style="font-size: 11px; color: #8b949e; display: block; margin: 0 0 2px;">${t('settingsPillPrefToLabel')}</label>
                 <input type="text" class="wia-pill-pref-to" placeholder="20:00" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;" value="${prevPillPrefTo}" />
+              </div>
+            </div>
+            <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 6px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <input type="checkbox" class="wia-feat-pill-notif-hnh" style="width: auto;" ${prevPillNotifHnH ? 'checked' : ''} />
+                <label style="margin: 0; font-weight: normal; cursor: pointer; font-size: 11px;">${t('settingsFeatPillNotifHnH')}</label>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <input type="checkbox" class="wia-feat-pill-notif-window" style="width: auto;" ${prevPillNotifWindow ? 'checked' : ''} />
+                <label style="margin: 0; font-weight: normal; cursor: pointer; font-size: 11px;">${t('settingsFeatPillNotifWindow')}</label>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <input type="checkbox" class="wia-feat-pill-notif-debuff" style="width: auto;" ${prevPillNotifDebuff ? 'checked' : ''} />
+                <label style="margin: 0; font-weight: normal; cursor: pointer; font-size: 11px;">${t('settingsFeatPillNotifDebuff')}</label>
               </div>
             </div>
           </details>
@@ -4805,6 +4851,16 @@ async function scanInventory(force) {
       const prefTo = bg.querySelector('.wia-pill-pref-to').value.trim() || '20:00';
       GM_setValue(KEYS.pillPrefWindowTo, prefTo);
       CONFIG.pillPrefWindowTo = prefTo;
+
+      const featPillNotifHnH = bg.querySelector('.wia-feat-pill-notif-hnh').checked;
+      const featPillNotifWindow = bg.querySelector('.wia-feat-pill-notif-window').checked;
+      const featPillNotifDebuff = bg.querySelector('.wia-feat-pill-notif-debuff').checked;
+      GM_setValue(KEYS.featPillNotifHnH, featPillNotifHnH);
+      GM_setValue(KEYS.featPillNotifWindow, featPillNotifWindow);
+      GM_setValue(KEYS.featPillNotifDebuff, featPillNotifDebuff);
+      CONFIG.featPillNotifHnH = featPillNotifHnH;
+      CONFIG.featPillNotifWindow = featPillNotifWindow;
+      CONFIG.featPillNotifDebuff = featPillNotifDebuff;
 
       if (featPill) { initPillReminder(); } else { teardownPillReminder(); }
 
@@ -5428,6 +5484,7 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
   let pillUpdateTimer = null;
   const PILL_OBS_OPTS = { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['style'] };
   let noneReadCount = 0;
+  let pillColdStartDone = false;
   // Panel width (px) below which the pill badge floats out of the inline
   // flow. Measured against #layoutUserMenu's own box (ResizeObserver), NOT
   // the viewport — the game panel is user-resizable independent of the window.
@@ -5490,6 +5547,7 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
     detachPillFloatObserver();
     if (pillUpdateTimer) { clearTimeout(pillUpdateTimer); pillUpdateTimer = null; }
     noneReadCount = 0;
+    pillColdStartDone = false;
     removePillBadge();
     removeCocaineHighlights();
     removeHnHBudget();
@@ -5505,6 +5563,119 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
     injectPillBadge();
     highlightCocaineItems();
     renderHnHBudget();
+    checkPersonalNotifications();
+  }
+
+  function getEffectivePersonalTopic() {
+    let t = (CONFIG.ntfyTopic || '').trim();
+    if (!t) {
+      const uid = getCurrentUserId();
+      if (!uid) return '';
+      t = `wia-user-${uid}`;
+    }
+    const s = (CONFIG.ntfyTopicSecret || '').trim();
+    return s ? `${t}-${s}` : t;
+  }
+
+  async function sendPersonalNtfy(type, title, body, tags, priority = 'default') {
+    const topic = getEffectivePersonalTopic();
+    if (!topic) return false;
+
+    const safeTitle = cleanHeaderValue(title);
+    const headers = {
+      Title: safeTitle,
+      Priority: priority,
+      Tags: `${tags},v${SCRIPT_VERSION},cid_${bountyClientId()}`
+    };
+
+    const res = await gmRequest({
+      method: 'POST',
+      url: `${NTFY_BASE}/${topic}`,
+      data: body,
+      headers
+    });
+    const ok = res.status >= 200 && res.status < 300;
+    dbg('pillReminder', ok ? 'debug' : 'error', `ntfy personal send ${type}`, res.status, topic);
+    return ok;
+  }
+
+  function checkPersonalNotifications() {
+    if (!CONFIG.featPillNotifHnH && !CONFIG.featPillNotifWindow && !CONFIG.featPillNotifDebuff) {
+      return;
+    }
+
+    const nowVal = Date.now();
+    const status = parseHealthAndHunger();
+    const info = getPillCycleInfo();
+    const totalMs = (CONFIG.pillBuffH + CONFIG.pillDebuffH) * 3600000;
+    const isDebuffExpired = info.pillTakenAt > 0 ? (nowVal >= info.pillTakenAt + totalMs) : false;
+    const inWindow = CONFIG.pillPrefWindowFrom ? isInsidePreferredWindow(nowVal) : false;
+
+    // Cold Start Seeding
+    if (!pillColdStartDone) {
+      if (status.both100) {
+        GM_setValue(KEYS.lastNotifiedHnH, true);
+      } else {
+        GM_setValue(KEYS.lastNotifiedHnH, false);
+      }
+
+      if (inWindow) {
+        GM_setValue(KEYS.lastNotifiedPillWindowDate, new Date(nowVal).toDateString());
+      } else {
+        GM_setValue(KEYS.lastNotifiedPillWindowDate, '');
+      }
+
+      if (isDebuffExpired && info.pillTakenAt > 0) {
+        GM_setValue(KEYS.lastNotifiedDebuffEnd, info.pillTakenAt);
+      } else {
+        GM_setValue(KEYS.lastNotifiedDebuffEnd, 0);
+      }
+
+      pillColdStartDone = true;
+      dbg('pillReminder', 'debug', 'cold start seeded', {
+        both100: status.both100,
+        inWindow,
+        isDebuffExpired,
+        pillTakenAt: info.pillTakenAt
+      });
+      return;
+    }
+
+    // 1. Health & Hunger full
+    if (CONFIG.featPillNotifHnH) {
+      if (status.both100) {
+        const alreadyNotified = GM_getValue(KEYS.lastNotifiedHnH, false);
+        if (!alreadyNotified) {
+          GM_setValue(KEYS.lastNotifiedHnH, true);
+          sendPersonalNtfy('HnH', t('ntfyHnHFullTitle'), t('ntfyHnHFullBody'), 'poultry_leg,heart,white_check_mark');
+        }
+      } else {
+        GM_setValue(KEYS.lastNotifiedHnH, false);
+      }
+    }
+
+    // 2. Preferred window
+    if (CONFIG.featPillNotifWindow && CONFIG.pillPrefWindowFrom) {
+      if (inWindow) {
+        const todayStr = new Date(nowVal).toDateString();
+        const lastDate = GM_getValue(KEYS.lastNotifiedPillWindowDate, '');
+        if (lastDate !== todayStr) {
+          GM_setValue(KEYS.lastNotifiedPillWindowDate, todayStr);
+          sendPersonalNtfy('Window', t('ntfyPillWindowTitle'), t('ntfyPillWindowBody', { time: CONFIG.pillPrefWindowFrom }), 'pill,alarm_clock');
+        }
+      }
+    }
+
+    // 3. Debuff expired
+    if (CONFIG.featPillNotifDebuff && info.pillTakenAt > 0) {
+      if (isDebuffExpired) {
+        const lastDebuffPillTakenAt = GM_getValue(KEYS.lastNotifiedDebuffEnd, 0);
+        if (lastDebuffPillTakenAt !== info.pillTakenAt) {
+          GM_setValue(KEYS.lastNotifiedDebuffEnd, info.pillTakenAt);
+          sendPersonalNtfy('Debuff', t('ntfyDebuffGoneTitle'), t('ntfyDebuffGoneBody'), 'pill,sparkles');
+        }
+      }
+    }
   }
 
   function isInsidePreferredWindow(now) {
@@ -10425,6 +10596,9 @@ function checkInventoryDeltaWear() {
     CONFIG.featBattleAdvisor = GM_getValue(KEYS.featBattleAdvisor, false);
     CONFIG.alliedCountryCodes = GM_getValue(KEYS.alliedCountryCodes, CONFIG.alliedCountryCodes);
     CONFIG.featPillReminder = GM_getValue(KEYS.featPillReminder, false);
+    CONFIG.featPillNotifHnH = GM_getValue(KEYS.featPillNotifHnH, false);
+    CONFIG.featPillNotifWindow = GM_getValue(KEYS.featPillNotifWindow, false);
+    CONFIG.featPillNotifDebuff = GM_getValue(KEYS.featPillNotifDebuff, false);
     CONFIG.featBountyNotify = GM_getValue(KEYS.featBountyNotify, CONFIG.featBountyNotify);
     CONFIG.ntfyTopic = GM_getValue(KEYS.ntfyTopic, CONFIG.ntfyTopic);
     CONFIG.ntfyTopicSecret = GM_getValue(KEYS.ntfyTopicSecret, CONFIG.ntfyTopicSecret);
