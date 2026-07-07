@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         PROST
+// @name         TEST PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.8.12
+// @version      0.8.12-unstable
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -1185,6 +1185,7 @@
   // ── Phase 3: persistent on-screen HUD (bug button + ampel list) ──────────
   // Only present when CONFIG.debug. A floating button bottom-left shows the
   // worst feature status as a colored dot; click toggles the ampel panel.
+  const hudInstances = {};
   let debugHudEl = null;
   let debugHudOpen = false;
   let hudRefreshPending = false;
@@ -1198,12 +1199,46 @@
     return worst;
   }
 
+  function updateDebugPanelOrientation() {
+    const wrap = document.getElementById('wia-debug-hud');
+    if (!wrap) return;
+    const panel = wrap.querySelector('.wia-hud-panel');
+    if (!panel) return;
+
+    const rect = wrap.getBoundingClientRect();
+    const screenWidth = window.innerWidth;
+    const screenHeight = window.innerHeight;
+
+    const inLeftHalf = (rect.left + rect.width / 2) < screenWidth / 2;
+    const inUpperHalf = (rect.top + rect.height / 2) < screenHeight / 2;
+
+    if (inLeftHalf) {
+      panel.style.left = '0';
+      panel.style.right = 'auto';
+    } else {
+      panel.style.right = '0';
+      panel.style.left = 'auto';
+    }
+
+    if (inUpperHalf) {
+      panel.style.top = '100%';
+      panel.style.bottom = 'auto';
+      panel.style.marginTop = '8px';
+      panel.style.marginBottom = '0';
+    } else {
+      panel.style.bottom = '100%';
+      panel.style.top = 'auto';
+      panel.style.marginBottom = '8px';
+      panel.style.marginTop = '0';
+    }
+  }
+
   function buildDebugHud() {
     const wrap = document.createElement('div');
     wrap.id = 'wia-debug-hud';
     wrap.style.cssText = 'position:fixed; left:12px; bottom:12px; z-index:2147483600; font:12px/1.4 system-ui,sans-serif;';
     wrap.innerHTML = `
-      <div class="wia-hud-panel" style="display:none; width:300px; margin-bottom:8px; background:#161b22; border:1px solid #30363d; border-radius:8px; box-shadow:0 8px 30px rgba(0,0,0,.6); padding:8px;">
+      <div class="wia-hud-panel" style="display:none; position:absolute; width:300px; background:#161b22; border:1px solid #30363d; border-radius:8px; box-shadow:0 8px 30px rgba(0,0,0,.6); padding:8px; z-index:2147483601;">
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
           <strong style="color:#c9d1d9;">Feature-Health</strong>
           <button type="button" class="wia-hud-refresh" style="font-size:11px; padding:2px 8px; cursor:pointer; background:#21262d; color:#c9d1d9; border:1px solid #30363d; border-radius:5px;">↻</button>
@@ -1219,7 +1254,11 @@
     btn.onclick = () => {
       debugHudOpen = !debugHudOpen;
       panel.style.display = debugHudOpen ? 'block' : 'none';
-      if (debugHudOpen) { runProbes(); renderHealthPanel(body); }
+      if (debugHudOpen) {
+        updateDebugPanelOrientation();
+        runProbes();
+        renderHealthPanel(body);
+      }
     };
     wrap.querySelector('.wia-hud-refresh').onclick = () => { runProbes(); renderHealthPanel(body); };
     return wrap;
@@ -1227,12 +1266,30 @@
 
   function updateDebugHud() {
     if (!CONFIG.debug || typeof document === 'undefined' || !document.body) {
-      if (debugHudEl) { debugHudEl.remove(); debugHudEl = null; debugHudOpen = false; }
+      if (debugHudEl) {
+        if (hudInstances.debug) {
+          hudInstances.debug.destroy();
+          hudInstances.debug = null;
+        }
+        debugHudEl.remove();
+        debugHudEl = null;
+        debugHudOpen = false;
+      }
       return;
     }
     if (!debugHudEl) {
       debugHudEl = buildDebugHud();
       document.body.appendChild(debugHudEl);
+      if (hudInstances.debug) {
+        hudInstances.debug.destroy();
+      }
+      hudInstances.debug = makeMovable(debugHudEl, {
+        id: 'debug',
+        anchorDefault: true,
+        onMove: () => {
+          if (debugHudOpen) updateDebugPanelOrientation();
+        }
+      });
     }
     if (hudRefreshPending) return;
     hudRefreshPending = true;
@@ -1241,7 +1298,10 @@
       if (!debugHudEl) return;
       const dot = debugHudEl.querySelector('.wia-hud-dot');
       if (dot) dot.style.background = HEALTH_DOT[worstHealthStatus()] || HEALTH_DOT.idle;
-      if (debugHudOpen) renderHealthPanel(debugHudEl.querySelector('.wia-hud-body'));
+      if (debugHudOpen) {
+        updateDebugPanelOrientation();
+        renderHealthPanel(debugHudEl.querySelector('.wia-hud-body'));
+      }
     }, 200);
   }
 
@@ -2050,6 +2110,8 @@
       unsafeWindow.bountyAllies = bountyAllies;
       unsafeWindow.extractAllyBounties = extractAllyBounties;
     }
+    globalThis.makeMovable = makeMovable;
+    globalThis.hudInstances = hudInstances;
     globalThis.parseHealthAndHunger = parseHealthAndHunger;
     globalThis.updatePillState = updatePillState;
     globalThis.injectPillBadge = injectPillBadge;
@@ -4335,6 +4397,17 @@ async function scanInventory(force) {
       .wia-pnl-tracker:hover .wia-pnl-hover {
         display: block;
       }
+      .wia-hud-free {
+        touch-action: none !important;
+        user-select: none !important;
+        -webkit-touch-callout: none !important;
+        cursor: grab !important;
+      }
+      .wia-hud-dragging {
+        z-index: 2147483647 !important;
+        cursor: grabbing !important;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5) !important;
+      }
     `);
   }
 
@@ -4567,7 +4640,6 @@ async function scanInventory(force) {
               <div class="wia-bounty-detected-identity" style="font-size: 10px; color: #8b949e; margin-top: 2px;">Erkenne Identität...</div>
             </div>
           </details>
-        </div>
         <button type="button" class="wia-help-toggle" aria-expanded="false">${t('settingsHelpSummary')}</button>
         <aside class="wia-help-panel" hidden>
           <div class="wia-help-content">${t('settingsHelpContent')}</div>
@@ -4640,6 +4712,7 @@ async function scanInventory(force) {
         }
       };
     }
+
 
     const debugCheckbox = modal.querySelector('.wia-debug');
     const healthPanel = modal.querySelector('.wia-health-panel');
@@ -4835,6 +4908,7 @@ async function scanInventory(force) {
       bountyResetAllyCache();
       if (featBounty) { guard('bountyNotify', initBountyNotify); } else { teardownBountyNotify(); }
 
+
       if (tokenChanged) {
         clearCache();
       }
@@ -4858,9 +4932,321 @@ async function scanInventory(force) {
     renderSettingsModal(bg);
   }
 
+
+  function makeMovable(el, opts) {
+    const { id, anchorSlot, anchorDefault = false } = opts;
+    const keyAnchored = NS + 'hud_' + id + '_anchored';
+    const keyPos = NS + 'hud_' + id + '_pos';
+
+    const originalStyles = {
+      position: el.style.position,
+      left: el.style.left,
+      top: el.style.top,
+      bottom: el.style.bottom,
+      right: el.style.right,
+      margin: el.style.margin
+    };
+
+    let isAnchoredState = readCache(keyAnchored);
+    if (isAnchoredState === null || isAnchoredState === undefined || (typeof isAnchoredState === 'object' && Object.keys(isAnchoredState).length === 0)) {
+      isAnchoredState = anchorDefault;
+    } else {
+      isAnchoredState = !!isAnchoredState;
+    }
+
+    let startX = 0;
+    let startY = 0;
+    let initialLeft = 0;
+    let initialTop = 0;
+    let isDragging = false;
+    let activePointerId = null;
+    let dragShouldSnap = false;
+    let longPressTimer = null;
+    let dragModeActive = false;
+
+    function getAnchorCoordinates() {
+      if (!anchorSlot) {
+        // Temporarily re-anchor to measure default coordinates
+        const originalStyleText = el.style.cssText;
+        const originalParent = el.parentElement;
+        const originalNextSibling = el.nextSibling;
+
+        el.classList.remove('wia-hud-free');
+        Object.assign(el.style, originalStyles);
+
+        const rect = el.getBoundingClientRect();
+
+        if (originalParent) {
+          if (originalNextSibling) {
+            originalParent.insertBefore(el, originalNextSibling);
+          } else {
+            originalParent.appendChild(el);
+          }
+        }
+        el.classList.add('wia-hud-free');
+        el.style.cssText = originalStyleText;
+
+        return { x: rect.left, y: rect.top };
+      } else {
+        const slot = anchorSlot();
+        if (!slot || !slot.parent) return null;
+        const placeholder = document.createElement('span');
+        placeholder.style.cssText = 'display:inline-block; width:0; height:0; margin:0; padding:0; border:0; visibility:hidden;';
+        if (slot.before) {
+          slot.parent.insertBefore(placeholder, slot.before);
+        } else {
+          slot.parent.appendChild(placeholder);
+        }
+        const rect = placeholder.getBoundingClientRect();
+        placeholder.remove();
+        return { x: rect.left, y: rect.top };
+      }
+    }
+
+    function onPointerDown(e) {
+      if (e.button !== 0 && e.pointerType === 'mouse') return;
+
+      activePointerId = e.pointerId;
+      startX = e.clientX;
+      startY = e.clientY;
+
+      const rect = el.getBoundingClientRect();
+      initialLeft = rect.left;
+      initialTop = rect.top;
+      isDragging = false;
+      dragModeActive = false;
+      dragShouldSnap = isAnchoredState;
+
+      // Start the long-press timer (400ms)
+      longPressTimer = setTimeout(() => {
+        dragModeActive = true;
+        el.classList.add('wia-hud-dragging');
+        el.classList.add('wia-hud-free');
+        if (el.parentElement !== document.body) {
+          document.body.appendChild(el);
+        }
+        applyPosition(initialLeft, initialTop);
+        el.setPointerCapture(e.pointerId);
+        
+        el.style.transition = 'transform 0.15s ease-out, box-shadow 0.15s ease-out';
+        el.style.transform = 'scale(1.08)';
+      }, 400);
+    }
+
+    function onPointerMove(e) {
+      if (activePointerId !== e.pointerId) return;
+
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+
+      // Cancel long press if user moves pointer by more than 4px before it triggers
+      if (longPressTimer && !dragModeActive && Math.sqrt(dx * dx + dy * dy) >= 4) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+
+      if (dragModeActive) {
+        isDragging = true;
+        el.style.transition = 'transform 0.15s ease-out, box-shadow 0.15s ease-out';
+
+        let targetX = initialLeft + dx;
+        let targetY = initialTop + dy;
+
+        const anchorPos = getAnchorCoordinates();
+        dragShouldSnap = false;
+        if (anchorPos) {
+          const dist = Math.sqrt(
+            Math.pow(targetX - anchorPos.x, 2) +
+            Math.pow(targetY - anchorPos.y, 2)
+          );
+          if (dist < 40) { // Snapping threshold: 40px
+            dragShouldSnap = true;
+            targetX = anchorPos.x;
+            targetY = anchorPos.y;
+          }
+        }
+
+        applyPosition(targetX, targetY);
+        
+        if (opts.onMove) {
+          opts.onMove();
+        }
+      }
+    }
+
+    function onPointerUp(e) {
+      if (activePointerId !== e.pointerId) return;
+      activePointerId = null;
+
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+
+      if (dragModeActive) {
+        el.classList.remove('wia-hud-dragging');
+        el.style.transform = '';
+        
+        if (isDragging) {
+          if (dragShouldSnap) {
+            const anchorPos = getAnchorCoordinates();
+            if (anchorPos) {
+              el.style.transition = 'left 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), top 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)';
+              el.style.pointerEvents = 'none';
+              applyPosition(anchorPos.x, anchorPos.y);
+              
+              setTimeout(() => {
+                el.style.transition = '';
+                el.style.pointerEvents = '';
+                setAnchored(true);
+                if (opts.onMove) opts.onMove();
+              }, 300);
+            } else {
+              setAnchored(true);
+              if (opts.onMove) opts.onMove();
+            }
+          } else {
+            const rect = el.getBoundingClientRect();
+            setAnchored(false);
+            writeCache(keyPos, { x: rect.left, y: rect.top });
+            dbg('hud', 'debug', id, 'dragged to', rect.left, rect.top);
+            if (opts.onMove) opts.onMove();
+          }
+
+          const stopClick = (ev) => {
+            ev.stopPropagation();
+            ev.preventDefault();
+          };
+          el.addEventListener('click', stopClick, { capture: true, once: true });
+          setTimeout(() => el.removeEventListener('click', stopClick, true), 100);
+        } else {
+          // Drag mode was activated but no drag move occurred (just long press and release)
+          if (dragShouldSnap) {
+            setAnchored(true);
+          } else {
+            setAnchored(false);
+          }
+          if (opts.onMove) opts.onMove();
+        }
+      }
+    }
+
+    function onPointerCancel(e) {
+      if (activePointerId !== e.pointerId) return;
+      activePointerId = null;
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+      el.releasePointerCapture(e.pointerId);
+      el.classList.remove('wia-hud-dragging');
+      el.style.transform = '';
+      el.style.transition = '';
+      if (isAnchoredState) {
+        setAnchored(true);
+      } else {
+        setAnchored(false);
+      }
+      if (opts.onMove) opts.onMove();
+    }
+
+    function applyPosition(x, y) {
+      const rect = el.getBoundingClientRect();
+      const w = rect.width || el.offsetWidth || 40;
+      const h = rect.height || el.offsetHeight || 40;
+      const maxX = Math.max(0, window.innerWidth - w);
+      const maxY = Math.max(0, window.innerHeight - h);
+      const clampedX = Math.min(Math.max(0, x), maxX);
+      const clampedY = Math.min(Math.max(0, y), maxY);
+
+      el.style.position = 'fixed';
+      el.style.left = clampedX + 'px';
+      el.style.top = clampedY + 'px';
+      el.style.bottom = 'auto';
+      el.style.right = 'auto';
+      el.style.margin = '0';
+      return { x: clampedX, y: clampedY };
+    }
+
+    function updateLayout() {
+      if (isAnchoredState) {
+        el.classList.remove('wia-hud-free');
+        Object.assign(el.style, originalStyles);
+        if (anchorSlot) {
+          const slot = anchorSlot();
+          if (slot && slot.parent) {
+            if (slot.before) {
+              slot.parent.insertBefore(el, slot.before);
+            } else {
+              slot.parent.appendChild(el);
+            }
+          }
+        }
+      } else {
+        el.classList.add('wia-hud-free');
+        if (el.parentElement !== document.body) {
+          document.body.appendChild(el);
+        }
+        const pos = readCache(keyPos);
+        if (pos && typeof pos === 'object' && Object.keys(pos).length > 0) {
+          applyPosition(pos.x, pos.y);
+        } else {
+          const rect = el.getBoundingClientRect();
+          applyPosition(rect.left, rect.top);
+        }
+      }
+    }
+
+    function onResize() {
+      if (!isAnchoredState) {
+        const pos = readCache(keyPos);
+        if (pos && typeof pos === 'object' && Object.keys(pos).length > 0) {
+          applyPosition(pos.x, pos.y);
+          if (opts.onMove) opts.onMove();
+        }
+      }
+    }
+
+    el.addEventListener('pointerdown', onPointerDown);
+    el.addEventListener('pointermove', onPointerMove);
+    el.addEventListener('pointerup', onPointerUp);
+    el.addEventListener('pointercancel', onPointerCancel);
+    window.addEventListener('resize', onResize);
+
+    updateLayout();
+
+    function setAnchored(anchored) {
+      isAnchoredState = anchored;
+      writeCache(keyAnchored, anchored);
+      if (anchored) {
+        writeCache(keyPos, null);
+      }
+      updateLayout();
+    }
+
+    return {
+      setAnchored,
+      isAnchored() {
+        return isAnchoredState;
+      },
+      resetPosition() {
+        setAnchored(true);
+      },
+      destroy() {
+        el.removeEventListener('pointerdown', onPointerDown);
+        el.removeEventListener('pointermove', onPointerMove);
+        el.removeEventListener('pointerup', onPointerUp);
+        el.removeEventListener('pointercancel', onPointerCancel);
+        window.removeEventListener('resize', onResize);
+      }
+    };
+  }
+
   function injectGear() {
-    if (document.querySelector('.wia-gear')) return;
-    const gear = document.createElement('button');
+    let gear = document.querySelector('.wia-gear');
+    if (gear) return;
+
+    gear = document.createElement('button');
     gear.className = 'wia-gear';
     gear.textContent = '⚙';
     gear.title = t('gearTooltipTitle');
@@ -4869,6 +5255,15 @@ async function scanInventory(force) {
     dot.className = 'wia-gear-dot';
     gear.appendChild(dot);
     document.body.appendChild(gear);
+
+    if (hudInstances.gear) {
+      hudInstances.gear.destroy();
+    }
+    hudInstances.gear = makeMovable(gear, {
+      id: 'gear',
+      anchorDefault: true
+    });
+
     updateStatusIndicator();
   }
 
@@ -6291,6 +6686,24 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
       badge = document.createElement('div');
       badge.id = 'wia-pill-badge';
       anchor.appendChild(badge);
+
+      if (hudInstances.pill) {
+        hudInstances.pill.destroy();
+      }
+      hudInstances.pill = makeMovable(badge, {
+        id: 'pill',
+        anchorSlot: () => {
+          const currentAnchor = document.getElementById('layoutUserMenu') ||
+                                document.getElementById('avatar') ||
+                                document.querySelector('header nav') ||
+                                document.querySelector('header');
+          return { parent: currentAnchor };
+        },
+        anchorDefault: true,
+        onMove: () => {
+          applyPillFloatState(badge);
+        }
+      });
     }
 
     renderPillBadge(badge);
@@ -6394,6 +6807,10 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
   function removePillBadge() {
     const badge = document.getElementById('wia-pill-badge');
     if (badge) badge.remove();
+    if (hudInstances.pill) {
+      hudInstances.pill.destroy();
+      hudInstances.pill = null;
+    }
   }
 
   // Pure: should the badge float, given a measured panel width? Fail-open to
@@ -6406,6 +6823,12 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
   // write unless the float decision actually changed.
   function applyPillFloatState(badge) {
     if (!badge) return;
+    if (hudInstances.pill && !hudInstances.pill.isAnchored()) {
+      if (!badge.classList.contains('wia-pill-badge--float')) {
+        badge.classList.add('wia-pill-badge--float');
+      }
+      return;
+    }
     const menu = document.getElementById('layoutUserMenu');
     // getBoundingClientRect().width is the rendered content box after layout.
     // Fall back to offsetWidth if getBoundingClientRect is not defined (e.g. in test environments).
