@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.8.12
+// @version      0.8.13
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -716,6 +716,7 @@
     bountySeen: NS + 'bountySeen',
     bountyLocalSeen: NS + 'bountyLocalSeen',
     bountyMirrorSeen: NS + 'bountyMirrorSeen',
+    bountyHistory: NS + 'bountyHistory',
     bountyClientId: NS + 'bountyClientId',
     bountyTopicBase: NS + 'bountyTopicBase',
     bountyAllyCache: NS + 'bountyAllyCache',
@@ -1164,7 +1165,8 @@
       const allies = GM_getValue(KEYS.bountyAllyCache + '_allies', null);
       const casc = GM_getValue(KEYS.bountyAllyCache + '_casc', null);
       const resolved = (allies && allies.ids ? allies.ids.length : 0) + '/' + (casc && casc.ids ? casc.ids.length : 0);
-      return ['ok', `topic: ${topic}, resolved: ${resolved}, last poll: ${ageStr}, cid: ${bountyClientId()}`];
+      const hist = summarizeBountyHistory(loadBountyHistory(), now());
+      return ['ok', `topic: ${topic}, resolved: ${resolved}, last poll: ${ageStr}, history: ${hist.total}/${hist.last24h} 24h, cid: ${bountyClientId()}`];
     },
   };
 
@@ -4565,6 +4567,10 @@ async function scanInventory(force) {
               <label style="font-size: 11px; color: #8b949e; display: block; margin: 0 0 2px;">${t('settingsBountyOwnCountry')}</label>
               <input type="text" class="wia-bounty-own" placeholder="name or id,id,id..." style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;" value="${prevBountyOwn}" />
               <div class="wia-bounty-detected-identity" style="font-size: 10px; color: #8b949e; margin-top: 2px;">Erkenne Identität...</div>
+              <div style="margin-top: 8px; border-top: 1px solid rgba(148,163,184,.16); padding-top: 7px;">
+                <div class="wia-bounty-history-summary" style="font-size: 10px; color: #8b949e; line-height: 1.4;"></div>
+                <button type="button" class="wia-bounty-history-print" style="margin-top: 5px; font-size: 11px; padding: 3px 8px; cursor: pointer; color: #58a6ff; background: rgba(88,166,255,0.1); border: 1px solid rgba(88,166,255,0.2); border-radius: 3px;">Bounty history log</button>
+              </div>
             </div>
           </details>
         </div>
@@ -4657,6 +4663,12 @@ async function scanInventory(force) {
     const skinsDumpBtn = modal.querySelector('.wia-skins-dump-btn');
     if (skinsDumpBtn) {
       skinsDumpBtn.onclick = (e) => { e.preventDefault(); dumpSkinsToConsole(); };
+    }
+    const bountyHistorySummary = modal.querySelector('.wia-bounty-history-summary');
+    const bountyHistoryPrintBtn = modal.querySelector('.wia-bounty-history-print');
+    if (bountyHistorySummary) renderBountyHistorySummary(bountyHistorySummary);
+    if (bountyHistoryPrintBtn) {
+      bountyHistoryPrintBtn.onclick = (e) => { e.preventDefault(); printBountyHistory(); renderBountyHistorySummary(bountyHistorySummary); };
     }
     if (healthPanel) { runProbes(); renderHealthPanel(healthPanel); }   // initial fill = live truth
 
@@ -9502,7 +9514,7 @@ function checkInventoryDeltaWear() {
     return id;
   }
 
-  const SCRIPT_VERSION = (typeof GM_info !== 'undefined' && GM_info && GM_info.script && GM_info.script.version) || '0.8.10';
+  const SCRIPT_VERSION = (typeof GM_info !== 'undefined' && GM_info && GM_info.script && GM_info.script.version) || '0.8.13';
 
   function cleanHeaderValue(str) {
     if (!str) return '';
@@ -9598,6 +9610,8 @@ function checkInventoryDeltaWear() {
   globalThis.testLocalBounty = testLocalBounty;
   globalThis.sendNtfy = sendNtfy;
   globalThis.bountyKey = bountyKey;
+  globalThis.printBountyHistory = printBountyHistory;
+  globalThis.summarizeBountyHistory = () => summarizeBountyHistory(loadBountyHistory(), now());
 
   const BOUNTY_ALLY_TTL_MS = 86400000;   // 24h — allies change slowly; resolve ~once a day
 
@@ -10000,8 +10014,90 @@ function checkInventoryDeltaWear() {
 
   // ── SeenStore (local dedup) ──
   const BOUNTY_SEEN_TTL_MS = 86400000;   // 24h; pure time-based prune (pagination-safe)
+  const BOUNTY_HISTORY_TTL_MS = 7 * 86400000;   // 7d rolling history for lightweight stats
+  const BOUNTY_HISTORY_MAX = 250;
   const BOUNTY_POPUP_MS = 8000;   // in-game toast auto-dismiss
   let bountyColdStartDone = false;
+  function loadBountyHistory() { return GM_getValue(KEYS.bountyHistory, {}) || {}; }
+  function saveBountyHistory(store) { GM_setValue(KEYS.bountyHistory, store); }
+  function pruneBountyHistory(store, nowMs) {
+    const entries = Object.entries(store || {})
+      .filter(([, rec]) => rec && nowMs - (rec.lastSeenAt || rec.firstSeenAt || 0) <= BOUNTY_HISTORY_TTL_MS)
+      .sort((a, b) => (b[1].lastSeenAt || 0) - (a[1].lastSeenAt || 0));
+    return Object.fromEntries(entries.slice(0, BOUNTY_HISTORY_MAX));
+  }
+  function recordBountyHistory(bounties, scope, seenAt = now()) {
+    if (!Array.isArray(bounties) || !bounties.length) return false;
+    const store = pruneBountyHistory(loadBountyHistory(), seenAt);
+    let changed = false;
+    for (const b of bounties) {
+      if (!b || !b.battleId || !b.side || !b.effectiveAt) continue;
+      const key = bountyKey(b.battleId, b.side, b.effectiveAt);
+      const prev = store[key] || {};
+      store[key] = {
+        key,
+        battleId: b.battleId,
+        side: b.side,
+        country: b.country || null,
+        attackerCountry: b.attackerCountry || null,
+        defenderCountry: b.defenderCountry || null,
+        effectiveAt: b.effectiveAt,
+        effectiveAtEpoch: b.effectiveAtEpoch || Date.parse(b.effectiveAt),
+        moneyPool: Number(b.moneyPool || 0),
+        ratePer1k: Number(b.ratePer1k || 0),
+        regionId: b.regionId || null,
+        warId: b.warId || null,
+        scope: scope || CONFIG.bountyScope || 'cascade',
+        firstSeenAt: prev.firstSeenAt || seenAt,
+        lastSeenAt: seenAt,
+        sightings: (prev.sightings || 0) + 1
+      };
+      changed = true;
+    }
+    if (changed) saveBountyHistory(store);
+    return changed;
+  }
+  function summarizeBountyHistory(store, nowMs = now()) {
+    const records = Object.values(pruneBountyHistory(store || {}, nowMs));
+    const dayMs = 86400000;
+    const byDay = {};
+    let last24h = 0;
+    let totalPool = 0;
+    for (const rec of records) {
+      const seenAt = rec.firstSeenAt || rec.lastSeenAt || 0;
+      if (nowMs - seenAt <= dayMs) last24h++;
+      totalPool += Number(rec.moneyPool || 0);
+      const d = new Date(seenAt).toISOString().slice(0, 10);
+      byDay[d] = (byDay[d] || 0) + 1;
+    }
+    return {
+      total: records.length,
+      last24h,
+      totalPool,
+      days: Object.keys(byDay).sort().map((day) => ({ day, count: byDay[day] }))
+    };
+  }
+  function renderBountyHistorySummary(node) {
+    if (!node) return;
+    const stats = summarizeBountyHistory(loadBountyHistory(), now());
+    const lastDays = stats.days.slice(-4).map((d) => `${d.day}: ${d.count}`).join(' | ') || 'no entries yet';
+    node.textContent = `History: ${stats.total} bounties (${stats.last24h} in 24h), pool sum ${fmt(stats.totalPool || 0)}. ${lastDays}`;
+  }
+  function printBountyHistory() {
+    const store = pruneBountyHistory(loadBountyHistory(), now());
+    const rows = Object.values(store).sort((a, b) => (b.lastSeenAt || 0) - (a.lastSeenAt || 0)).map((rec) => ({
+      firstSeen: new Date(rec.firstSeenAt || rec.lastSeenAt || 0).toISOString(),
+      lastSeen: new Date(rec.lastSeenAt || rec.firstSeenAt || 0).toISOString(),
+      battleId: rec.battleId,
+      side: rec.side,
+      scope: rec.scope,
+      pool: rec.moneyPool,
+      ratePer1k: rec.ratePer1k,
+      sightings: rec.sightings
+    }));
+    console.table(rows);
+    return rows;
+  }
   function loadSeen() { return GM_getValue(KEYS.bountySeen, {}) || {}; }
   function saveSeen(store) { GM_setValue(KEYS.bountySeen, store); }
   function loadLocalSeen() { return GM_getValue(KEYS.bountyLocalSeen, {}) || {}; }
@@ -10077,6 +10173,7 @@ function checkInventoryDeltaWear() {
 
       const bounties = extractAllyBounties(all, allySet, ownCountry);
       const allBounties = extractAllyBounties(all, null, ownCountry);
+      recordBountyHistory(bounties, CONFIG.bountyScope || 'cascade');
       dbg('bountyNotify', 'debug', 'poll ok', 'battles', all.length, 'allyBounties', bounties.length);
 
       let seen = pruneSeen(loadSeen(), now());

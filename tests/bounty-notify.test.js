@@ -346,3 +346,90 @@ assert.ok(presentKeys.keys.has('bkey_B2_attacker_456'));
 assert.strictEqual(presentKeys.legacy, 1, 'Should have exactly 1 legacy notification');
 console.log('bounty-notify: topicPresentKeys return format OK');
 
+// Bounty history storage helpers
+const BOUNTY_HISTORY_TTL_MS = 7 * 86400000;
+const BOUNTY_HISTORY_MAX = 250;
+function pruneBountyHistory(store, nowMs) {
+  const entries = Object.entries(store || {})
+    .filter(([, rec]) => rec && nowMs - (rec.lastSeenAt || rec.firstSeenAt || 0) <= BOUNTY_HISTORY_TTL_MS)
+    .sort((a, b) => (b[1].lastSeenAt || 0) - (a[1].lastSeenAt || 0));
+  return Object.fromEntries(entries.slice(0, BOUNTY_HISTORY_MAX));
+}
+function recordBountyHistoryInStore(store, bounties, scope, seenAt) {
+  const out = pruneBountyHistory(store, seenAt);
+  for (const b of bounties || []) {
+    if (!b || !b.battleId || !b.side || !b.effectiveAt) continue;
+    const key = bountyKey(b.battleId, b.side, b.effectiveAt);
+    const prev = out[key] || {};
+    out[key] = {
+      key,
+      battleId: b.battleId,
+      side: b.side,
+      country: b.country || null,
+      attackerCountry: b.attackerCountry || null,
+      defenderCountry: b.defenderCountry || null,
+      effectiveAt: b.effectiveAt,
+      effectiveAtEpoch: b.effectiveAtEpoch || Date.parse(b.effectiveAt),
+      moneyPool: Number(b.moneyPool || 0),
+      ratePer1k: Number(b.ratePer1k || 0),
+      regionId: b.regionId || null,
+      warId: b.warId || null,
+      scope: scope || 'cascade',
+      firstSeenAt: prev.firstSeenAt || seenAt,
+      lastSeenAt: seenAt,
+      sightings: (prev.sightings || 0) + 1
+    };
+  }
+  return out;
+}
+function summarizeBountyHistory(store, nowMs) {
+  const records = Object.values(pruneBountyHistory(store || {}, nowMs));
+  const byDay = {};
+  let last24h = 0;
+  let totalPool = 0;
+  for (const rec of records) {
+    const seenAt = rec.firstSeenAt || rec.lastSeenAt || 0;
+    if (nowMs - seenAt <= 86400000) last24h++;
+    totalPool += Number(rec.moneyPool || 0);
+    const d = new Date(seenAt).toISOString().slice(0, 10);
+    byDay[d] = (byDay[d] || 0) + 1;
+  }
+  return {
+    total: records.length,
+    last24h,
+    totalPool,
+    days: Object.keys(byDay).sort().map((day) => ({ day, count: byDay[day] }))
+  };
+}
+
+const historyNow = Date.parse('2026-07-07T12:00:00.000Z');
+const histBounty = {
+  battleId: 'HB1',
+  side: 'defender',
+  country: 'ALLY',
+  attackerCountry: 'ENEMY',
+  defenderCountry: 'ALLY',
+  effectiveAt: '2026-07-07T11:45:00.000Z',
+  moneyPool: 25,
+  ratePer1k: 0.2,
+  regionId: 'R1',
+  warId: 'W1'
+};
+let hist = recordBountyHistoryInStore({}, [histBounty], 'cascade', historyNow - 1000);
+hist = recordBountyHistoryInStore(hist, [histBounty], 'cascade', historyNow);
+const histKey = bountyKey(histBounty.battleId, histBounty.side, histBounty.effectiveAt);
+assert.strictEqual(Object.keys(hist).length, 1, 'duplicate bounty keys should update one history record');
+assert.strictEqual(hist[histKey].sightings, 2, 'history sightings should increment');
+assert.strictEqual(hist[histKey].firstSeenAt, historyNow - 1000, 'history should preserve first seen time');
+assert.strictEqual(hist[histKey].lastSeenAt, historyNow, 'history should update last seen time');
+
+hist.old = { key: 'old', firstSeenAt: historyNow - BOUNTY_HISTORY_TTL_MS - 10, lastSeenAt: historyNow - BOUNTY_HISTORY_TTL_MS - 10 };
+const prunedHist = pruneBountyHistory(hist, historyNow);
+assert.ok(!prunedHist.old, 'history should prune entries older than TTL');
+const histStats = summarizeBountyHistory(prunedHist, historyNow);
+assert.strictEqual(histStats.total, 1);
+assert.strictEqual(histStats.last24h, 1);
+assert.strictEqual(histStats.totalPool, 25);
+assert.deepStrictEqual(histStats.days, [{ day: '2026-07-07', count: 1 }]);
+console.log('bounty-notify: bounty history helpers OK');
+

@@ -14,6 +14,14 @@ The **Bounty Push Notifications** feature is a background poller that checks for
 
 ---
 
+## Local History
+
+Detected bounties are stored locally for seven days. The history keeps the bounty key, first/last seen timestamps, sighting count, scope, pool, and rate values.
+
+The settings dialog shows a compact history summary with total detections, 24-hour detections, and a short day-by-day timeline. Use the **Bounty history log** button to print the current history table to the browser console.
+
+---
+
 ## Notification Scopes
 
 You can choose between three notification scopes in the settings dialog:
