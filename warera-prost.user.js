@@ -1199,12 +1199,46 @@
     return worst;
   }
 
+  function updateDebugPanelOrientation() {
+    const wrap = document.getElementById('wia-debug-hud');
+    if (!wrap) return;
+    const panel = wrap.querySelector('.wia-hud-panel');
+    if (!panel) return;
+
+    const rect = wrap.getBoundingClientRect();
+    const screenWidth = window.innerWidth;
+    const screenHeight = window.innerHeight;
+
+    const inLeftHalf = (rect.left + rect.width / 2) < screenWidth / 2;
+    const inUpperHalf = (rect.top + rect.height / 2) < screenHeight / 2;
+
+    if (inLeftHalf) {
+      panel.style.left = '0';
+      panel.style.right = 'auto';
+    } else {
+      panel.style.right = '0';
+      panel.style.left = 'auto';
+    }
+
+    if (inUpperHalf) {
+      panel.style.top = '100%';
+      panel.style.bottom = 'auto';
+      panel.style.marginTop = '8px';
+      panel.style.marginBottom = '0';
+    } else {
+      panel.style.bottom = '100%';
+      panel.style.top = 'auto';
+      panel.style.marginBottom = '8px';
+      panel.style.marginTop = '0';
+    }
+  }
+
   function buildDebugHud() {
     const wrap = document.createElement('div');
     wrap.id = 'wia-debug-hud';
     wrap.style.cssText = 'position:fixed; left:12px; bottom:12px; z-index:2147483600; font:12px/1.4 system-ui,sans-serif;';
     wrap.innerHTML = `
-      <div class="wia-hud-panel" style="display:none; width:300px; margin-bottom:8px; background:#161b22; border:1px solid #30363d; border-radius:8px; box-shadow:0 8px 30px rgba(0,0,0,.6); padding:8px;">
+      <div class="wia-hud-panel" style="display:none; position:absolute; width:300px; background:#161b22; border:1px solid #30363d; border-radius:8px; box-shadow:0 8px 30px rgba(0,0,0,.6); padding:8px; z-index:2147483601;">
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
           <strong style="color:#c9d1d9;">Feature-Health</strong>
           <button type="button" class="wia-hud-refresh" style="font-size:11px; padding:2px 8px; cursor:pointer; background:#21262d; color:#c9d1d9; border:1px solid #30363d; border-radius:5px;">↻</button>
@@ -1220,7 +1254,11 @@
     btn.onclick = () => {
       debugHudOpen = !debugHudOpen;
       panel.style.display = debugHudOpen ? 'block' : 'none';
-      if (debugHudOpen) { runProbes(); renderHealthPanel(body); }
+      if (debugHudOpen) {
+        updateDebugPanelOrientation();
+        runProbes();
+        renderHealthPanel(body);
+      }
     };
     wrap.querySelector('.wia-hud-refresh').onclick = () => { runProbes(); renderHealthPanel(body); };
     return wrap;
@@ -1247,7 +1285,10 @@
       }
       hudInstances.debug = makeMovable(debugHudEl, {
         id: 'debug',
-        anchorDefault: true
+        anchorDefault: true,
+        onMove: () => {
+          if (debugHudOpen) updateDebugPanelOrientation();
+        }
       });
     }
     if (hudRefreshPending) return;
@@ -1257,7 +1298,10 @@
       if (!debugHudEl) return;
       const dot = debugHudEl.querySelector('.wia-hud-dot');
       if (dot) dot.style.background = HEALTH_DOT[worstHealthStatus()] || HEALTH_DOT.idle;
-      if (debugHudOpen) renderHealthPanel(debugHudEl.querySelector('.wia-hud-body'));
+      if (debugHudOpen) {
+        updateDebugPanelOrientation();
+        renderHealthPanel(debugHudEl.querySelector('.wia-hud-body'));
+      }
     }, 200);
   }
 
@@ -4354,12 +4398,15 @@ async function scanInventory(force) {
         display: block;
       }
       .wia-hud-free {
-        cursor: grab !important;
         touch-action: none !important;
-        z-index: 99999 !important;
+        user-select: none !important;
+        -webkit-touch-callout: none !important;
+        cursor: grab !important;
       }
-      .wia-hud-free:active {
+      .wia-hud-dragging {
+        z-index: 2147483647 !important;
         cursor: grabbing !important;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5) !important;
       }
     `);
   }
@@ -4914,6 +4961,8 @@ async function scanInventory(force) {
     let isDragging = false;
     let activePointerId = null;
     let dragShouldSnap = false;
+    let longPressTimer = null;
+    let dragModeActive = false;
 
     function getAnchorCoordinates() {
       if (!anchorSlot) {
@@ -4965,9 +5014,23 @@ async function scanInventory(force) {
       initialLeft = rect.left;
       initialTop = rect.top;
       isDragging = false;
+      dragModeActive = false;
       dragShouldSnap = isAnchoredState;
 
-      el.setPointerCapture(e.pointerId);
+      // Start the long-press timer (400ms)
+      longPressTimer = setTimeout(() => {
+        dragModeActive = true;
+        el.classList.add('wia-hud-dragging');
+        el.classList.add('wia-hud-free');
+        if (el.parentElement !== document.body) {
+          document.body.appendChild(el);
+        }
+        applyPosition(initialLeft, initialTop);
+        el.setPointerCapture(e.pointerId);
+        
+        el.style.transition = 'transform 0.15s ease-out, box-shadow 0.15s ease-out';
+        el.style.transform = 'scale(1.08)';
+      }, 400);
     }
 
     function onPointerMove(e) {
@@ -4976,15 +5039,16 @@ async function scanInventory(force) {
       const dx = e.clientX - startX;
       const dy = e.clientY - startY;
 
-      if (!isDragging && Math.sqrt(dx * dx + dy * dy) >= 4) {
-        isDragging = true;
-        if (isAnchoredState) {
-          el.classList.add('wia-hud-free');
-          document.body.appendChild(el);
-        }
+      // Cancel long press if user moves pointer by more than 4px before it triggers
+      if (longPressTimer && !dragModeActive && Math.sqrt(dx * dx + dy * dy) >= 4) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
       }
 
-      if (isDragging) {
+      if (dragModeActive) {
+        isDragging = true;
+        el.style.transition = 'transform 0.15s ease-out, box-shadow 0.15s ease-out';
+
         let targetX = initialLeft + dx;
         let targetY = initialTop + dy;
 
@@ -4995,7 +5059,7 @@ async function scanInventory(force) {
             Math.pow(targetX - anchorPos.x, 2) +
             Math.pow(targetY - anchorPos.y, 2)
           );
-          if (dist < 30) {
+          if (dist < 40) { // Snapping threshold: 40px
             dragShouldSnap = true;
             targetX = anchorPos.x;
             targetY = anchorPos.y;
@@ -5003,6 +5067,10 @@ async function scanInventory(force) {
         }
 
         applyPosition(targetX, targetY);
+        
+        if (opts.onMove) {
+          opts.onMove();
+        }
       }
     }
 
@@ -5010,31 +5078,76 @@ async function scanInventory(force) {
       if (activePointerId !== e.pointerId) return;
       activePointerId = null;
 
-      el.releasePointerCapture(e.pointerId);
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
 
-      if (isDragging) {
-        if (dragShouldSnap) {
-          setAnchored(true);
+      if (dragModeActive) {
+        el.classList.remove('wia-hud-dragging');
+        el.style.transform = '';
+        
+        if (isDragging) {
+          if (dragShouldSnap) {
+            const anchorPos = getAnchorCoordinates();
+            if (anchorPos) {
+              el.style.transition = 'left 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), top 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)';
+              el.style.pointerEvents = 'none';
+              applyPosition(anchorPos.x, anchorPos.y);
+              
+              setTimeout(() => {
+                el.style.transition = '';
+                el.style.pointerEvents = '';
+                setAnchored(true);
+                if (opts.onMove) opts.onMove();
+              }, 300);
+            } else {
+              setAnchored(true);
+              if (opts.onMove) opts.onMove();
+            }
+          } else {
+            const rect = el.getBoundingClientRect();
+            setAnchored(false);
+            writeCache(keyPos, { x: rect.left, y: rect.top });
+            dbg('hud', 'debug', id, 'dragged to', rect.left, rect.top);
+            if (opts.onMove) opts.onMove();
+          }
+
+          const stopClick = (ev) => {
+            ev.stopPropagation();
+            ev.preventDefault();
+          };
+          el.addEventListener('click', stopClick, { capture: true, once: true });
+          setTimeout(() => el.removeEventListener('click', stopClick, true), 100);
         } else {
-          const rect = el.getBoundingClientRect();
-          setAnchored(false);
-          writeCache(keyPos, { x: rect.left, y: rect.top });
-          dbg('hud', 'debug', id, 'dragged to', rect.left, rect.top);
+          // Drag mode was activated but no drag move occurred (just long press and release)
+          if (dragShouldSnap) {
+            setAnchored(true);
+          } else {
+            setAnchored(false);
+          }
+          if (opts.onMove) opts.onMove();
         }
-
-        const stopClick = (ev) => {
-          ev.stopPropagation();
-          ev.preventDefault();
-        };
-        el.addEventListener('click', stopClick, { capture: true, once: true });
-        setTimeout(() => el.removeEventListener('click', stopClick, true), 100);
       }
     }
 
     function onPointerCancel(e) {
       if (activePointerId !== e.pointerId) return;
       activePointerId = null;
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
       el.releasePointerCapture(e.pointerId);
+      el.classList.remove('wia-hud-dragging');
+      el.style.transform = '';
+      el.style.transition = '';
+      if (isAnchoredState) {
+        setAnchored(true);
+      } else {
+        setAnchored(false);
+      }
+      if (opts.onMove) opts.onMove();
     }
 
     function applyPosition(x, y) {
@@ -5071,7 +5184,9 @@ async function scanInventory(force) {
         }
       } else {
         el.classList.add('wia-hud-free');
-        document.body.appendChild(el);
+        if (el.parentElement !== document.body) {
+          document.body.appendChild(el);
+        }
         const pos = readCache(keyPos);
         if (pos && typeof pos === 'object' && Object.keys(pos).length > 0) {
           applyPosition(pos.x, pos.y);
@@ -5087,6 +5202,7 @@ async function scanInventory(force) {
         const pos = readCache(keyPos);
         if (pos && typeof pos === 'object' && Object.keys(pos).length > 0) {
           applyPosition(pos.x, pos.y);
+          if (opts.onMove) opts.onMove();
         }
       }
     }
@@ -6583,7 +6699,10 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
                                 document.querySelector('header');
           return { parent: currentAnchor };
         },
-        anchorDefault: true
+        anchorDefault: true,
+        onMove: () => {
+          applyPillFloatState(badge);
+        }
       });
     }
 
