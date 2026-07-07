@@ -1,5 +1,21 @@
 # CHANGELOG
 
+## 2026-07-07 | Kopfgeld-Mehrfachmeldungs-Schutz & Einstellungs-Fallback (v0.8.13)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/bounty-notify.test.js`
+
+**Geänderte Einstellungen / Configs (Workspace-lokal):** `.agents/AGENTS.md` (Workflow-Ergänzung für Board-Kanban-Spalten)
+
+**Änderungen (Deutsch):**
+- **Kopfgeld-Mehrfachmeldungsschutz (Intra-Client)**: Behebt das Problem, bei dem Tabs desselben Browsers (gleicher Client) Kopfgeld-Meldungen bis zu 5-mal zeitgleich auslösten. Ein neuer, tab-spezifischer Jitter sorgt dafür, dass die verschiedenen Tabs leicht zeitlich versetzt arbeiten. Der erste erfolgreiche Versand unterdrückt dadurch automatisch Duplikate in den restlichen Tabs.
+- **Optimistische Slot-Sperre & Lock-Verlängerung**: Tabs prüfen und beanspruchen das Abruf-Zeitfenster nun optimistisch mit einer kurzen, zufälligen Wartezeit und einem Double-Check (Check-after-Write), was zeitgleiche Konflikte verhindert. Zudem wird die Sperre während langer Abruf-Zyklen (z. B. Paginierung und Spiegelungs-Stagger) fortlaufend verlängert, so dass nachfolgende Abruf-Intervalle sich nicht überschneiden.
+- **Einstellungs-Identitäts-Fallback**: Die eigene Identität (Allianz- und Länderzugehörigkeit) wird nach erfolgreicher Erkennung lokal gecached. Bei temporären API-Störungen (wie z. B. einem 429-Fehler) fällt die Einstellungs-Ansicht nicht mehr auf das globale Standard-Topic (`wia-bounty-all`) zurück, sondern behält die korrekte Konfiguration bei.
+
+**Changes (English):**
+- **Intra-Client Bounty Duplication Protection**: Fixes an issue where multiple open tabs of the same browser/profile fired identical bounty notifications up to 5 times simultaneously. A new per-tab unique jitter staggers concurrent tabs so the first tab's publish successfully suppresses duplicates in other tabs.
+- **Optimistic Locking & Lock Renewal**: Implemented a check-after-write strategy with a randomized backoff to prevent race conditions during slot acquisition. Additionally, the poll lock is now renewed periodically during long polling cycles (e.g. pagination and feed staggers), ensuring subsequent intervals do not overlap.
+- **Settings Identity Cache Fallback**: Successfully resolved player identities are now cached locally. During transient API failures (such as 429 rate-limiting), the settings UI and auto-generated topic will fall back to the cached identity instead of reverting to the global `wia-bounty-all` default.
+
 ## 2026-07-05 | Kopfgeld-Kaskaden-Bereinigung & Gegner-Ausschluss (v0.8.12)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/bounty-notify.test.js`

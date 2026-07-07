@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.8.12
+// @version      0.8.13
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -746,6 +746,7 @@
     bountyAllianceNameCache: NS + 'bountyAllianceNameCache',
     apiBaseGatewayMigrated: NS + 'apiBaseGatewayMigrated',
     bountyAutoTopic: NS + 'bountyAutoTopic',
+    bountyIdentityCache: NS + 'bountyIdentityCache',
   };
 
   const memoryCache = {};
@@ -9714,8 +9715,15 @@ function checkInventoryDeltaWear() {
 
   const BOUNTY_POLL_MS = 30000;
   const BOUNTY_PAGE_CAP = 10;
-  const BOUNTY_LOCK_TTL_MS = 5000;
+  const BOUNTY_LOCK_TTL_MS = 30000;   // must exceed a single poll step; the lock is RENEWED per step (renewPollLock)
   const BOUNTY_JITTER_MS = 10000;   // cross-device dedup: random 0–10s stagger before the topic re-check
+
+  // Per-page-load nonce (in-memory, NOT persisted). The jitter seed is otherwise
+  // (clientId + key) → identical across every TAB of the same browser, so concurrent
+  // tabs of one client compute the SAME stagger, wake together, read the topic together
+  // (all empty), and all send → intra-client duplicate spam. tabNonce breaks that tie:
+  // each tab/page-load staggers by a different offset, so the first publish suppresses the rest.
+  const tabNonce = Math.random().toString(36).slice(2, 8);
 
   // djb2 hash → deterministischer, stabiler Offset (kein Math.random pro Poll)
   function bhash(s) { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0; return h; }
@@ -10014,17 +10022,41 @@ function checkInventoryDeltaWear() {
     return out;
   }
 
-  function acquirePollSlot() {
+  // The value WE wrote into bountyPollLock when we won a slot. Used so a slow tab only
+  // releases/renews a lock it still owns (never clobbers a newer tab's lock).
+  let activeLockVal = null;
+
+  async function acquirePollSlot() {
     const nowMs = now();
     if (nowMs - GM_getValue(KEYS.bountyLastPollAt, 0) < BOUNTY_POLL_MS) return false;
     const lock = GM_getValue(KEYS.bountyPollLock, 0);
-    if (nowMs - lock < BOUNTY_LOCK_TTL_MS) return false;   // another tab holds a fresh lock
-    GM_setValue(KEYS.bountyPollLock, nowMs);
-    // Claim the 30s window UP-FRONT: a full paginated poll takes ~30s (3s throttle ×
-    // pages) — far longer than the 5s lock TTL — so without this a second tab (or the
-    // next interval) would re-poll mid-flight and send a duplicate notification.
+    if (lock && (nowMs - lock < BOUNTY_LOCK_TTL_MS)) return false;   // another tab holds a fresh lock
+
+    // Optimistic acquisition: GM get→check→set is NOT atomic across tabs, so two tabs
+    // firing at the same instant can both pass the check above. Write a value unique to
+    // this tab, wait a short randomized backoff (long enough for a racing tab's own
+    // synchronous write to land), then re-read: whoever's write survives owns the slot.
+    const myLockVal = nowMs + Math.random();
+    GM_setValue(KEYS.bountyPollLock, myLockVal);
+    await new Promise((r) => setTimeout(r, 50 + Math.floor(Math.random() * 100)));
+    if (GM_getValue(KEYS.bountyPollLock, 0) !== myLockVal) {
+      dbg('bountyNotify', 'debug', 'lock acquisition conflict, backing off');
+      return false;
+    }
+
+    activeLockVal = myLockVal;
+    // Claim the poll window UP-FRONT so the next 30s interval / another tab backs off.
     GM_setValue(KEYS.bountyLastPollAt, nowMs);
     return true;
+  }
+
+  // A poll outlives BOUNTY_LOCK_TTL_MS (10 pages × 3s throttle + feeds), so renew the lock
+  // each step to keep it fresh — but only while we still own it (a stolen lock stays stolen).
+  function renewPollLock() {
+    if (activeLockVal != null && GM_getValue(KEYS.bountyPollLock, 0) === activeLockVal) {
+      activeLockVal = now() + Math.random();
+      GM_setValue(KEYS.bountyPollLock, activeLockVal);
+    }
   }
 
   async function topicPresentKeys(topic) {
@@ -10051,7 +10083,7 @@ function checkInventoryDeltaWear() {
 
   async function pollBounties() {
     if (!CONFIG.featBountyNotify || !getEffectiveTopic()) return;
-    if (!acquirePollSlot()) return;
+    if (!(await acquirePollSlot())) return;
     try {
       const alliesSet = await resolveAllyCountryIds(false);
       const cascadeSet = await resolveAllyCountryIds(true);
@@ -10072,6 +10104,7 @@ function checkInventoryDeltaWear() {
         all.push(...items);
         cursor = res.payload.nextCursor;
         pages++;
+        renewPollLock();   // pagination can span ~30s; keep our lock fresh so no tab overlaps
         if (pages >= BOUNTY_PAGE_CAP && cursor) { dbg('bountyNotify', 'debug', 'page cap hit', pages); break; }
       } while (cursor);
 
@@ -10142,9 +10175,10 @@ function checkInventoryDeltaWear() {
           // Cross-device dedup: GM storage is per-browser, so independent devices poll
           // in parallel and would all send. A stable, determinist jitter staggers them
           // per client; the first publish then shows up in the others' topic re-check → they skip.
-          const jit = bountyJitter(bountyClientId() + '|' + key);
+          const jit = bountyJitter(bountyClientId() + '|' + tabNonce + '|' + key);
           dbg('bountyNotify', 'debug', 'jitter', jit, 'primary');
           await new Promise((r) => setTimeout(r, jit));
+          renewPollLock();
           if (await topicHasBounty(key)) { seen[key] = now(); continue; }   // cross-client dedup
           if (await sendNtfy(b)) {
             seen[key] = now();                          // mark seen only on 2xx
@@ -10169,10 +10203,11 @@ function checkInventoryDeltaWear() {
         if (toSend.length === 0) continue;
 
         // 1) ZUERST staggern, damit ein früherer Client sichtbar wird
-        const seed = bountyClientId() + '|' + feed.topic + '|' + bountyKey(toSend[0].battleId, toSend[0].side, toSend[0].effectiveAt);
+        const seed = bountyClientId() + '|' + tabNonce + '|' + feed.topic + '|' + bountyKey(toSend[0].battleId, toSend[0].side, toSend[0].effectiveAt);
         const jit = bountyJitter(seed);
         dbg('bountyNotify', 'debug', 'jitter', jit, feed.topic);
         await new Promise((r) => setTimeout(r, jit));
+        renewPollLock();
 
         // 2) DANN History lesen (1 GET/Feed — NICHT auf per-Item-topicHasBounty zurückbauen -> 429!)
         const present = await topicPresentKeys(feed.topic);
@@ -10212,7 +10247,12 @@ function checkInventoryDeltaWear() {
       dbg('bountyNotify', 'error', 'poll failed', e.message);
     } finally {
       GM_setValue(KEYS.bountyLastPollAt, now());
-      GM_setValue(KEYS.bountyPollLock, 0);
+      // Release only if we still own it — a poll that overran the TTL and had its lock
+      // taken over by a newer tab must NOT stomp that newer lock back to 0.
+      if (activeLockVal != null && GM_getValue(KEYS.bountyPollLock, 0) === activeLockVal) {
+        GM_setValue(KEYS.bountyPollLock, 0);
+      }
+      activeLockVal = null;
     }
   }
 
@@ -10220,12 +10260,16 @@ function checkInventoryDeltaWear() {
   globalThis.parseNtfyNdjson = parseNtfyNdjson;
 
   async function resolveOwnIdentity() {
+    // Last-good identity survives transient failures (429 / API hiccup / user-menu not
+    // yet in the DOM). Without this, ONE failed resolve collapses the settings UI and the
+    // feed base to the global "wia-bounty-all", ignoring the alliance/country the user set.
+    const cachedIdentity = () => GM_getValue(KEYS.bountyIdentityCache, null);
     const uid = getCurrentUserId();
-    if (!uid) return null;
+    if (!uid) return cachedIdentity();
     try {
       const u = await resolveApiPost('user.getUserById', { userId: uid });
       const ownCountry = u.payload?.country;
-      if (!ownCountry) return null;
+      if (!ownCountry) return cachedIdentity();
       const map = await loadCountryMap();
       const countryName = map[ownCountry]?.name || ownCountry;
       let allianceName = '';
@@ -10261,10 +10305,12 @@ function checkInventoryDeltaWear() {
       }
       GM_setValue(KEYS.bountyAutoTopic, autoTopic);
 
-      return { countryName, allianceName, autoTopic };
+      const identity = { countryName, allianceName, autoTopic, base };
+      GM_setValue(KEYS.bountyIdentityCache, identity);
+      return identity;
     } catch (e) {
       dbg('bountyNotify', 'error', 'identity resolve failed', e.message);
-      return null;
+      return cachedIdentity();   // reuse last-known rather than falling back to the global feed
     }
   }
 

@@ -346,3 +346,111 @@ assert.ok(presentKeys.keys.has('bkey_B2_attacker_456'));
 assert.strictEqual(presentKeys.legacy, 1, 'Should have exactly 1 legacy notification');
 console.log('bounty-notify: topicPresentKeys return format OK');
 
+// ── v0.8.13: intra-client concurrency (lock race) & tabNonce jitter ──
+// Mirror of the userscript's acquirePollSlot + renewPollLock (IIFE can't be required).
+(async () => {
+  const BOUNTY_POLL_MS = 30000, BOUNTY_LOCK_TTL_MS = 30000;
+
+  // Each "tab" is a closure over the SHARED GM store but with its own activeLockVal,
+  // exactly like separate browser tabs sharing one GM_storage backend.
+  function makeTab(store, clockRef) {
+    const G = (k, d) => (store[k] !== undefined ? store[k] : d);
+    const S = (k, v) => { store[k] = v; };
+    let activeLockVal = null;
+    async function acquirePollSlot(backoffMs) {
+      const nowMs = clockRef.t;
+      if (nowMs - G('last', 0) < BOUNTY_POLL_MS) return false;
+      const lock = G('lock', 0);
+      if (lock && (nowMs - lock < BOUNTY_LOCK_TTL_MS)) return false;
+      const myLockVal = nowMs + Math.random();
+      S('lock', myLockVal);
+      await new Promise((r) => setTimeout(r, backoffMs));   // deterministic backoff for the test
+      if (G('lock', 0) !== myLockVal) return false;
+      activeLockVal = myLockVal;
+      S('last', nowMs);
+      return true;
+    }
+    function release() {
+      if (activeLockVal != null && G('lock', 0) === activeLockVal) S('lock', 0);
+      activeLockVal = null;
+    }
+    return { acquirePollSlot, release };
+  }
+
+  // WORST CASE: 3 tabs fire at the same instant → all read lock=0 before any write lands.
+  // Staggered backoffs model real timer jitter; last-writer-wins must resolve to ONE winner.
+  const store = {}; const clockRef = { t: 100000 };
+  const tabs = [makeTab(store, clockRef), makeTab(store, clockRef), makeTab(store, clockRef)];
+  const results = await Promise.all([
+    tabs[0].acquirePollSlot(60),
+    tabs[1].acquirePollSlot(90),
+    tabs[2].acquirePollSlot(120),
+  ]);
+  const winners = results.filter(Boolean).length;
+  assert.strictEqual(winners, 1, `exactly 1 tab may win the poll slot, got ${winners}`);
+  console.log('bounty-notify: concurrent lock — single winner OK');
+
+  // A losing tab must NOT be blocked forever: after the winner releases, a later poll wins.
+  tabs.forEach((t, i) => { if (results[i]) t.release(); });
+  clockRef.t += BOUNTY_POLL_MS;   // next interval, past the 30s window
+  const second = await tabs[1].acquirePollSlot(60);
+  assert.strictEqual(second, true, 'a fresh poll after release + window must acquire');
+  console.log('bounty-notify: lock released & re-acquirable OK');
+
+  // tabNonce must diversify the jitter so tabs of the SAME client don't collide.
+  const cid = 'client1', key = 'bkey_B1_attacker_123';
+  const noNonce = bountyJitter(cid + '|' + key);
+  const nonces = ['a1b2', 'c3d4', 'e5f6', 'g7h8'];
+  const jitters = nonces.map((n) => bountyJitter(cid + '|' + n + '|' + key));
+  assert.ok(new Set(jitters).size > 1, 'different tabNonces must yield different jitters');
+  assert.ok(jitters.some((j) => j !== noNonce), 'tabNonce must change the stagger vs the old seed');
+  console.log('bounty-notify: tabNonce jitter divergence OK');
+
+  // ── v0.8.13: identity cache survives transient failure (settings must not fall to wia-bounty-all) ──
+  // Mirror of resolveOwnIdentity's cache-on-success / fallback-on-failure contract.
+  function makeResolver(store, api) {
+    const G = (k, d) => (store[k] !== undefined ? store[k] : d);
+    const S = (k, v) => { store[k] = v; };
+    return async function resolveOwnIdentity() {
+      const cachedIdentity = () => G('idCache', null);
+      const uid = api.getCurrentUserId();
+      if (!uid) return cachedIdentity();
+      try {
+        const u = await api.getUserById(uid);
+        const ownCountry = u && u.country;
+        if (!ownCountry) return cachedIdentity();
+        const countryName = api.countryName(ownCountry) || ownCountry;
+        const allianceName = api.allianceName || '';
+        const base = (allianceName || countryName).toLowerCase().replace(/[^a-z0-9]/g, '');
+        const identity = { countryName, allianceName, base };
+        S('idCache', identity);
+        return identity;
+      } catch (e) { return cachedIdentity(); }
+    };
+  }
+  // Mirror of updateTopicHints tName selection (the settings-UI symptom under test).
+  const tNameFor = (scope, id) => (scope === 'all' ? 'all'
+    : id && id.allianceName ? id.allianceName.toLowerCase().replace(/[^a-z0-9]/g, '')
+    : id && id.countryName ? id.countryName.toLowerCase().replace(/[^a-z0-9]/g, '') : '');
+
+  const idStore = {};
+  const api = { ok: true, getCurrentUserId: () => 'u1',
+    getUserById: async function () { if (!this.ok) throw new Error('429'); return { country: 'C1' }; },
+    countryName: () => 'Redland', allianceName: 'Red Alliance' };
+  const resolve = makeResolver(idStore, api);
+
+  const first = await resolve();
+  assert.strictEqual(first.base, 'redalliance', 'first resolve builds base from alliance');
+  assert.strictEqual(tNameFor('cascade', first), 'redalliance', 'cascade topic uses alliance, not "all"');
+
+  api.ok = false;   // now every API call 429s (the spam-induced rate-limit window)
+  const during429 = await resolve();
+  assert.ok(during429 && during429.base === 'redalliance', 'transient failure returns cached identity, not null');
+  assert.strictEqual(tNameFor('cascade', during429), 'redalliance', 'UI keeps real topic during 429 (bug was "all")');
+
+  api.getCurrentUserId = () => null;   // user-menu not in DOM this render
+  const noDom = await resolve();
+  assert.ok(noDom && noDom.base === 'redalliance', 'missing uid also falls back to cache');
+  console.log('bounty-notify: identity cache fallback OK');
+})().catch((e) => { console.error(e); process.exit(1); });
+
