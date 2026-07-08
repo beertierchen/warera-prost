@@ -4641,6 +4641,15 @@ async function scanInventory(force) {
             <button type="button" class="wia-skins-dump-btn" style="margin: 6px 4px; font-size: 11px; padding: 3px 8px; cursor: pointer; color: #ff9800; background: rgba(255,152,0,0.1); border: 1px solid rgba(255,152,0,0.2); border-radius: 3px;">Skins Dump (Konsole)</button>
             <div class="wia-health-panel"></div>
           </details>
+          <details class="wia-test-notif-details" style="margin-top: 6px;">
+            <summary style="font-size: 11px; color: #8b949e; cursor: pointer; user-select: none; font-weight: bold; outline: none;">Benachrichtigungen testen</summary>
+            <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px;">
+              <button type="button" class="wia-test-notif-bounty" style="font-size: 11px; padding: 3px 8px; cursor: pointer; color: #fbbf24; background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.2); border-radius: 3px;">Kopfgeld (Bounty)</button>
+              <button type="button" class="wia-test-notif-hnh" style="font-size: 11px; padding: 3px 8px; cursor: pointer; color: #10b981; background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.2); border-radius: 3px;">HP & Hunger voll</button>
+              <button type="button" class="wia-test-notif-window" style="font-size: 11px; padding: 3px 8px; cursor: pointer; color: #fbbf24; background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.2); border-radius: 3px;">Pillenfenster</button>
+              <button type="button" class="wia-test-notif-debuff" style="font-size: 11px; padding: 3px 8px; cursor: pointer; color: #8b5cf6; background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.2); border-radius: 3px;">Debuff abgelaufen</button>
+            </div>
+          </details>
         </div>
         <div class="wia-btns">
           <button class="wia-btn primary wia-save">${t('settingsSave')}</button>
@@ -4771,6 +4780,24 @@ async function scanInventory(force) {
     const skinsDumpBtn = modal.querySelector('.wia-skins-dump-btn');
     if (skinsDumpBtn) {
       skinsDumpBtn.onclick = (e) => { e.preventDefault(); dumpSkinsToConsole(); };
+    }
+
+    const testBountyBtn = modal.querySelector('.wia-test-notif-bounty');
+    const testHnhBtn = modal.querySelector('.wia-test-notif-hnh');
+    const testWindowBtn = modal.querySelector('.wia-test-notif-window');
+    const testDebuffBtn = modal.querySelector('.wia-test-notif-debuff');
+
+    if (testBountyBtn) {
+      testBountyBtn.onclick = (e) => { e.preventDefault(); testLocalBounty(); };
+    }
+    if (testHnhBtn) {
+      testHnhBtn.onclick = (e) => { e.preventDefault(); sendPersonalNtfy('HnH', t('ntfyHnHFullTitle'), t('ntfyHnHFullBody'), 'poultry_leg,heart,white_check_mark'); };
+    }
+    if (testWindowBtn) {
+      testWindowBtn.onclick = (e) => { e.preventDefault(); sendPersonalNtfy('Window', t('ntfyPillWindowTitle'), t('ntfyPillWindowBody', { time: CONFIG.pillPrefWindowFrom || '12:00' }), 'pill,alarm_clock'); };
+    }
+    if (testDebuffBtn) {
+      testDebuffBtn.onclick = (e) => { e.preventDefault(); sendPersonalNtfy('Debuff', t('ntfyDebuffGoneTitle'), t('ntfyDebuffGoneBody'), 'pill,sparkles'); };
     }
     if (healthPanel) { runProbes(); renderHealthPanel(healthPanel); }   // initial fill = live truth
 
