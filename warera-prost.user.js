@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.8.14
+// @version      0.8.15
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -7996,11 +7996,12 @@ function processTransactionsList(items, userId) {
           } else if (isBuyerMe && money > 0) {
             if (isToday) {
               ledger.capitalized = (ledger.capitalized || 0) + money;
+              const normCode = normalizeItemCode(itemCode);
+              addPnlLog(ledger, 'expense', 'Capitalized', normCode || itemCode, quantity, money, 'Kauf');
               booked = true;
 
               // SOFORTKAUF KORREKTUR: Wenn dies ein Konsumgut ist und wir ausstehende Klick-Verbraucher haben
               if (itemCode && isConsumable(itemCode)) {
-                const normCode = normalizeItemCode(itemCode);
                 if (ledger.bookedConsumptionEvents && ledger.bookedConsumptionEvents.length > 0) {
                   let matchedQty = 0;
                   let matchedCostBooked = 0;
@@ -8779,6 +8780,7 @@ function checkInventoryDeltaWear() {
       consumption: 'Verbrauch',
       repairs: 'Verschleiß/Rep.',
       other: 'Sonstiges',
+      otherExp: 'Spenden/Sonstiges',
       capitalized: 'In Käufe gebunden',
       untracked: 'Unerfasst',
       totalPnl: 'Gesamt P&L',
@@ -8801,6 +8803,7 @@ function checkInventoryDeltaWear() {
       consumption: 'Consumption',
       repairs: 'Wear/Repairs',
       other: 'Other',
+      otherExp: 'Donations/Other',
       capitalized: 'Tied up in purchases',
       untracked: 'Untracked',
       totalPnl: 'Total P&L',
@@ -9024,7 +9027,7 @@ function checkInventoryDeltaWear() {
           html += renderPnlRow(getLocale() === 'de' ? 'Kisten-Kosten' : 'Case Costs', todayCases, yesterdayCases, false, false);
         }
         html += renderPnlRow(loc.empWages, todayEmpWages, yesterdayEmpWages, false, false);
-        html += renderPnlRow(loc.other, todayExpOther, yesterdayExpOther, false, false);
+        html += renderPnlRow(loc.otherExp || loc.other, todayExpOther, yesterdayExpOther, false, false);
 
         const formatBold = (val) => {
           const absVal = Math.abs(val);
@@ -9100,6 +9103,7 @@ function checkInventoryDeltaWear() {
     const cases = [];
     const loot = [];
     const other = [];
+    const capitalized = [];
 
     logs.forEach(log => {
       if (log.category === 'Repairs') {
@@ -9121,6 +9125,8 @@ function checkInventoryDeltaWear() {
         loot.push(log);
       } else if (log.category === 'Sales') {
         sales.push(log);
+      } else if (log.category === 'Capitalized') {
+        capitalized.push(log);
       } else if (log.category === 'Other') {
         if (log.type === 'expense') donations.push(log);
         else other.push(log);
@@ -9151,6 +9157,15 @@ function checkInventoryDeltaWear() {
       hasInc = true;
       const salesSum = sales.reduce((a, b) => a + b.amount, 0);
       s += `  Verkäufe: insg. +${salesSum.toFixed(2)}g\n`;
+      const salesGroup = {};
+      sales.forEach(sl => {
+        if (!salesGroup[sl.label]) salesGroup[sl.label] = { qty: 0, amount: 0, desc: sl.desc };
+        salesGroup[sl.label].qty += sl.qty || 1;
+        salesGroup[sl.label].amount += sl.amount;
+      });
+      for (const [code, sl] of Object.entries(salesGroup)) {
+        s += `    • ${formatItemLabel(code)}: ${sl.qty}x = +${sl.amount.toFixed(2)}g (${sl.desc})\n`;
+      }
     }
     if (wages.total > 0) {
       hasInc = true;
@@ -9164,7 +9179,19 @@ function checkInventoryDeltaWear() {
     if (other.length > 0) {
       hasInc = true;
       const otherSum = other.reduce((a, b) => a + b.amount, 0);
-      s += `  Sonstiges: insg. +${otherSum.toFixed(2)}g\n`;
+      s += `  Sonstiges Einnahmen: insg. +${otherSum.toFixed(2)}g\n`;
+      const otherGroup = {};
+      other.forEach(ot => {
+        const key = ot.label + '|' + (ot.desc || '');
+        if (!otherGroup[key]) {
+          otherGroup[key] = { label: ot.label, qty: 0, amount: 0, desc: ot.desc };
+        }
+        otherGroup[key].qty += ot.qty || 1;
+        otherGroup[key].amount += ot.amount;
+      });
+      for (const ot of Object.values(otherGroup)) {
+        s += `    • ${formatPayerLabel(ot.label)}: ${ot.qty}x = +${ot.amount.toFixed(2)}g (${ot.desc})\n`;
+      }
     }
     if (!hasInc) s += `  Keine Einnahmen verzeichnet\n`;
 
@@ -9206,17 +9233,54 @@ function checkInventoryDeltaWear() {
     }
     if (donations.length > 0) {
       hasExp = true;
-      s += `  Spenden:\n`;
+      s += `  Spenden / Sonstige Ausgaben:\n`;
+      const donationsGroup = {};
       donations.forEach(d => {
-        s += `    • an ${formatPayerLabel(d.label)}: -${d.amount.toFixed(2)}g\n`;
+        const key = d.label + '|' + (d.desc || 'Spende');
+        if (!donationsGroup[key]) {
+          donationsGroup[key] = { label: d.label, qty: 0, amount: 0, desc: d.desc || 'Spende' };
+        }
+        donationsGroup[key].qty += d.qty || 1;
+        donationsGroup[key].amount += d.amount;
       });
+      for (const d of Object.values(donationsGroup)) {
+        const qtyStr = d.qty > 1 ? `${d.qty}x ` : '';
+        s += `    • an ${formatPayerLabel(d.label)}: ${qtyStr}-${d.amount.toFixed(2)}g (${d.desc})\n`;
+      }
     }
     if (!hasExp) s += `  Keine Ausgaben verzeichnet\n`;
 
-    // 3. Bilanz
+    // 3. Käufe (In Käufe gebunden)
+    if (capitalized.length > 0) {
+      const capSum = capitalized.reduce((a, b) => a + b.amount, 0);
+      s += `\n--- KÄUFE (In Käufe gebunden) ---\n`;
+      s += `  Einkäufe: insg. -${capSum.toFixed(2)}g\n`;
+      const capGroup = {};
+      capitalized.forEach(c => {
+        const key = c.label;
+        if (!capGroup[key]) capGroup[key] = { qty: 0, cost: 0, desc: c.desc };
+        capGroup[key].qty += c.qty || 1;
+        capGroup[key].cost += c.amount;
+      });
+      for (const [code, c] of Object.entries(capGroup)) {
+        s += `    • ${formatItemLabel(code)}: ${c.qty}x = -${c.cost.toFixed(2)}g (${c.desc})\n`;
+      }
+    }
+
+    // 4. Bilanz
     s += `\n========================================\n`;
     s += `  GESAMT-BILANZ (P&L): ${ledger.total > 0 ? '+' : ''}${ledger.total.toFixed(2)}g\n`;
-    s += `========================================`;
+    s += `========================================\n`;
+
+    // 5. Abstimmung (Reconciliation) zum Gold Delta
+    s += `\n--- ABSTIMMUNG ZUM GOLD DELTA ---\n`;
+    s += `  Gesamt-P&L:       ${ledger.total >= 0 ? '+' : ''}${ledger.total.toFixed(2)}g\n`;
+    s += `  + Verschleiß:      +${(ledger.expense.Repairs || 0).toFixed(2)}g (zahlungsunwirksam)\n`;
+    s += `  + Verbrauch:       +${(ledger.expense.Consumption || 0).toFixed(2)}g (zahlungsunwirksam)\n`;
+    s += `  - Käufe:          -${(ledger.capitalized || 0).toFixed(2)}g (in Käufe gebunden)\n`;
+    s += `  + Unerfasst:      ${(ledger.untracked || 0) >= 0 ? '+' : ''}${(ledger.untracked || 0).toFixed(2)}g (Lücke)\n`;
+    s += `  ----------------------------------------\n`;
+    s += `  = Gold Delta:     ${(ledger.goldDelta || 0) >= 0 ? '+' : ''}${(ledger.goldDelta || 0).toFixed(2)}g`;
 
     const color = ledger.total > 0 ? '#3fb950' : ledger.total < 0 ? '#f85149' : '#8b949e';
     console.log(s, `color: ${color}; font-weight: bold; font-family: monospace; line-height: 1.4;`);

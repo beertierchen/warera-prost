@@ -1,5 +1,21 @@
 # CHANGELOG
 
+## 2026-07-08 | Detaillierter Kassenzettel & Gold-Delta-Abstimmung (v0.8.15)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`
+
+**Änderungen (Deutsch):**
+- **Detaillierterer Kassenzettel**: Der Beleg in der Browser-Konsole schlüsselt nun Verkäufe, Einkäufe, sonstige Einnahmen (Schrott, Spenden, etc.) und sonstige Ausgaben (Spenden) detailliert auf, statt sie nur aufzusummieren.
+- **Einkäufe tracken**: Käufe werden jetzt über P&L-Logs erfasst und im Beleg unter der neuen Sektion `--- KÄUFE (In Käufe gebunden) ---` aufgeführt.
+- **Gruppierung gleicher Einträge**: Doppelte oder identische Einträge (wie z. B. mehrfaches Schrott-Zerschreddern oder wiederholte Spenden an denselben Empfänger) werden im Beleg zusammengefasst, um die Ausgabe übersichtlich zu halten.
+- **Konsistente Benennung und Abstimmung**: Das UI-Label für sonstige Ausgaben wurde zu "Spenden/Sonstiges" geändert. Am Ende des Belegs wird nun eine detaillierte Abstimmungsrechnung angezeigt, die den Übergang von Gesamt-P&L zu Gold Delta nachvollziehbar macht.
+
+**Changes (English):**
+- **Detailed Receipt Layout**: The browser console receipt now breaks down sales, purchases, other income (scraps, incoming donations, etc.), and other expenses (outgoing donations) into detailed lists instead of just showing totals.
+- **Track Capitalized Purchases**: Item purchases are now logged and displayed in a dedicated `--- KÄUFE (In Käufe gebunden) ---` section inside the receipt.
+- **Group Duplicate Entries**: Identical entries (such as multiple scrap salvage operations or multiple donations to the same recipient) are aggregated to keep the receipt clean and readable.
+- **Reconciliation & Label Consistency**: The UI label for other expenses was changed to "Spenden/Sonstiges" (Donations/Other). A reconciliation table was added at the bottom of the receipt to clearly explain the difference between Total P&L and Gold Delta.
+
 ## 2026-07-08 | Pille-Overlays deaktiviert & Eingeklappte Einstellungen (v0.8.14)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/test-advisor-load.js`
