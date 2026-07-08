@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.8.13
+// @version      0.8.14
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -4033,29 +4033,6 @@ async function scanInventory(force) {
       .wia-pill-detail-item { margin-bottom: 6px; }
       .wia-pill-detail-item strong { color: #58a6ff; }
 
-      .wia-cocain-highlight {
-        outline: 2px solid #238636 !important; outline-offset: -2px;
-        animation: wia-pulse-border 1.5s infinite alternate; position: relative;
-      }
-      .wia-cocain-gated-highlight {
-        outline: 2px solid #d29922 !important; outline-offset: -2px;
-        position: relative;
-      }
-      @keyframes wia-pulse-border {
-        0% { outline-color: #238636; }
-        100% { outline-color: #2ea043; }
-      }
-      .wia-cocain-highlight::after {
-        content: attr(data-label); position: absolute; top: 2px; right: 2px;
-        background: #238636; color: #fff; font-size: 8px; font-weight: bold;
-        padding: 1px 3px; border-radius: 2px; pointer-events: none; z-index: 10;
-      }
-      .wia-cocain-gated-highlight::after {
-        content: attr(data-label); position: absolute; top: 2px; right: 2px;
-        background: #d29922; color: #fff; font-size: 8px; font-weight: bold;
-        padding: 1px 3px; border-radius: 2px; pointer-events: none; z-index: 10;
-      }
-
       /* ── H&H Budget overlays ── */
       .wia-hnh-free-overlay {
         position: absolute; top: 0; bottom: 0;
@@ -4452,7 +4429,7 @@ async function scanInventory(force) {
           </div>
           <div class="wia-hint" hidden>${t('settingsScrapFlipHint')}</div>
         </div>
-        <details class="wia-advisor-settings" style="margin-top: 6px; margin-left: 24px;" open>
+        <details class="wia-advisor-settings" style="margin-top: 6px; margin-left: 24px;">
           <summary style="font-size: 11px; color: #8b949e; cursor: pointer; user-select: none; font-weight: bold; outline: none; margin-bottom: 6px;">
             🔧 ${t('settingsAdvisorSettingsLabel')}
           </summary>
@@ -4485,7 +4462,7 @@ async function scanInventory(force) {
             <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
           </div>
           <div class="wia-hint" hidden>${t('settingsFeatPillHint')}</div>
-          <details class="wia-pill-settings-row" style="margin-top: 6px; margin-left: 24px;" ${prevFeatPill ? 'open' : ''}>
+          <details class="wia-pill-settings-row" style="margin-top: 6px; margin-left: 24px;">
             <summary style="font-size: 11px; color: #8b949e; cursor: pointer; user-select: none; font-weight: bold; outline: none; margin-bottom: 6px;">
               ${t('settingsPillSettingsLabel')}
             </summary>
@@ -4536,7 +4513,7 @@ async function scanInventory(force) {
             <input type="checkbox" class="wia-feat-bounty" style="width: auto;" ${prevFeatBounty ? 'checked' : ''} />
             <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatBounty')}</label>
           </div>
-          <details class="wia-bounty-settings-row" style="margin-top: 6px; margin-left: 24px;" ${prevFeatBounty ? 'open' : ''}>
+          <details class="wia-bounty-settings-row" style="margin-top: 6px; margin-left: 24px;">
             <summary style="font-size: 11px; color: #8b949e; cursor: pointer; user-select: none; font-weight: bold; outline: none; margin-bottom: 6px;">
               Bounty Options
             </summary>
@@ -6473,49 +6450,7 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
   }
 
   function highlightCocaineItems() {
-    suspendObserver();
-    try {
-      if (!CONFIG.featPillReminder) {
-        removeCocaineHighlights();
-        return;
-      }
-
-      const info = getPillCycleInfo();
-      const status = parseHealthAndHunger();
-      const now = Date.now();
-
-      const isHnHReady = status.both100;
-      const isWindowReady = CONFIG.pillPrefWindowFrom ? isInsidePreferredWindow(now) : true;
-      const isReady = info.phase === 'READY';
-      const isGated = info.phase === 'KNIFE' || info.phase === 'RECOVER';
-
-      const cocainImgs = document.querySelectorAll("img[alt='cocain']");
-      cocainImgs.forEach(img => {
-        const card = climbToCard(img) || img.parentElement;
-        if (!card) return;
-
-        card.classList.remove('wia-cocain-highlight', 'wia-cocain-gated-highlight');
-        card.removeAttribute('data-label');
-
-        if (isReady) {
-          card.classList.add('wia-cocain-highlight');
-          card.setAttribute('data-label', t('pillOverlayReady'));
-        } else if (isGated) {
-          card.classList.add('wia-cocain-gated-highlight');
-
-          let labelText = '';
-          if (!isHnHReady) {
-            const lowestPct = Math.round(Math.min(status.hpPercent, status.hungerPercent));
-            labelText = `H&H ${lowestPct}%`;
-          } else if (!isWindowReady) {
-            labelText = CONFIG.pillPrefWindowFrom;
-          }
-          card.setAttribute('data-label', labelText);
-        }
-      });
-    } finally {
-      resumeObserver();
-    }
+    removeCocaineHighlights();
   }
 
   function removeCocaineHighlights() {

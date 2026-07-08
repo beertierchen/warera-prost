@@ -24,3 +24,8 @@ npm-debug.log*
 plans/
 docs/superpowers/*
 logs/
+
+# Local testing scripts
+scripts/local-bunker-alerts.js
+scripts/local-bunker-scanner.js
+scripts/local-regions-delta.js

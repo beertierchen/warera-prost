@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 2026-07-08 | Pille-Overlays deaktiviert & Eingeklappte Einstellungen (v0.8.14)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/test-advisor-load.js`
+
+**Änderungen (Deutsch):**
+- **Deaktivierung der Overlays auf der Pille**: Alle farbigen Rahmen und Overlays (sowohl das grüne READY- als auch das gelbe H&H-Overlay) auf der Cocain-Itemkarte im Inventar wurden entfernt, da diese die Sicht auf die Itemkarte gestört haben.
+- **Eingeklappte Einstellungen als Standard**: Beim Öffnen der Einstellungen sind die verschiedenen Optionengruppen (wie z. B. Pillen-Optionen, Bounty-Optionen oder Advisor-Einstellungen) standardmäßig eingeklappt, was für ein saubereres Layout sorgt.
+
+**Changes (English):**
+- **Disabled Cocaine Item Overlays**: Removed all colored borders and overlays (both the green READY and yellow H&H overlays) from the Cocaine item card in the inventory, resolving visual clutter on the card itself.
+- **Collapsed Settings by Default**: Option categories (such as Pill options, Bounty options, or Advisor settings) inside the settings modal are now collapsed by default when opening, providing a cleaner layout.
+
 ## 2026-07-07 | Kopfgeld-Mehrfachmeldungs-Schutz & Einstellungs-Fallback (v0.8.13)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/bounty-notify.test.js`

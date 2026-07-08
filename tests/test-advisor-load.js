@@ -936,13 +936,13 @@ try {
   globalThis.GM_setValue('wia.pillState', 'none');
   
   globalThis.highlightCocaineItems();
-  assert.strictEqual(cocainCard.classList.contains('wia-cocain-highlight'), true, 'Cocaine card should have READY highlight outline');
-  assert.strictEqual(cocainCard.getAttribute('data-label'), 'now', 'Highlight badge label should be now');
+  assert.strictEqual(cocainCard.classList.contains('wia-cocain-highlight'), false, 'Cocaine card should not have READY highlight outline anymore');
+  assert.strictEqual(cocainCard.getAttribute('data-label'), '', 'Cocaine card should not have data-label anymore');
 
   hpText.textContent = '100/130';
   globalThis.highlightCocaineItems();
-  assert.strictEqual(cocainCard.classList.contains('wia-cocain-gated-highlight'), true, 'Cocaine card should have warning H&H highlight');
-  assert.strictEqual(cocainCard.getAttribute('data-label'), 'H&H 77%', 'Highlight badge label should be H&H 77%');
+  assert.strictEqual(cocainCard.classList.contains('wia-cocain-gated-highlight'), false, 'Cocaine card should not have warning H&H highlight anymore');
+  assert.strictEqual(cocainCard.getAttribute('data-label'), '', 'Cocaine card should not have data-label for H&H anymore');
 
   // --- Test BUFF/DEBUFF phase timer strings ---
   console.log('--- Testing Buff/Debuff Phase Timer Strings ---');
