@@ -1179,7 +1179,7 @@ try {
             responseText: JSON.stringify({
               event: 'message',
               title: '⚔️ Ally-Bounty: Germany vs USA',
-              message: 'Fight for Germany (Attacker) | Pool: 100.00 | Rate: 0.10/1k',
+              message: 'Fight for Germany (Attacker) · Pool 100.00 · 0.10/1k',
               tags: ['crossed_swords', 'bkey_test_123_456']
             }) + '\n'
           });
@@ -1194,7 +1194,7 @@ try {
     const postReqs = mirrorRequests.filter(r => r.method === 'POST');
     assert.strictEqual(postReqs.length, 1, 'Bounty notification should be mirrored');
     assert.ok(postReqs[0].url.includes('my-personal-topic'), 'Should mirror to personal topic');
-    assert.strictEqual(postReqs[0].data, 'Fight for Germany (Attacker) | Pool: 100.00 | Rate: 0.10/1k', 'Body should be preserved');
+    assert.strictEqual(postReqs[0].data, 'Fight for Germany (Attacker) · Pool 100.00 · 0.10/1k', 'Body should be preserved');
     assert.strictEqual(postReqs[0].headers.Title, '⚔️ Ally-Bounty: Germany vs USA', 'Title should be clean ASCII');
     
     // 3. Test duplicate prevention
@@ -1214,7 +1214,7 @@ try {
           responseText: JSON.stringify({
             event: 'message',
             title: 'Malicious title',
-            message: 'Fight for Germany (Attacker) | Pool: 100.00 | Rate: 0.10/1k',
+            message: 'Fight for Germany (Attacker) · Pool 100.00 · 0.10/1k',
             tags: ['crossed_swords', 'bkey_test_123_456']
           }) + '\n'
         });

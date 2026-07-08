@@ -5670,6 +5670,16 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
   }
 
   async function sendPersonalNtfy(type, title, body, tags, priority = 'default') {
+    // 1. Show browser notification locally if playing in this tab
+    try {
+      const N = PAGE_WINDOW.Notification;
+      if (N && (await ensureNotifPermission()) === 'granted') {
+        new N(title, { body });
+      }
+    } catch (e) {
+      dbg('pillReminder', 'error', 'local browser notification failed', e.message);
+    }
+
     const topic = getEffectivePersonalTopic();
     if (!topic) return false;
 
@@ -10760,8 +10770,10 @@ function checkInventoryDeltaWear() {
         const bkey = tags.find(t => t.startsWith('bkey_'));
         if (!bkey) continue;
         if (!title.startsWith('⚔️') || !title.includes(': ') || !title.includes(' vs ')) continue;
-        if (!body.includes('| Pool: ') && !body.includes('| Topf: ')) continue;
-        if (!body.includes('| Rate: ')) continue;
+        const hasTopfOrPool = body.includes('Topf') || body.includes('Pool');
+        const hasRateSuffix = /\d+(?:,\d+)?\/1k/.test(body);
+        const hasAction = body.includes('Kämpfe für') || body.includes('Fight for');
+        if (!hasTopfOrPool || !hasRateSuffix || !hasAction) continue;
 
         const msgHash = simpleHash(title + '\n' + body);
         if (processedHashes.includes(msgHash)) continue;
