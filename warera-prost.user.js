@@ -2064,6 +2064,7 @@
     globalThis.getEffectiveTopic = getEffectiveTopic;
     globalThis.testBountyPush = testBountyPush;
     globalThis.testLocalBounty = testLocalBounty;
+    globalThis.testPersonalPush = testPersonalPush;
     const bountyAllies = () => resolveAllyCountryIds().then((s) => [...s]);
     globalThis.bountyAllies = bountyAllies;
     globalThis.extractAllyBounties = extractAllyBounties;
@@ -2074,6 +2075,7 @@
       unsafeWindow.WIA_gmRequest = gmRequest;
       unsafeWindow.testBountyPush = testBountyPush;
       unsafeWindow.testLocalBounty = testLocalBounty;
+      unsafeWindow.testPersonalPush = testPersonalPush;
       unsafeWindow.getEffectiveTopic = getEffectiveTopic;
       unsafeWindow.bountyAllies = bountyAllies;
       unsafeWindow.extractAllyBounties = extractAllyBounties;
@@ -5574,6 +5576,10 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
     const ok = res.status >= 200 && res.status < 300;
     dbg('pillReminder', ok ? 'debug' : 'error', `ntfy personal send ${type}`, res.status, topic);
     return ok;
+  }
+
+  function testPersonalPush() {
+    return sendPersonalNtfy('Test', 'Test Benachrichtigung', 'Dies ist ein Test der persönlichen PROST Benachrichtigung!', 'pill,sparkles');
   }
 
   function checkPersonalNotifications() {
@@ -9767,6 +9773,7 @@ function checkInventoryDeltaWear() {
 
   globalThis.testBountyPush = testBountyPush;
   globalThis.testLocalBounty = testLocalBounty;
+  globalThis.testPersonalPush = testPersonalPush;
   globalThis.sendNtfy = sendNtfy;
   globalThis.bountyKey = bountyKey;
 
