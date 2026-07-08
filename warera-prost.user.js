@@ -4565,15 +4565,15 @@ async function scanInventory(force) {
             <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 6px;">
               <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
                 <label style="margin: 0; font-weight: normal; cursor: pointer; font-size: 11px;">${t('settingsFeatPillNotifHnH')}</label>
-                <span class="wia-notif-bell" data-feat="hnh" data-active="${prevPillNotifHnH ? 'true' : 'false'}" style="cursor: pointer; font-size: 13px; color: ${prevPillNotifHnH ? '#f1c40f' : '#6e7681'}; filter: drop-shadow(0 0 2px ${prevPillNotifHnH ? 'rgba(241,196,15,0.3)' : 'transparent'}); transition: color 0.2s;" title="${t('settingsBellTitle')}">🔔</span>
+                <input type="checkbox" class="wia-feat-pill-notif-hnh" style="width: auto; margin-right: 8px;" ${prevPillNotifHnH ? 'checked' : ''} />
               </div>
               <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
                 <label style="margin: 0; font-weight: normal; cursor: pointer; font-size: 11px;">${t('settingsFeatPillNotifWindow')}</label>
-                <span class="wia-notif-bell" data-feat="window" data-active="${prevPillNotifWindow ? 'true' : 'false'}" style="cursor: pointer; font-size: 13px; color: ${prevPillNotifWindow ? '#f1c40f' : '#6e7681'}; filter: drop-shadow(0 0 2px ${prevPillNotifWindow ? 'rgba(241,196,15,0.3)' : 'transparent'}); transition: color 0.2s;" title="${t('settingsBellTitle')}">🔔</span>
+                <input type="checkbox" class="wia-feat-pill-notif-window" style="width: auto; margin-right: 8px;" ${prevPillNotifWindow ? 'checked' : ''} />
               </div>
               <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
                 <label style="margin: 0; font-weight: normal; cursor: pointer; font-size: 11px;">${t('settingsFeatPillNotifDebuff')}</label>
-                <span class="wia-notif-bell" data-feat="debuff" data-active="${prevPillNotifDebuff ? 'true' : 'false'}" style="cursor: pointer; font-size: 13px; color: ${prevPillNotifDebuff ? '#f1c40f' : '#6e7681'}; filter: drop-shadow(0 0 2px ${prevPillNotifDebuff ? 'rgba(241,196,15,0.3)' : 'transparent'}); transition: color 0.2s;" title="${t('settingsBellTitle')}">🔔</span>
+                <input type="checkbox" class="wia-feat-pill-notif-debuff" style="width: auto; margin-right: 8px;" ${prevPillNotifDebuff ? 'checked' : ''} />
               </div>
             </div>
           </details>
@@ -4600,7 +4600,7 @@ async function scanInventory(force) {
               <input type="checkbox" class="wia-feat-bounty" style="width: auto;" ${prevFeatBounty ? 'checked' : ''} />
               <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatBounty')}</label>
             </div>
-            <span class="wia-notif-bell" data-feat="bounty" data-active="${prevFeatBountyNotif ? 'true' : 'false'}" style="cursor: pointer; font-size: 13px; color: ${prevFeatBountyNotif ? '#f1c40f' : '#6e7681'}; filter: drop-shadow(0 0 2px ${prevFeatBountyNotif ? 'rgba(241,196,15,0.3)' : 'transparent'}); transition: color 0.2s;" title="${t('settingsBellTitle')}">🔔</span>
+            <input type="checkbox" class="wia-feat-bounty-notif" style="width: auto; margin-right: 8px;" ${prevFeatBountyNotif ? 'checked' : ''} />
           </div>
           <details class="wia-bounty-settings-row" style="margin-top: 6px; margin-left: 24px;">
             <summary style="font-size: 11px; color: #8b949e; cursor: pointer; user-select: none; font-weight: bold; outline: none; margin-bottom: 6px;">
@@ -4704,31 +4704,46 @@ async function scanInventory(force) {
 
     const featPillCheckbox = modal.querySelector('.wia-feat-pill');
     const pillSettingsRow = modal.querySelector('.wia-pill-settings-row');
+    const pillNotifHnH = modal.querySelector('.wia-feat-pill-notif-hnh');
+    const pillNotifWindow = modal.querySelector('.wia-feat-pill-notif-window');
+    const pillNotifDebuff = modal.querySelector('.wia-feat-pill-notif-debuff');
+
     if (featPillCheckbox && pillSettingsRow) {
       featPillCheckbox.onchange = () => {
         if (featPillCheckbox.checked) {
           pillSettingsRow.setAttribute('open', '');
         } else {
           pillSettingsRow.removeAttribute('open');
-          bg.querySelectorAll('.wia-notif-bell[data-feat="hnh"], .wia-notif-bell[data-feat="window"], .wia-notif-bell[data-feat="debuff"]').forEach(bell => {
-            bell.setAttribute('data-active', 'false');
-            bell.style.color = '#6e7681';
-            bell.style.filter = 'transparent';
-          });
+          if (pillNotifHnH) pillNotifHnH.checked = false;
+          if (pillNotifWindow) pillNotifWindow.checked = false;
+          if (pillNotifDebuff) pillNotifDebuff.checked = false;
         }
       };
     }
 
+    [pillNotifHnH, pillNotifWindow, pillNotifDebuff].forEach(cb => {
+      if (cb) {
+        cb.onchange = () => {
+          if (cb.checked && featPillCheckbox && !featPillCheckbox.checked) {
+            featPillCheckbox.checked = true;
+            if (featPillCheckbox.onchange) featPillCheckbox.onchange();
+          }
+        };
+      }
+    });
+
     const featBountyCheckbox = modal.querySelector('.wia-feat-bounty');
-    if (featBountyCheckbox) {
+    const bountyNotifCheckbox = modal.querySelector('.wia-feat-bounty-notif');
+    if (featBountyCheckbox && bountyNotifCheckbox) {
       featBountyCheckbox.onchange = () => {
         if (!featBountyCheckbox.checked) {
-          const bell = bg.querySelector('.wia-notif-bell[data-feat="bounty"]');
-          if (bell) {
-            bell.setAttribute('data-active', 'false');
-            bell.style.color = '#6e7681';
-            bell.style.filter = 'transparent';
-          }
+          bountyNotifCheckbox.checked = false;
+        }
+      };
+      bountyNotifCheckbox.onchange = () => {
+        if (bountyNotifCheckbox.checked && !featBountyCheckbox.checked) {
+          featBountyCheckbox.checked = true;
+          if (featBountyCheckbox.onchange) featBountyCheckbox.onchange();
         }
       };
     }
@@ -4823,30 +4838,7 @@ async function scanInventory(force) {
       pSecretInput.oninput = updateLink;
     }
 
-    bg.querySelectorAll('.wia-notif-bell').forEach(bell => {
-      bell.onclick = () => {
-        const feat = bell.getAttribute('data-feat');
-        if (feat === 'bounty') {
-          const mainCb = bg.querySelector('.wia-feat-bounty');
-          if (mainCb && !mainCb.checked) {
-            mainCb.checked = true;
-            if (mainCb.onchange) mainCb.onchange();
-          }
-        } else if (['hnh', 'window', 'debuff'].includes(feat)) {
-          const mainCb = bg.querySelector('.wia-feat-pill');
-          if (mainCb && !mainCb.checked) {
-            mainCb.checked = true;
-            if (mainCb.onchange) mainCb.onchange();
-          }
-        }
 
-        let active = bell.getAttribute('data-active') === 'true';
-        active = !active;
-        bell.setAttribute('data-active', active ? 'true' : 'false');
-        bell.style.color = active ? '#f1c40f' : '#6e7681';
-        bell.style.filter = active ? 'drop-shadow(0 0 2px rgba(241,196,15,0.3))' : 'transparent';
-      };
-    });
 
     resolveOwnIdentity().then((identity) => {
       resolvedIdentity = identity;
@@ -4917,15 +4909,9 @@ async function scanInventory(force) {
       GM_setValue(KEYS.pillPrefWindowTo, prefTo);
       CONFIG.pillPrefWindowTo = prefTo;
 
-      const isBellActive = (feat) => {
-        const bell = bg.querySelector(`.wia-notif-bell[data-feat="${feat}"]`);
-        if (!bell) return false;
-        return bell.getAttribute('data-active') === 'true';
-      };
-
-      const featPillNotifHnH = featPill ? isBellActive('hnh') : false;
-      const featPillNotifWindow = featPill ? isBellActive('window') : false;
-      const featPillNotifDebuff = featPill ? isBellActive('debuff') : false;
+      const featPillNotifHnH = featPill && bg.querySelector('.wia-feat-pill-notif-hnh').checked;
+      const featPillNotifWindow = featPill && bg.querySelector('.wia-feat-pill-notif-window').checked;
+      const featPillNotifDebuff = featPill && bg.querySelector('.wia-feat-pill-notif-debuff').checked;
       GM_setValue(KEYS.featPillNotifHnH, featPillNotifHnH);
       GM_setValue(KEYS.featPillNotifWindow, featPillNotifWindow);
       GM_setValue(KEYS.featPillNotifDebuff, featPillNotifDebuff);
@@ -4946,7 +4932,7 @@ async function scanInventory(force) {
       if (featPnlTracker) { initPnlTracker(); } else { teardownPnlTracker(); }
 
       const featBounty = bg.querySelector('.wia-feat-bounty').checked;
-      const featBountyNotif = featBounty ? isBellActive('bounty') : false;
+      const featBountyNotif = featBounty && bg.querySelector('.wia-feat-bounty-notif').checked;
       const bountyOwn = bg.querySelector('.wia-bounty-own').value.trim();
       const bountyScope = bg.querySelector('.wia-bounty-scope').value;
       const personalTopic = bg.querySelector('.wia-personal-topic').value.trim();
