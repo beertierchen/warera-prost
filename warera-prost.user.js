@@ -327,6 +327,8 @@
         settingsStockKeepCountLabel: 'Stock items to keep per type:',
         settingsStockKeepCountSub: '(Items beyond this limit will not get a 💎 KEEP badge)',
         settingsDesc: 'The Inventory Advisor gives a quick overview of whether items should be kept (KEEP/HOLD), sold (SELL), or salvaged (SCRAP).',
+        settingsHeaderFeature: 'Feature / Option',
+        settingsHeaderNotif: '🔔 Notif',
         settingsApiToken: 'API Token (api2.warera.io)',
         settingsTokenPlaceholder: 'Bearer token',
         settingsTokenNote: 'Saved locally (GM_setValue, lightly obfuscated-not real encryption).',
@@ -551,6 +553,8 @@
         settingsStockKeepCountLabel: 'Anzahl zu behaltender Items im Bestand (pro Typ/Tier):',
         settingsStockKeepCountSub: '(Gegenstände außerhalb dieser Grenze erhalten keinen Diamanten 💎)',
         settingsDesc: 'Der Inventory Advisor soll eine schnelle Übersicht geben, ob Items behalten (KEEP/HOLD), gewinnbringend verkauft (SELL) oder zerschreddert (SCRAP) werden sollten.',
+        settingsHeaderFeature: 'Feature / Option',
+        settingsHeaderNotif: '🔔 Benachr.',
         settingsApiToken: 'API-Token (api2.warera.io)',
         settingsTokenPlaceholder: 'Bearer-Token',
         settingsTokenNote: 'Lokal gespeichert (GM_setValue, leicht verschleiert-keine echte Verschlüsselung).',
@@ -4477,6 +4481,10 @@ async function scanInventory(force) {
         <label>${t('settingsApiToken')}</label>
         <input type="password" class="wia-token" placeholder="${t('settingsTokenPlaceholder')}" />
         <div class="wia-note">${t('settingsTokenNote')}</div>
+        <div style="display: flex; justify-content: space-between; font-size: 10px; color: #8b949e; border-bottom: 1px solid rgba(148,163,184,.15); padding-bottom: 4px; margin-bottom: 8px; margin-top: 14px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">
+          <span>${t('settingsHeaderFeature')}</span>
+          <span style="margin-right: 4px;">${t('settingsHeaderNotif')}</span>
+        </div>
         <div class="wia-feat-row" style="margin-top: 10px;">
           <div style="display: flex; align-items: center; gap: 8px;">
             <input type="checkbox" class="wia-live-offers" style="width: auto;" ${prevLiveOffers ? 'checked' : ''} />
@@ -4557,15 +4565,15 @@ async function scanInventory(force) {
             <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 6px;">
               <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
                 <label style="margin: 0; font-weight: normal; cursor: pointer; font-size: 11px;">${t('settingsFeatPillNotifHnH')}</label>
-                <span class="wia-notif-bell" data-feat="hnh" style="cursor: pointer; font-size: 13px; color: ${prevPillNotifHnH ? '#f1c40f' : '#6e7681'}; filter: drop-shadow(0 0 2px ${prevPillNotifHnH ? 'rgba(241,196,15,0.3)' : 'transparent'}); transition: color 0.2s;" title="${t('settingsBellTitle')}">🔔</span>
+                <span class="wia-notif-bell" data-feat="hnh" data-active="${prevPillNotifHnH ? 'true' : 'false'}" style="cursor: pointer; font-size: 13px; color: ${prevPillNotifHnH ? '#f1c40f' : '#6e7681'}; filter: drop-shadow(0 0 2px ${prevPillNotifHnH ? 'rgba(241,196,15,0.3)' : 'transparent'}); transition: color 0.2s;" title="${t('settingsBellTitle')}">🔔</span>
               </div>
               <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
                 <label style="margin: 0; font-weight: normal; cursor: pointer; font-size: 11px;">${t('settingsFeatPillNotifWindow')}</label>
-                <span class="wia-notif-bell" data-feat="window" style="cursor: pointer; font-size: 13px; color: ${prevPillNotifWindow ? '#f1c40f' : '#6e7681'}; filter: drop-shadow(0 0 2px ${prevPillNotifWindow ? 'rgba(241,196,15,0.3)' : 'transparent'}); transition: color 0.2s;" title="${t('settingsBellTitle')}">🔔</span>
+                <span class="wia-notif-bell" data-feat="window" data-active="${prevPillNotifWindow ? 'true' : 'false'}" style="cursor: pointer; font-size: 13px; color: ${prevPillNotifWindow ? '#f1c40f' : '#6e7681'}; filter: drop-shadow(0 0 2px ${prevPillNotifWindow ? 'rgba(241,196,15,0.3)' : 'transparent'}); transition: color 0.2s;" title="${t('settingsBellTitle')}">🔔</span>
               </div>
               <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
                 <label style="margin: 0; font-weight: normal; cursor: pointer; font-size: 11px;">${t('settingsFeatPillNotifDebuff')}</label>
-                <span class="wia-notif-bell" data-feat="debuff" style="cursor: pointer; font-size: 13px; color: ${prevPillNotifDebuff ? '#f1c40f' : '#6e7681'}; filter: drop-shadow(0 0 2px ${prevPillNotifDebuff ? 'rgba(241,196,15,0.3)' : 'transparent'}); transition: color 0.2s;" title="${t('settingsBellTitle')}">🔔</span>
+                <span class="wia-notif-bell" data-feat="debuff" data-active="${prevPillNotifDebuff ? 'true' : 'false'}" style="cursor: pointer; font-size: 13px; color: ${prevPillNotifDebuff ? '#f1c40f' : '#6e7681'}; filter: drop-shadow(0 0 2px ${prevPillNotifDebuff ? 'rgba(241,196,15,0.3)' : 'transparent'}); transition: color 0.2s;" title="${t('settingsBellTitle')}">🔔</span>
               </div>
             </div>
           </details>
@@ -4592,7 +4600,7 @@ async function scanInventory(force) {
               <input type="checkbox" class="wia-feat-bounty" style="width: auto;" ${prevFeatBounty ? 'checked' : ''} />
               <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatBounty')}</label>
             </div>
-            <span class="wia-notif-bell" data-feat="bounty" style="cursor: pointer; font-size: 13px; color: ${prevFeatBountyNotif ? '#f1c40f' : '#6e7681'}; filter: drop-shadow(0 0 2px ${prevFeatBountyNotif ? 'rgba(241,196,15,0.3)' : 'transparent'}); transition: color 0.2s;" title="${t('settingsBellTitle')}">🔔</span>
+            <span class="wia-notif-bell" data-feat="bounty" data-active="${prevFeatBountyNotif ? 'true' : 'false'}" style="cursor: pointer; font-size: 13px; color: ${prevFeatBountyNotif ? '#f1c40f' : '#6e7681'}; filter: drop-shadow(0 0 2px ${prevFeatBountyNotif ? 'rgba(241,196,15,0.3)' : 'transparent'}); transition: color 0.2s;" title="${t('settingsBellTitle')}">🔔</span>
           </div>
           <details class="wia-bounty-settings-row" style="margin-top: 6px; margin-left: 24px;">
             <summary style="font-size: 11px; color: #8b949e; cursor: pointer; user-select: none; font-weight: bold; outline: none; margin-bottom: 6px;">
@@ -4702,6 +4710,25 @@ async function scanInventory(force) {
           pillSettingsRow.setAttribute('open', '');
         } else {
           pillSettingsRow.removeAttribute('open');
+          bg.querySelectorAll('.wia-notif-bell[data-feat="hnh"], .wia-notif-bell[data-feat="window"], .wia-notif-bell[data-feat="debuff"]').forEach(bell => {
+            bell.setAttribute('data-active', 'false');
+            bell.style.color = '#6e7681';
+            bell.style.filter = 'transparent';
+          });
+        }
+      };
+    }
+
+    const featBountyCheckbox = modal.querySelector('.wia-feat-bounty');
+    if (featBountyCheckbox) {
+      featBountyCheckbox.onchange = () => {
+        if (!featBountyCheckbox.checked) {
+          const bell = bg.querySelector('.wia-notif-bell[data-feat="bounty"]');
+          if (bell) {
+            bell.setAttribute('data-active', 'false');
+            bell.style.color = '#6e7681';
+            bell.style.filter = 'transparent';
+          }
         }
       };
     }
@@ -4798,8 +4825,18 @@ async function scanInventory(force) {
 
     bg.querySelectorAll('.wia-notif-bell').forEach(bell => {
       bell.onclick = () => {
-        let active = bell.style.color === 'rgb(241, 196, 15)' || bell.style.color === '#f1c40f';
+        const feat = bell.getAttribute('data-feat');
+        if (feat === 'bounty') {
+          const mainCb = bg.querySelector('.wia-feat-bounty');
+          if (mainCb && !mainCb.checked) return;
+        } else if (['hnh', 'window', 'debuff'].includes(feat)) {
+          const mainCb = bg.querySelector('.wia-feat-pill');
+          if (mainCb && !mainCb.checked) return;
+        }
+
+        let active = bell.getAttribute('data-active') === 'true';
         active = !active;
+        bell.setAttribute('data-active', active ? 'true' : 'false');
         bell.style.color = active ? '#f1c40f' : '#6e7681';
         bell.style.filter = active ? 'drop-shadow(0 0 2px rgba(241,196,15,0.3))' : 'transparent';
       };
@@ -4877,12 +4914,12 @@ async function scanInventory(force) {
       const isBellActive = (feat) => {
         const bell = bg.querySelector(`.wia-notif-bell[data-feat="${feat}"]`);
         if (!bell) return false;
-        return bell.style.color === 'rgb(241, 196, 15)' || bell.style.color === '#f1c40f';
+        return bell.getAttribute('data-active') === 'true';
       };
 
-      const featPillNotifHnH = isBellActive('hnh');
-      const featPillNotifWindow = isBellActive('window');
-      const featPillNotifDebuff = isBellActive('debuff');
+      const featPillNotifHnH = featPill ? isBellActive('hnh') : false;
+      const featPillNotifWindow = featPill ? isBellActive('window') : false;
+      const featPillNotifDebuff = featPill ? isBellActive('debuff') : false;
       GM_setValue(KEYS.featPillNotifHnH, featPillNotifHnH);
       GM_setValue(KEYS.featPillNotifWindow, featPillNotifWindow);
       GM_setValue(KEYS.featPillNotifDebuff, featPillNotifDebuff);
@@ -4903,7 +4940,7 @@ async function scanInventory(force) {
       if (featPnlTracker) { initPnlTracker(); } else { teardownPnlTracker(); }
 
       const featBounty = bg.querySelector('.wia-feat-bounty').checked;
-      const featBountyNotif = isBellActive('bounty');
+      const featBountyNotif = featBounty ? isBellActive('bounty') : false;
       const bountyOwn = bg.querySelector('.wia-bounty-own').value.trim();
       const bountyScope = bg.querySelector('.wia-bounty-scope').value;
       const personalTopic = bg.querySelector('.wia-personal-topic').value.trim();
