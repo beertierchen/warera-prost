@@ -4393,26 +4393,7 @@ async function scanInventory(force) {
     gear.title = titleLines.join('\n');
   }
 
-  // Live data strip inside the settings modal. Built with textContent (never
-  // innerHTML) so cached values can't become an injection vector.
-  function renderDataStrip(el) {
-    if (!el) return;
-    const s = cacheStatus();
-    const scraped = readCache(KEYS.scrapedPrices);
-    const scrapedCount = Object.keys(scraped).length;
-    const statusText = isRateLimited()
-      ? t('status_rateLimited')
-      : s.stale
-        ? t('status_stale')
-        : t('status_fresh');
 
-    el.textContent =
-      t('dataStrip_scrapPrice', { price: fmt(s.scrapPrice), age: ageLabel(s.scrapFetchedAt) }) +
-      t('dataStrip_itemPrices', { count: s.priceCount, age: ageLabel(s.priceFetchedAt) }) +
-      t('dataStrip_scrapedMkt', { count: scrapedCount }) +
-      t('dataStrip_txHistory', { count: s.txCodes || 0 }) +
-      t('dataStrip_status', { status: statusText });
-  }
 
   let warnBanner = null;
   function renderRateLimitBanner() {
@@ -4478,7 +4459,6 @@ async function scanInventory(force) {
           </div>
         </div>
         <div class="wia-warn" style="display:none"></div>
-        <div class="wia-data"></div>
         <label>${t('settingsApiToken')}</label>
         <input type="password" class="wia-token" placeholder="${t('settingsTokenPlaceholder')}" />
         <div class="wia-note">${t('settingsTokenNote')}</div>
@@ -4670,7 +4650,6 @@ async function scanInventory(force) {
       </div>`;
 
     const modal = bg.querySelector('.wia-modal');
-    const dataStrip = bg.querySelector('.wia-data');
     const tokenInput = bg.querySelector('.wia-token');
     const localeBtn = bg.querySelector('.wia-locale-btn');
     const localeMenu = bg.querySelector('.wia-locale-menu');
@@ -4678,7 +4657,6 @@ async function scanInventory(force) {
 
     tokenInput.value = prevToken;
     warnBanner = bg.querySelector('.wia-warn');
-    renderDataStrip(dataStrip);
     renderRateLimitBanner();
 
     localeBtn.onclick = (e) => {
@@ -4995,7 +4973,7 @@ async function scanInventory(force) {
       }
       scanInventory(tokenChanged);
     };
-    bg.querySelector('.wia-clear').onclick = () => { clearCache(); renderDataStrip(dataStrip); updateStatusIndicator(); };
+    bg.querySelector('.wia-clear').onclick = () => { clearCache(); updateStatusIndicator(); };
     bg.querySelector('.wia-close').onclick = () => { bg.remove(); warnBanner = null; settingsModalBg = null; };
   }
 
