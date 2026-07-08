@@ -4828,10 +4828,16 @@ async function scanInventory(force) {
         const feat = bell.getAttribute('data-feat');
         if (feat === 'bounty') {
           const mainCb = bg.querySelector('.wia-feat-bounty');
-          if (mainCb && !mainCb.checked) return;
+          if (mainCb && !mainCb.checked) {
+            mainCb.checked = true;
+            if (mainCb.onchange) mainCb.onchange();
+          }
         } else if (['hnh', 'window', 'debuff'].includes(feat)) {
           const mainCb = bg.querySelector('.wia-feat-pill');
-          if (mainCb && !mainCb.checked) return;
+          if (mainCb && !mainCb.checked) {
+            mainCb.checked = true;
+            if (mainCb.onchange) mainCb.onchange();
+          }
         }
 
         let active = bell.getAttribute('data-active') === 'true';
