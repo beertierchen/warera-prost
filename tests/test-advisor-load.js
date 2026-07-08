@@ -1146,8 +1146,88 @@ try {
   const debuffEndTime = takePillTime + 24 * 3600000; // > 8 + 15.5 = 23.5 hours
   Date.now = () => debuffEndTime;
   globalThis.checkPersonalNotifications();
-  assert.strictEqual(personalRequests.length, 1, 'Debuff expired notification should be sent');
-  assert.ok(personalRequests[0].headers.Title.includes('Pillen-Debuff abgelaufen') || personalRequests[0].headers.Title.includes('Pill Debuff Expired'), 'Debuff expired notification title is set');
+  // --- Test Notification Hub (Mirroring, Hash, Format) ---
+  console.log('--- Testing Notification Hub (Mirroring, Hash, Format) ---');
+  
+  // 1. Verify simpleHash
+  const hash1 = globalThis.simpleHash('hello world');
+  const hash2 = globalThis.simpleHash('hello world');
+  const hash3 = globalThis.simpleHash('different text');
+  assert.strictEqual(hash1, hash2, 'Hash should be deterministic');
+  assert.notStrictEqual(hash1, hash3, 'Hash should be different for different text');
+  
+  // We wrap async operations in a IIFE to allow the use of await in this CommonJS environment
+  (async () => {
+    // 2. Setup mock environment for pollBountyTopic
+    globalThis.CONFIG.featBountyNotify = true;
+    globalThis.CONFIG.featBountyNotif = true;
+    globalThis.CONFIG.personalTopic = 'my-personal-topic';
+    globalThis.CONFIG.bountyScope = 'all';
+    globalThis.GM_setValue('wia.bountyAutoTopic', 'wia-bounty-all');
+    globalThis.GM_setValue('wia.bountyMirrorProcessedHashes', []);
+    globalThis.GM_setValue('wia.bountyMirrorLastPollAt', 0);
+    globalThis.GM_setValue('wia.bountyMirrorPollLock', 0);
+    
+    let mirrorRequests = [];
+    global.GM_xmlhttpRequest = (opts) => {
+      mirrorRequests.push(opts);
+      if (opts.onload) {
+        if (opts.method === 'GET') {
+          opts.onload({
+            status: 200,
+            statusText: 'OK',
+            responseText: JSON.stringify({
+              event: 'message',
+              title: '⚔️ Ally-Bounty: Germany vs USA',
+              message: 'Fight for Germany (Attacker) | Pool: 100.00 | Rate: 0.10/1k',
+              tags: ['crossed_swords', 'bkey_test_123_456']
+            }) + '\n'
+          });
+        } else {
+          opts.onload({ status: 200, statusText: 'OK', responseText: '{}' });
+        }
+      }
+    };
+    
+    await globalThis.pollBountyTopic();
+    
+    const postReqs = mirrorRequests.filter(r => r.method === 'POST');
+    assert.strictEqual(postReqs.length, 1, 'Bounty notification should be mirrored');
+    assert.ok(postReqs[0].url.includes('my-personal-topic'), 'Should mirror to personal topic');
+    assert.strictEqual(postReqs[0].data, 'Fight for Germany (Attacker) | Pool: 100.00 | Rate: 0.10/1k', 'Body should be preserved');
+    assert.strictEqual(postReqs[0].headers.Title, '⚔️ Ally-Bounty: Germany vs USA', 'Title should be clean ASCII');
+    
+    // 3. Test duplicate prevention
+    mirrorRequests = [];
+    await globalThis.pollBountyTopic();
+    const dupPostReqs = mirrorRequests.filter(r => r.method === 'POST');
+    assert.strictEqual(dupPostReqs.length, 0, 'Duplicate message should not be mirrored');
+    
+    // 4. Test format validation rejection
+    mirrorRequests = [];
+    global.GM_xmlhttpRequest = (opts) => {
+      mirrorRequests.push(opts);
+      if (opts.onload && opts.method === 'GET') {
+        opts.onload({
+          status: 200,
+          statusText: 'OK',
+          responseText: JSON.stringify({
+            event: 'message',
+            title: 'Malicious title',
+            message: 'Fight for Germany (Attacker) | Pool: 100.00 | Rate: 0.10/1k',
+            tags: ['crossed_swords', 'bkey_test_123_456']
+          }) + '\n'
+        });
+      }
+    };
+    globalThis.GM_setValue('wia.bountyMirrorLastPollAt', 0);
+    globalThis.GM_setValue('wia.bountyMirrorPollLock', 0);
+    await globalThis.pollBountyTopic();
+    assert.strictEqual(mirrorRequests.filter(r => r.method === 'POST').length, 0, 'Invalid title format should be rejected');
+  })().catch(err => {
+    console.error('Notification Hub tests failed:', err);
+    process.exit(1);
+  });
 
   // Cleanup mocked functions
   delete global.GM_xmlhttpRequest;

@@ -63,7 +63,7 @@
     featBattleAdvisor: false,            // experimental: highlight ally button on /battle/<id> pages
     alliedCountryCodes: ['de','pt','es','gm','ir','na','sr','th','at','fi','ie','no','se','uk','va','bf','cd','ye','ne','au','br','id'],
     featMarketGraph: false,
-    featPnlTracker: true,
+    featPnlTracker: false,
     stockKeepCount: 3,
 
     // --- caching / rate-limit ---
@@ -232,8 +232,11 @@
     featPillNotifWindow: false,
     featPillNotifDebuff: false,
     featBountyNotify: false,
+    featBountyNotif: false,
     ntfyTopic: '',
     ntfyTopicSecret: '',
+    personalTopic: '',
+    personalTopicSecret: '',
     bountyOwnCountryOverride: '',
     bountyScope: 'cascade',
     pillBuffH: 8,
@@ -348,10 +351,15 @@
         bountyLabelAll: 'Bounty',
         bountyLabelAllies: 'Ally-Bounty',
         bountyLabelCascade: 'Ally-Casc-Bounty',
-        settingsFeatBounty: 'Bounty push notifications (ntfy.sh)',
+        settingsFeatBounty: 'Bounty notifications',
         settingsNtfyTopic: 'ntfy topic (base)',
         settingsNtfyTopicSecret: 'Topic secret (optional)',
         settingsBountyOwnCountry: 'Own country / ally override (name or countryIds)',
+        settingsNotifTitle: '🔔 Notification Options (ntfy.sh)',
+        settingsPersonalTopic: 'Personal Topic',
+        settingsPersonalTopicSecret: 'Personal Secret (optional)',
+        settingsPersonalTopicLinkText: 'Subscribe / Open',
+        settingsBellTitle: 'Toggle push notifications',
         settingsBountyScope: 'Notification scope',
         bountyScopeAll: 'All battles (no filter)',
         bountyScopeAllies: 'Only allies (own country + alliance + own allies/pacts)',
@@ -567,10 +575,15 @@
         bountyLabelAll: 'Kopfgeld',
         bountyLabelAllies: 'Ally-Bounty',
         bountyLabelCascade: 'Ally-Casc-Bounty',
-        settingsFeatBounty: 'Bounty-Push-Benachrichtigungen (ntfy.sh)',
+        settingsFeatBounty: 'Bounty-Benachrichtigungen',
         settingsNtfyTopic: 'ntfy-Topic (Basis)',
         settingsNtfyTopicSecret: 'Topic-Secret (optional)',
         settingsBountyOwnCountry: 'Eigenes Land / Ally-Override (Name oder countryIds)',
+        settingsNotifTitle: '🔔 Benachrichtigungs-Optionen (ntfy.sh)',
+        settingsPersonalTopic: 'Persönliches Topic',
+        settingsPersonalTopicSecret: 'Persönliches Secret (optional)',
+        settingsPersonalTopicLinkText: 'Abonnieren / Öffnen',
+        settingsBellTitle: 'Push-Benachrichtigungen an-/ausschalten',
         settingsBountyScope: 'Benachrichtigungs-Umfang',
         bountyScopeAll: 'Alle Schlachten (kein Filter)',
         bountyScopeAllies: 'Nur Verbündete (eigenes Land + Allianz + eigene Allies/Pakte)',
@@ -735,8 +748,11 @@
     lastNotifiedPillWindowDate: NS + 'lastNotifiedPillWindowDate',
     lastNotifiedDebuffEnd: NS + 'lastNotifiedDebuffEnd',
     featBountyNotify: NS + 'featBounty',
+    featBountyNotif: NS + 'featBountyNotif',
     ntfyTopic: NS + 'ntfyTopic',
     ntfyTopicSecret: NS + 'ntfyTopicSecret',
+    personalTopic: NS + 'personalTopic',
+    personalTopicSecret: NS + 'personalTopicSecret',
     bountyOwnCountryOverride: NS + 'bountyOwnCountry',
     bountyLastPollAt: NS + 'bountyLastPollAt',
     bountyPollLock: NS + 'bountyPollLock',
@@ -745,6 +761,9 @@
     bountyMirrorSeen: NS + 'bountyMirrorSeen',
     bountyClientId: NS + 'bountyClientId',
     bountyTopicBase: NS + 'bountyTopicBase',
+    bountyMirrorLastPollAt: NS + 'bountyMirrorLastPollAt',
+    bountyMirrorPollLock: NS + 'bountyMirrorPollLock',
+    bountyMirrorProcessedHashes: NS + 'bountyMirrorProcessedHashes',
     bountyAllyCache: NS + 'bountyAllyCache',
     bountyCountryMap: NS + 'bountyCountryMap',
     pillTakenAt: NS + 'pillTakenAt',
@@ -2088,6 +2107,8 @@
     globalThis.teardownPillReminder = teardownPillReminder;
     globalThis.tickPillReminder = tickPillReminder;
     globalThis.checkPersonalNotifications = checkPersonalNotifications;
+    globalThis.simpleHash = simpleHash;
+    globalThis.pollBountyTopic = pollBountyTopic;
     globalThis.renderHnHBudget = renderHnHBudget;
     globalThis.removeHnHBudget = removeHnHBudget;
     globalThis.nextWindowStart = nextWindowStart;
@@ -4423,10 +4444,19 @@ async function scanInventory(force) {
     const prevPillNotifDebuff = bg.querySelector('.wia-feat-pill-notif-debuff')?.checked ?? CONFIG.featPillNotifDebuff;
     const prevStockKeepCount = bg.querySelector('.wia-stock-keep-count')?.value ?? CONFIG.stockKeepCount;
     const prevFeatBounty = bg.querySelector('.wia-feat-bounty')?.checked ?? CONFIG.featBountyNotify;
+    const prevFeatBountyNotif = CONFIG.featBountyNotif;
     const prevNtfyTopic = bg.querySelector('.wia-ntfy-topic')?.value ?? CONFIG.ntfyTopic;
     const prevNtfySecret = bg.querySelector('.wia-ntfy-secret')?.value ?? CONFIG.ntfyTopicSecret;
     const prevBountyOwn = bg.querySelector('.wia-bounty-own')?.value ?? CONFIG.bountyOwnCountryOverride;
     const prevBountyScope = bg.querySelector('.wia-bounty-scope')?.value ?? CONFIG.bountyScope;
+
+    const prevPersonalTopic = bg.querySelector('.wia-personal-topic')?.value ?? CONFIG.personalTopic;
+    const prevPersonalSecret = bg.querySelector('.wia-personal-secret')?.value ?? CONFIG.personalTopicSecret;
+    const defaultPersonalTopic = 'wia-user-' + (getCurrentUserId() || 'unknown');
+    const resolvedPersonalTopic = prevPersonalTopic.trim() || defaultPersonalTopic;
+    const resolvedPersonalSecret = prevPersonalSecret.trim();
+    const effectivePersonalTopic = resolvedPersonalSecret ? `${resolvedPersonalTopic}-${resolvedPersonalSecret}` : resolvedPersonalTopic;
+    const personalTopicUrl = `${NTFY_BASE}/${effectivePersonalTopic}`;
 
     bg.innerHTML = `
       <div class="wia-modal">
@@ -4525,17 +4555,17 @@ async function scanInventory(force) {
               </div>
             </div>
             <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 6px;">
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <input type="checkbox" class="wia-feat-pill-notif-hnh" style="width: auto;" ${prevPillNotifHnH ? 'checked' : ''} />
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
                 <label style="margin: 0; font-weight: normal; cursor: pointer; font-size: 11px;">${t('settingsFeatPillNotifHnH')}</label>
+                <span class="wia-notif-bell" data-feat="hnh" style="cursor: pointer; font-size: 13px; color: ${prevPillNotifHnH ? '#f1c40f' : '#6e7681'}; filter: drop-shadow(0 0 2px ${prevPillNotifHnH ? 'rgba(241,196,15,0.3)' : 'transparent'}); transition: color 0.2s;" title="${t('settingsBellTitle')}">🔔</span>
               </div>
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <input type="checkbox" class="wia-feat-pill-notif-window" style="width: auto;" ${prevPillNotifWindow ? 'checked' : ''} />
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
                 <label style="margin: 0; font-weight: normal; cursor: pointer; font-size: 11px;">${t('settingsFeatPillNotifWindow')}</label>
+                <span class="wia-notif-bell" data-feat="window" style="cursor: pointer; font-size: 13px; color: ${prevPillNotifWindow ? '#f1c40f' : '#6e7681'}; filter: drop-shadow(0 0 2px ${prevPillNotifWindow ? 'rgba(241,196,15,0.3)' : 'transparent'}); transition: color 0.2s;" title="${t('settingsBellTitle')}">🔔</span>
               </div>
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <input type="checkbox" class="wia-feat-pill-notif-debuff" style="width: auto;" ${prevPillNotifDebuff ? 'checked' : ''} />
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
                 <label style="margin: 0; font-weight: normal; cursor: pointer; font-size: 11px;">${t('settingsFeatPillNotifDebuff')}</label>
+                <span class="wia-notif-bell" data-feat="debuff" style="cursor: pointer; font-size: 13px; color: ${prevPillNotifDebuff ? '#f1c40f' : '#6e7681'}; filter: drop-shadow(0 0 2px ${prevPillNotifDebuff ? 'rgba(241,196,15,0.3)' : 'transparent'}); transition: color 0.2s;" title="${t('settingsBellTitle')}">🔔</span>
               </div>
             </div>
           </details>
@@ -4557,28 +4587,17 @@ async function scanInventory(force) {
           <div class="wia-hint" hidden>${t('settingsFeatPnlTrackerHint')}</div>
         </div>
         <div class="wia-feat-row" style="margin-top: 6px;">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <input type="checkbox" class="wia-feat-bounty" style="width: auto;" ${prevFeatBounty ? 'checked' : ''} />
-            <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatBounty')}</label>
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <input type="checkbox" class="wia-feat-bounty" style="width: auto;" ${prevFeatBounty ? 'checked' : ''} />
+              <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatBounty')}</label>
+            </div>
+            <span class="wia-notif-bell" data-feat="bounty" style="cursor: pointer; font-size: 13px; color: ${prevFeatBountyNotif ? '#f1c40f' : '#6e7681'}; filter: drop-shadow(0 0 2px ${prevFeatBountyNotif ? 'rgba(241,196,15,0.3)' : 'transparent'}); transition: color 0.2s;" title="${t('settingsBellTitle')}">🔔</span>
           </div>
           <details class="wia-bounty-settings-row" style="margin-top: 6px; margin-left: 24px;">
             <summary style="font-size: 11px; color: #8b949e; cursor: pointer; user-select: none; font-weight: bold; outline: none; margin-bottom: 6px;">
               Bounty Options
             </summary>
-            <div style="display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 6px; margin-top: 4px;">
-              <div style="flex: 1; min-width: 120px;">
-                <label style="font-size: 11px; color: #8b949e; display: block; margin: 0 0 2px;">${t('settingsNtfyTopic')}</label>
-                <input type="text" class="wia-ntfy-topic" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;" value="${prevNtfyTopic}" />
-              </div>
-              <div style="flex: 1; min-width: 120px;">
-                <label style="font-size: 11px; color: #8b949e; display: block; margin: 0 0 2px;">${t('settingsNtfyTopicSecret')}</label>
-                <input type="text" class="wia-ntfy-secret" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;" value="${prevNtfySecret}" />
-              </div>
-            </div>
-            <div style="margin-top: 2px; margin-bottom: 6px;">
-              <div class="wia-bounty-auto-topic-info" style="font-size: 10px; color: #8b949e;">Lade automatische Topic...</div>
-              <div class="wia-bounty-subscribe-hint" style="font-size: 10px; color: #58a6ff; margin-top: 2px; font-weight: bold;"></div>
-            </div>
             <div style="margin-top: 4px;">
               <label style="font-size: 11px; color: #8b949e; display: block; margin: 0 0 2px;">${t('settingsBountyScope')}</label>
               <select class="wia-bounty-scope" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px; outline: none; cursor: pointer;">
@@ -4594,6 +4613,26 @@ async function scanInventory(force) {
             </div>
           </details>
         </div>
+        <details class="wia-notif-settings-row" style="margin-top: 10px; border-top: 1px solid rgba(148,163,184,.15); padding-top: 10px;">
+          <summary style="font-size: 11px; color: #8b949e; cursor: pointer; user-select: none; font-weight: bold; outline: none; margin-bottom: 6px;">
+            🔔 ${t('settingsNotifTitle')}
+          </summary>
+          <div style="display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 6px; margin-top: 4px;">
+            <div style="flex: 1; min-width: 120px;">
+              <label style="font-size: 11px; color: #8b949e; display: block; margin: 0 0 2px;">${t('settingsPersonalTopic')}</label>
+              <input type="text" class="wia-personal-topic" placeholder="${defaultPersonalTopic}" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;" value="${prevPersonalTopic}" />
+            </div>
+            <div style="flex: 1; min-width: 120px;">
+              <label style="font-size: 11px; color: #8b949e; display: block; margin: 0 0 2px;">${t('settingsPersonalTopicSecret')}</label>
+              <input type="text" class="wia-personal-secret" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;" value="${prevPersonalSecret}" />
+            </div>
+          </div>
+          <div style="margin-top: 2px; margin-bottom: 6px;">
+            <a class="wia-personal-topic-link" href="${personalTopicUrl}" target="_blank" style="font-size: 10px; color: #58a6ff; text-decoration: none; font-weight: bold; display: inline-block;">
+              🔗 ${t('settingsPersonalTopicLinkText')}: ${personalTopicUrl}
+            </a>
+          </div>
+        </details>
         <button type="button" class="wia-help-toggle" aria-expanded="false">${t('settingsHelpSummary')}</button>
         <aside class="wia-help-panel" hidden>
           <div class="wia-help-content">${t('settingsHelpContent')}</div>
@@ -4711,12 +4750,8 @@ async function scanInventory(force) {
 
     let resolvedIdentity = null;
     function updateTopicHints() {
-      const topicInput = bg.querySelector('.wia-ntfy-topic');
-      const secretInput = bg.querySelector('.wia-ntfy-secret');
       const scopeSelect = bg.querySelector('.wia-bounty-scope');
-      const autoInfo = bg.querySelector('.wia-bounty-auto-topic-info');
-      const subHint = bg.querySelector('.wia-bounty-subscribe-hint');
-      if (!topicInput || !secretInput || !scopeSelect || !autoInfo || !subHint) return;
+      if (!scopeSelect) return;
 
       const currentScope = scopeSelect.value;
       let tName = '';
@@ -4737,30 +4772,38 @@ async function scanInventory(force) {
       }
 
       if (autoTopic) {
-        autoInfo.textContent = `Automatisch generiert: ${autoTopic}`;
         GM_setValue(KEYS.bountyAutoTopic, autoTopic);
-        topicInput.setAttribute('placeholder', autoTopic);
-      } else {
-        autoInfo.textContent = 'Automatisch generiert: wia-bounty-all (Standard)';
-        topicInput.setAttribute('placeholder', 'wia-bounty-all');
       }
-
-      let activeTopic = topicInput.value.trim();
-      if (!activeTopic) {
-        activeTopic = autoTopic || 'wia-bounty-all';
-      }
-      const secret = secretInput.value.trim();
-      const effective = secret ? `${activeTopic}-${secret}` : activeTopic;
-
-      subHint.textContent = `Abonniere dieses Topic in der ntfy-App: ${effective}`;
     }
 
-    const topicInput = bg.querySelector('.wia-ntfy-topic');
-    const secretInput = bg.querySelector('.wia-ntfy-secret');
     const scopeSelect = bg.querySelector('.wia-bounty-scope');
-    if (topicInput) topicInput.oninput = updateTopicHints;
-    if (secretInput) secretInput.oninput = updateTopicHints;
     if (scopeSelect) scopeSelect.onchange = updateTopicHints;
+
+    const pTopicInput = bg.querySelector('.wia-personal-topic');
+    const pSecretInput = bg.querySelector('.wia-personal-secret');
+    const pLink = bg.querySelector('.wia-personal-topic-link');
+    if (pTopicInput && pSecretInput && pLink) {
+      const updateLink = () => {
+        let tVal = pTopicInput.value.trim();
+        if (!tVal) tVal = 'wia-user-' + (getCurrentUserId() || 'unknown');
+        const sVal = pSecretInput.value.trim();
+        const eff = sVal ? `${tVal}-${sVal}` : tVal;
+        const url = `${NTFY_BASE}/${eff}`;
+        pLink.href = url;
+        pLink.textContent = `🔗 ${t('settingsPersonalTopicLinkText')}: ${url}`;
+      };
+      pTopicInput.oninput = updateLink;
+      pSecretInput.oninput = updateLink;
+    }
+
+    bg.querySelectorAll('.wia-notif-bell').forEach(bell => {
+      bell.onclick = () => {
+        let active = bell.style.color === 'rgb(241, 196, 15)' || bell.style.color === '#f1c40f';
+        active = !active;
+        bell.style.color = active ? '#f1c40f' : '#6e7681';
+        bell.style.filter = active ? 'drop-shadow(0 0 2px rgba(241,196,15,0.3))' : 'transparent';
+      };
+    });
 
     resolveOwnIdentity().then((identity) => {
       resolvedIdentity = identity;
@@ -4831,9 +4874,15 @@ async function scanInventory(force) {
       GM_setValue(KEYS.pillPrefWindowTo, prefTo);
       CONFIG.pillPrefWindowTo = prefTo;
 
-      const featPillNotifHnH = bg.querySelector('.wia-feat-pill-notif-hnh').checked;
-      const featPillNotifWindow = bg.querySelector('.wia-feat-pill-notif-window').checked;
-      const featPillNotifDebuff = bg.querySelector('.wia-feat-pill-notif-debuff').checked;
+      const isBellActive = (feat) => {
+        const bell = bg.querySelector(`.wia-notif-bell[data-feat="${feat}"]`);
+        if (!bell) return false;
+        return bell.style.color === 'rgb(241, 196, 15)' || bell.style.color === '#f1c40f';
+      };
+
+      const featPillNotifHnH = isBellActive('hnh');
+      const featPillNotifWindow = isBellActive('window');
+      const featPillNotifDebuff = isBellActive('debuff');
       GM_setValue(KEYS.featPillNotifHnH, featPillNotifHnH);
       GM_setValue(KEYS.featPillNotifWindow, featPillNotifWindow);
       GM_setValue(KEYS.featPillNotifDebuff, featPillNotifDebuff);
@@ -4854,20 +4903,26 @@ async function scanInventory(force) {
       if (featPnlTracker) { initPnlTracker(); } else { teardownPnlTracker(); }
 
       const featBounty = bg.querySelector('.wia-feat-bounty').checked;
-      const ntfyTopic = bg.querySelector('.wia-ntfy-topic').value.trim();
-      const ntfySecret = bg.querySelector('.wia-ntfy-secret').value.trim();
+      const featBountyNotif = isBellActive('bounty');
       const bountyOwn = bg.querySelector('.wia-bounty-own').value.trim();
       const bountyScope = bg.querySelector('.wia-bounty-scope').value;
+      const personalTopic = bg.querySelector('.wia-personal-topic').value.trim();
+      const personalSecret = bg.querySelector('.wia-personal-secret').value.trim();
+
       GM_setValue(KEYS.featBountyNotify, featBounty);
-      GM_setValue(KEYS.ntfyTopic, ntfyTopic);
-      GM_setValue(KEYS.ntfyTopicSecret, ntfySecret);
+      GM_setValue(KEYS.featBountyNotif, featBountyNotif);
       GM_setValue(KEYS.bountyOwnCountryOverride, bountyOwn);
       GM_setValue(KEYS.bountyScope, bountyScope);
+      GM_setValue(KEYS.personalTopic, personalTopic);
+      GM_setValue(KEYS.personalTopicSecret, personalSecret);
+
       CONFIG.featBountyNotify = featBounty;
-      CONFIG.ntfyTopic = ntfyTopic;
-      CONFIG.ntfyTopicSecret = ntfySecret;
+      CONFIG.featBountyNotif = featBountyNotif;
       CONFIG.bountyOwnCountryOverride = bountyOwn;
       CONFIG.bountyScope = bountyScope;
+      CONFIG.personalTopic = personalTopic;
+      CONFIG.personalTopicSecret = personalSecret;
+
       bountyResetAllyCache();
       if (featBounty) { guard('bountyNotify', initBountyNotify); } else { teardownBountyNotify(); }
 
@@ -5546,13 +5601,13 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
   }
 
   function getEffectivePersonalTopic() {
-    let t = (CONFIG.ntfyTopic || '').trim();
+    let t = (CONFIG.personalTopic || '').trim();
     if (!t) {
       const uid = getCurrentUserId();
       if (!uid) return '';
       t = `wia-user-${uid}`;
     }
-    const s = (CONFIG.ntfyTopicSecret || '').trim();
+    const s = (CONFIG.personalTopicSecret || '').trim();
     return s ? `${t}-${s}` : t;
   }
 
@@ -10560,16 +10615,156 @@ function checkInventoryDeltaWear() {
     });
   }
 
+  // Simple DJB2 string hashing function
+  function simpleHash(str) {
+    let hash = 5381;
+    for (let i = 0; i < str.length; i++) {
+      hash = ((hash << 5) + hash) + str.charCodeAt(i);
+      hash = hash & hash;
+    }
+    return hash.toString(36);
+  }
+
+  let activeMirrorLockVal = null;
+  const BOUNTY_MIRROR_POLL_MS = 3000;
+  const BOUNTY_MIRROR_LOCK_TTL_MS = 1500;
+
+  async function acquireMirrorPollSlot() {
+    const nowMs = now();
+    if (nowMs - GM_getValue(KEYS.bountyMirrorLastPollAt, 0) < BOUNTY_MIRROR_POLL_MS) return false;
+    const lock = GM_getValue(KEYS.bountyMirrorPollLock, 0);
+    if (lock && (nowMs - lock < BOUNTY_MIRROR_LOCK_TTL_MS)) return false;
+
+    const myLockVal = nowMs + Math.random();
+    GM_setValue(KEYS.bountyMirrorPollLock, myLockVal);
+    await new Promise((r) => setTimeout(r, 30 + Math.floor(Math.random() * 50)));
+    if (GM_getValue(KEYS.bountyMirrorPollLock, 0) !== myLockVal) {
+      return false;
+    }
+
+    activeMirrorLockVal = myLockVal;
+    GM_setValue(KEYS.bountyMirrorLastPollAt, nowMs);
+    return true;
+  }
+
+  async function pollBountyTopic() {
+    if (!CONFIG.featBountyNotify || !CONFIG.featBountyNotif) return;
+    const bountyTopic = getEffectiveTopic();
+    if (!bountyTopic) return;
+    const personalTopic = getEffectivePersonalTopic();
+    if (!personalTopic || bountyTopic === personalTopic) return;
+
+    if (!(await acquireMirrorPollSlot())) return;
+
+    try {
+      const res = await gmRequest({
+        method: 'GET',
+        url: `${NTFY_BASE}/${bountyTopic}/json?poll=1&since=30s`
+      });
+      const msgs = parseNtfyNdjson(res.text);
+      if (!msgs.length) return;
+
+      const alliesSet = await resolveAllyCountryIds(false);
+      const cascadeSet = await resolveAllyCountryIds(true);
+      const targetSet = CONFIG.bountyScope === 'all' ? null : (CONFIG.bountyScope === 'cascade' ? cascadeSet : alliesSet);
+
+      let processedHashes = GM_getValue(KEYS.bountyMirrorProcessedHashes, []);
+      if (!Array.isArray(processedHashes)) processedHashes = [];
+
+      for (const m of msgs) {
+        if (m.event !== 'message') continue;
+        const title = m.title || '';
+        const body = m.message || '';
+        const tags = m.tags || [];
+
+        if (!tags.includes('crossed_swords')) continue;
+        const bkey = tags.find(t => t.startsWith('bkey_'));
+        if (!bkey) continue;
+        if (!title.startsWith('⚔️') || !title.includes(': ') || !title.includes(' vs ')) continue;
+        if (!body.includes('| Pool: ') && !body.includes('| Topf: ')) continue;
+        if (!body.includes('| Rate: ')) continue;
+
+        const msgHash = simpleHash(title + '\n' + body);
+        if (processedHashes.includes(msgHash)) continue;
+
+        if (targetSet) {
+          let allyCountryName = '';
+          const deMatch = body.match(/(?:Kämpfe für)\s+([^(]+)\s+\(/i);
+          const enMatch = body.match(/(?:Fight for)\s+([^(]+)\s+\(/i);
+          const match = deMatch || enMatch;
+          if (match) {
+            allyCountryName = match[1].trim();
+          }
+
+          if (allyCountryName) {
+            const map = await loadCountryMap();
+            let countryMatched = false;
+            for (const cid of targetSet) {
+              const cName = map[cid]?.name;
+              if (cName && cName.toLowerCase() === allyCountryName.toLowerCase()) {
+                countryMatched = true;
+                break;
+              }
+            }
+            if (!countryMatched) {
+              dbg('bountyNotify', 'debug', `mirrored bounty filtered out (country not in scope: ${allyCountryName})`);
+              continue;
+            }
+          } else {
+            dbg('bountyNotify', 'debug', 'failed to parse country name from bounty body', body);
+            continue;
+          }
+        }
+
+        const safeTitle = cleanHeaderValue(title);
+        const headers = {
+          Title: safeTitle,
+          Priority: m.priority || 'default',
+          Tags: tags.filter(t => !t.startsWith('cid_')).join(','),
+        };
+        if (m.click) headers.Click = m.click;
+
+        const mirrorRes = await gmRequest({
+          method: 'POST',
+          url: `${NTFY_BASE}/${personalTopic}`,
+          data: body,
+          headers
+        });
+
+        if (mirrorRes.status >= 200 && mirrorRes.status < 300) {
+          dbg('bountyNotify', 'debug', `mirrored bounty to personal topic: ${bkey}`);
+          processedHashes.push(msgHash);
+          if (processedHashes.length > 10) {
+            processedHashes.shift();
+          }
+          GM_setValue(KEYS.bountyMirrorProcessedHashes, processedHashes);
+        } else {
+          dbg('bountyNotify', 'error', `failed to mirror bounty: ${mirrorRes.status}`);
+        }
+      }
+    } catch (e) {
+      dbg('bountyNotify', 'error', 'mirror poll/push failed', e.message);
+    }
+  }
+
   let bountyInterval = null;
+  let bountyMirrorInterval = null;
   function initBountyNotify() {
     regFeature('bountyNotify', 'Bounty-Push');
     if (bountyInterval) clearInterval(bountyInterval);
     bountyInterval = setInterval(() => { guard('bountyNotify', pollBounties); }, BOUNTY_POLL_MS);
     guard('bountyNotify', pollBounties);
     guard('bountyNotify', registerBountyTopic);
+
+    if (bountyMirrorInterval) clearInterval(bountyMirrorInterval);
+    if (CONFIG.featBountyNotif) {
+      bountyMirrorInterval = setInterval(() => { guard('bountyNotify', pollBountyTopic); }, 3000);
+      guard('bountyNotify', pollBountyTopic);
+    }
   }
   function teardownBountyNotify() {
     if (bountyInterval) { clearInterval(bountyInterval); bountyInterval = null; }
+    if (bountyMirrorInterval) { clearInterval(bountyMirrorInterval); bountyMirrorInterval = null; }
     bountyColdStartDone = false;
     setHealth('bountyNotify', 'idle', 'disabled in settings');
   }
@@ -10606,12 +10801,15 @@ function checkInventoryDeltaWear() {
     CONFIG.featPillNotifWindow = GM_getValue(KEYS.featPillNotifWindow, false);
     CONFIG.featPillNotifDebuff = GM_getValue(KEYS.featPillNotifDebuff, false);
     CONFIG.featBountyNotify = GM_getValue(KEYS.featBountyNotify, CONFIG.featBountyNotify);
+    CONFIG.featBountyNotif = GM_getValue(KEYS.featBountyNotif, false);
     CONFIG.ntfyTopic = GM_getValue(KEYS.ntfyTopic, CONFIG.ntfyTopic);
     CONFIG.ntfyTopicSecret = GM_getValue(KEYS.ntfyTopicSecret, CONFIG.ntfyTopicSecret);
+    CONFIG.personalTopic = GM_getValue(KEYS.personalTopic, '');
+    CONFIG.personalTopicSecret = GM_getValue(KEYS.personalTopicSecret, '');
     CONFIG.bountyOwnCountryOverride = GM_getValue(KEYS.bountyOwnCountryOverride, CONFIG.bountyOwnCountryOverride);
     CONFIG.bountyScope = GM_getValue(KEYS.bountyScope, CONFIG.bountyScope || 'cascade') || 'cascade';
     CONFIG.featMarketGraph = GM_getValue(KEYS.featMarketGraph, false);
-    CONFIG.featPnlTracker = GM_getValue(KEYS.featPnlTracker, true);
+    CONFIG.featPnlTracker = GM_getValue(KEYS.featPnlTracker, false);
     CONFIG.pillBuffH = GM_getValue(KEYS.pillBuffH, CONFIG.pillBuffH);
     CONFIG.pillKnifeH = GM_getValue(KEYS.pillKnifeH, CONFIG.pillKnifeH);
     CONFIG.pillDebuffH = GM_getValue(KEYS.pillDebuffH, CONFIG.pillDebuffH);
