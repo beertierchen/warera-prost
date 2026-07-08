@@ -5761,18 +5761,24 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
     const headers = {
       Title: safeTitle,
       Priority: priority,
-      Tags: `${tags},v${SCRIPT_VERSION},cid_${bountyClientId()}`
+      Tags: `${tags},v${SCRIPT_VERSION},cid_${bountyClientId()}`,
+      'Content-Type': 'text/plain; charset=utf-8'
     };
 
-    const res = await gmRequest({
-      method: 'POST',
-      url: `${NTFY_BASE}/${topic}`,
-      data: body,
-      headers
-    });
-    const ok = res.status >= 200 && res.status < 300;
-    dbg('pillReminder', ok ? 'debug' : 'error', `ntfy personal send ${type}`, res.status, topic);
-    return ok;
+    try {
+      const res = await gmRequest({
+        method: 'POST',
+        url: `${NTFY_BASE}/${topic}`,
+        data: body,
+        headers
+      });
+      const ok = res.status >= 200 && res.status < 300;
+      dbg('pillReminder', ok ? 'debug' : 'error', `ntfy personal send ${type}`, res.status, topic);
+      return ok;
+    } catch (e) {
+      dbg('pillReminder', 'error', `ntfy personal send ${type} failed`, e.message);
+      return false;
+    }
   }
 
   function testPersonalPush() {
