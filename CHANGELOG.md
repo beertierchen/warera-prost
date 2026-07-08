@@ -1,5 +1,33 @@
 # CHANGELOG
 
+## 2026-07-08 | Detaillierter Kassenzettel & Gold-Delta-Abstimmung (v0.8.15)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`
+
+**Änderungen (Deutsch):**
+- **Detaillierterer Kassenzettel**: Der Beleg in der Browser-Konsole schlüsselt nun Verkäufe, Einkäufe, sonstige Einnahmen (Schrott, Spenden, etc.) und sonstige Ausgaben (Spenden) detailliert auf, statt sie nur aufzusummieren.
+- **Einkäufe tracken**: Käufe werden jetzt über P&L-Logs erfasst und im Beleg unter der neuen Sektion `--- KÄUFE (In Käufe gebunden) ---` aufgeführt.
+- **Gruppierung gleicher Einträge**: Doppelte oder identische Einträge (wie z. B. mehrfaches Schrott-Zerschreddern oder wiederholte Spenden an denselben Empfänger) werden im Beleg zusammengefasst, um die Ausgabe übersichtlich zu halten.
+- **Konsistente Benennung und Abstimmung**: Das UI-Label für sonstige Ausgaben wurde zu "Spenden/Sonstiges" geändert. Am Ende des Belegs wird nun eine detaillierte Abstimmungsrechnung angezeigt, die den Übergang von Gesamt-P&L zu Gold Delta nachvollziehbar macht.
+
+**Changes (English):**
+- **Detailed Receipt Layout**: The browser console receipt now breaks down sales, purchases, other income (scraps, incoming donations, etc.), and other expenses (outgoing donations) into detailed lists instead of just showing totals.
+- **Track Capitalized Purchases**: Item purchases are now logged and displayed in a dedicated `--- KÄUFE (In Käufe gebunden) ---` section inside the receipt.
+- **Group Duplicate Entries**: Identical entries (such as multiple scrap salvage operations or multiple donations to the same recipient) are aggregated to keep the receipt clean and readable.
+- **Reconciliation & Label Consistency**: The UI label for other expenses was changed to "Spenden/Sonstiges" (Donations/Other). A reconciliation table was added at the bottom of the receipt to clearly explain the difference between Total P&L and Gold Delta.
+
+## 2026-07-08 | Pille-Overlays deaktiviert & Eingeklappte Einstellungen (v0.8.14)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/test-advisor-load.js`
+
+**Änderungen (Deutsch):**
+- **Deaktivierung der Overlays auf der Pille**: Alle farbigen Rahmen und Overlays (sowohl das grüne READY- als auch das gelbe H&H-Overlay) auf der Cocain-Itemkarte im Inventar wurden entfernt, da diese die Sicht auf die Itemkarte gestört haben.
+- **Eingeklappte Einstellungen als Standard**: Beim Öffnen der Einstellungen sind die verschiedenen Optionengruppen (wie z. B. Pillen-Optionen, Bounty-Optionen oder Advisor-Einstellungen) standardmäßig eingeklappt, was für ein saubereres Layout sorgt.
+
+**Changes (English):**
+- **Disabled Cocaine Item Overlays**: Removed all colored borders and overlays (both the green READY and yellow H&H overlays) from the Cocaine item card in the inventory, resolving visual clutter on the card itself.
+- **Collapsed Settings by Default**: Option categories (such as Pill options, Bounty options, or Advisor settings) inside the settings modal are now collapsed by default when opening, providing a cleaner layout.
+
 ## 2026-07-07 | Kopfgeld-Mehrfachmeldungs-Schutz & Einstellungs-Fallback (v0.8.13)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/bounty-notify.test.js`
