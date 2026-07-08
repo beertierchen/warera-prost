@@ -5743,14 +5743,16 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
 
     showLocalPersonalPopup(type, title, body, icon);
 
-    try {
-      const N = PAGE_WINDOW.Notification;
-      if (N && (await ensureNotifPermission()) === 'granted') {
-        new N(title, { body });
+    (async () => {
+      try {
+        const N = PAGE_WINDOW.Notification;
+        if (N && (await ensureNotifPermission()) === 'granted') {
+          new N(title, { body });
+        }
+      } catch (e) {
+        dbg('pillReminder', 'error', 'local browser notification failed', e.message);
       }
-    } catch (e) {
-      dbg('pillReminder', 'error', 'local browser notification failed', e.message);
-    }
+    })();
 
     const topic = getEffectivePersonalTopic();
     if (!topic) return false;
