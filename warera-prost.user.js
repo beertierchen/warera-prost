@@ -5669,8 +5669,75 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
     return s ? `${t}-${s}` : t;
   }
 
+  function showLocalPersonalPopup(type, title, body, icon = '🔔') {
+    try {
+      ensureBountyPopupStyle();
+      const doc = document;
+      let box = doc.getElementById(POPUP_CONTAINER_ID);
+      if (!box) {
+        box = doc.createElement('div');
+        box.id = POPUP_CONTAINER_ID;
+        doc.body.appendChild(box);
+      }
+
+      const chip = type.toUpperCase();
+      const closeBtn = `<button class="wia-bt-close" aria-label="${bountyEsc(t('bountyPopupClose'))}">×</button>`;
+      const compact = (PAGE_WINDOW.innerWidth || 9999) < BOUNTY_POPUP_COMPACT_PX;
+
+      const toast = doc.createElement('div');
+      let borderLeftColor = '#3b82f6';
+      if (type === 'HnH') borderLeftColor = '#10b981';
+      else if (type === 'Window') borderLeftColor = '#fbbf24';
+      else if (type === 'Debuff') borderLeftColor = '#8b5cf6';
+
+      toast.className = compact ? 'wia-bounty-toast compact' : 'wia-bounty-toast';
+      toast.style.borderLeftColor = borderLeftColor;
+      toast.setAttribute('role', 'alert');
+      toast.tabIndex = 0;
+
+      if (compact) {
+        toast.innerHTML = closeBtn +
+          `<span class="wia-bt-dot" style="background: ${borderLeftColor}; box-shadow: 0 0 8px ${borderLeftColor};" aria-hidden="true"></span>` +
+          `<span class="wia-bt-col">` +
+            `<span class="wia-bt-action">${bountyEsc(title)}</span>` +
+            `<span class="wia-bt-ctx">${bountyEsc(body)}</span>` +
+          `</span>`;
+      } else {
+        toast.innerHTML = closeBtn +
+          `<div class="wia-bt-head"><span class="wia-bt-chip" style="color: ${borderLeftColor}; background: rgba(59,130,246,0.1); border: 1px solid rgba(59,130,246,0.2);">${bountyEsc(chip)}</span><span class="wia-bt-swords" aria-hidden="true">${icon}</span></div>` +
+          `<div class="wia-bt-action">${bountyEsc(title)}</div>` +
+          `<div class="wia-bt-ctx" style="margin-top: 6px; line-height: 1.4; color: #e5e7eb;">${bountyEsc(body)}</div>`;
+      }
+
+      const dismiss = () => {
+        if (toast.parentNode) {
+          toast.style.animation = 'none';
+          toast.style.transition = 'opacity 0.25s';
+          toast.style.opacity = '0';
+          setTimeout(() => { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 250);
+        }
+      };
+
+      toast.querySelector('.wia-bt-close').onclick = (e) => { e.stopPropagation(); dismiss(); };
+      toast.onclick = () => { dismiss(); };
+
+      box.appendChild(toast);
+      setTimeout(dismiss, BOUNTY_POPUP_MS);
+      dbg('pillReminder', 'debug', 'local personal popup shown', type);
+    } catch (e) {
+      dbg('pillReminder', 'error', 'local personal popup failed', e.message);
+    }
+  }
+
   async function sendPersonalNtfy(type, title, body, tags, priority = 'default') {
-    // 1. Show browser notification locally if playing in this tab
+    let icon = '🔔';
+    if (tags.includes('poultry_leg')) icon = '🍗';
+    else if (tags.includes('alarm_clock')) icon = '⏰';
+    else if (tags.includes('sparkles')) icon = '✨';
+    else if (tags.includes('pill')) icon = '💊';
+
+    showLocalPersonalPopup(type, title, body, icon);
+
     try {
       const N = PAGE_WINDOW.Notification;
       if (N && (await ensureNotifPermission()) === 'granted') {
