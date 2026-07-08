@@ -1104,7 +1104,7 @@ try {
   // Assertions for cold start seeding
   assert.strictEqual(personalRequests.length, 0, 'No notifications should be sent on cold start');
   assert.strictEqual(globalThis.GM_getValue('wia.lastNotifiedHnH'), true, 'lastNotifiedHnH should be seeded to true');
-  assert.strictEqual(globalThis.GM_getValue('wia.lastNotifiedPillWindowDate'), new Date(windowTime.getTime()).toDateString(), 'lastNotifiedPillWindowDate should be seeded');
+  assert.strictEqual(globalThis.GM_getValue('wia.lastNotifiedPillWindowDate'), String(globalThis.getCurrentWindowStart(windowTime.getTime())), 'lastNotifiedPillWindowDate should be seeded');
   assert.strictEqual(globalThis.GM_getValue('wia.lastNotifiedDebuffEnd'), now - 25 * 3600000, 'lastNotifiedDebuffEnd should be seeded');
 
   // 2. Triggering notification: H&H drops then becomes full again

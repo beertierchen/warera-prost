@@ -2116,6 +2116,7 @@
     globalThis.renderHnHBudget = renderHnHBudget;
     globalThis.removeHnHBudget = removeHnHBudget;
     globalThis.nextWindowStart = nextWindowStart;
+    globalThis.getCurrentWindowStart = getCurrentWindowStart;
     globalThis.isInsidePreferredWindow = isInsidePreferredWindow;
     globalThis.getTierItemCodes = getTierItemCodes;
     globalThis.formatItemCode = formatItemCode;
@@ -5715,7 +5716,7 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
       }
 
       if (inWindow) {
-        GM_setValue(KEYS.lastNotifiedPillWindowDate, new Date(nowVal).toDateString());
+        GM_setValue(KEYS.lastNotifiedPillWindowDate, String(getCurrentWindowStart(nowVal)));
       } else {
         GM_setValue(KEYS.lastNotifiedPillWindowDate, '');
       }
@@ -5752,10 +5753,10 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
     // 2. Preferred window
     if (CONFIG.featPillNotifWindow && CONFIG.pillPrefWindowFrom) {
       if (inWindow) {
-        const todayStr = new Date(nowVal).toDateString();
-        const lastDate = GM_getValue(KEYS.lastNotifiedPillWindowDate, '');
-        if (lastDate !== todayStr) {
-          GM_setValue(KEYS.lastNotifiedPillWindowDate, todayStr);
+        const winStart = getCurrentWindowStart(nowVal);
+        const lastWinStart = GM_getValue(KEYS.lastNotifiedPillWindowDate, '');
+        if (String(lastWinStart) !== String(winStart)) {
+          GM_setValue(KEYS.lastNotifiedPillWindowDate, String(winStart));
           sendPersonalNtfy('Window', t('ntfyPillWindowTitle'), t('ntfyPillWindowBody', { time: CONFIG.pillPrefWindowFrom }), 'pill,alarm_clock');
         }
       }
@@ -5808,6 +5809,34 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
     } else {
       return now >= dFrom.getTime() && now < dFrom.getTime() + 7200000;
     }
+  }
+
+  function getCurrentWindowStart(nowVal) {
+    if (!CONFIG.pillPrefWindowFrom) return 0;
+    const partsFrom = CONFIG.pillPrefWindowFrom.split(':');
+    if (partsFrom.length !== 2) return 0;
+    const fromHrs = parseInt(partsFrom[0], 10);
+    const fromMins = parseInt(partsFrom[1], 10);
+
+    let dFrom = new Date(nowVal);
+    dFrom.setHours(fromHrs, fromMins, 0, 0);
+
+    if (CONFIG.pillPrefWindowTo) {
+      const partsTo = CONFIG.pillPrefWindowTo.split(':');
+      if (partsTo.length === 2) {
+        const toHrs = parseInt(partsTo[0], 10);
+        const toMins = parseInt(partsTo[1], 10);
+        let dTo = new Date(nowVal);
+        dTo.setHours(toHrs, toMins, 0, 0);
+        if (dTo.getTime() < dFrom.getTime()) {
+          if (nowVal < dTo.getTime()) {
+            dFrom.setDate(dFrom.getDate() - 1);
+            dFrom.setHours(fromHrs, fromMins, 0, 0);
+          }
+        }
+      }
+    }
+    return dFrom.getTime();
   }
 
   function nextWindowStart(now) {
@@ -9747,13 +9776,7 @@ function checkInventoryDeltaWear() {
 
   // ── Bounty-Notify module ──
   function getEffectiveTopic() {
-    let t = (CONFIG.ntfyTopic || '').trim();
-    if (!t) {
-      t = GM_getValue(KEYS.bountyAutoTopic, '') || 'wia-bounty-all';
-    }
-    const s = (CONFIG.ntfyTopicSecret || '').trim();
-    if (!t) return '';
-    return s ? `${t}-${s}` : t;
+    return GM_getValue(KEYS.bountyAutoTopic, '') || 'wia-bounty-all';
   }
 
   const NTFY_BASE = 'https://ntfy.sh';
@@ -10624,7 +10647,7 @@ function checkInventoryDeltaWear() {
 
   async function registerBountyTopic() {
     if (!CONFIG.featBountyNotify) return;
-    const baseTopic = (CONFIG.ntfyTopic || '').trim() || GM_getValue(KEYS.bountyAutoTopic, '');
+    const baseTopic = GM_getValue(KEYS.bountyAutoTopic, '') || 'wia-bounty-all';
     if (!baseTopic) return;
     try {
       const res = await gmRequest({ method: 'GET', url: `${NTFY_BASE}/wia-bounty-topics/json?poll=1&since=12h` });
@@ -10637,8 +10660,7 @@ function checkInventoryDeltaWear() {
       const identity = await resolveOwnIdentity();
       if (!identity) return;
       const displayStr = identity.allianceName ? `${identity.countryName} / ${identity.allianceName}` : identity.countryName;
-      const hasSecret = !!(CONFIG.ntfyTopicSecret || '').trim();
-      const body = `Topic: ${baseTopic}${hasSecret ? ' (mit Secret)' : ''}\nRegistriert von: ${displayStr}\nZeit: ${new Date().toISOString()}`;
+      const body = `Topic: ${baseTopic}\nRegistriert von: ${displayStr}\nZeit: ${new Date().toISOString()}`;
       
       await gmRequest({
         method: 'POST',
