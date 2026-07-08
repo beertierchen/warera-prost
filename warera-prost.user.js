@@ -4528,10 +4528,13 @@ async function scanInventory(force) {
           <div class="wia-hint" hidden>${t('settingsFeatBattleHint')}</div>
         </div>
         <div class="wia-feat-row" style="margin-top: 6px;">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <input type="checkbox" class="wia-feat-pill" style="width: auto;" ${prevFeatPill ? 'checked' : ''} />
-            <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatPillCheckbox')}</label>
-            <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <input type="checkbox" class="wia-feat-pill" style="width: auto;" ${prevFeatPill ? 'checked' : ''} />
+              <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatPillCheckbox')}</label>
+              <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
+            </div>
+            <input type="checkbox" class="wia-feat-pill-notif" style="width: auto; margin-right: 8px;" ${(prevPillNotifHnH || prevPillNotifWindow || prevPillNotifDebuff) ? 'checked' : ''} />
           </div>
           <div class="wia-hint" hidden>${t('settingsFeatPillHint')}</div>
           <details class="wia-pill-settings-row" style="margin-top: 6px; margin-left: 24px;">
@@ -4703,6 +4706,7 @@ async function scanInventory(force) {
     // alliedCodesRow removed as allied country codes are resolved automatically.
 
     const featPillCheckbox = modal.querySelector('.wia-feat-pill');
+    const pillNotifCheckbox = modal.querySelector('.wia-feat-pill-notif');
     const pillSettingsRow = modal.querySelector('.wia-pill-settings-row');
     const pillNotifHnH = modal.querySelector('.wia-feat-pill-notif-hnh');
     const pillNotifWindow = modal.querySelector('.wia-feat-pill-notif-window');
@@ -4714,6 +4718,7 @@ async function scanInventory(force) {
           pillSettingsRow.setAttribute('open', '');
         } else {
           pillSettingsRow.removeAttribute('open');
+          if (pillNotifCheckbox) pillNotifCheckbox.checked = false;
           if (pillNotifHnH) pillNotifHnH.checked = false;
           if (pillNotifWindow) pillNotifWindow.checked = false;
           if (pillNotifDebuff) pillNotifDebuff.checked = false;
@@ -4721,12 +4726,35 @@ async function scanInventory(force) {
       };
     }
 
+    if (pillNotifCheckbox) {
+      pillNotifCheckbox.onchange = () => {
+        const checked = pillNotifCheckbox.checked;
+        if (checked && featPillCheckbox && !featPillCheckbox.checked) {
+          featPillCheckbox.checked = true;
+          if (featPillCheckbox.onchange) featPillCheckbox.onchange();
+        }
+        if (pillNotifHnH) pillNotifHnH.checked = checked;
+        if (pillNotifWindow) pillNotifWindow.checked = checked;
+        if (pillNotifDebuff) pillNotifDebuff.checked = checked;
+      };
+    }
+
     [pillNotifHnH, pillNotifWindow, pillNotifDebuff].forEach(cb => {
       if (cb) {
         cb.onchange = () => {
-          if (cb.checked && featPillCheckbox && !featPillCheckbox.checked) {
-            featPillCheckbox.checked = true;
-            if (featPillCheckbox.onchange) featPillCheckbox.onchange();
+          if (cb.checked) {
+            if (featPillCheckbox && !featPillCheckbox.checked) {
+              featPillCheckbox.checked = true;
+              if (featPillCheckbox.onchange) featPillCheckbox.onchange();
+            }
+            if (pillNotifCheckbox) pillNotifCheckbox.checked = true;
+          } else {
+            const anyChecked = (pillNotifHnH && pillNotifHnH.checked) ||
+                               (pillNotifWindow && pillNotifWindow.checked) ||
+                               (pillNotifDebuff && pillNotifDebuff.checked);
+            if (!anyChecked && pillNotifCheckbox) {
+              pillNotifCheckbox.checked = false;
+            }
           }
         };
       }
