@@ -1,5 +1,23 @@
 # CHANGELOG
 
+## 2026-07-09 | Persönliche Push-Benachrichtigungen, In-Game Toasts & Einstellungs-Optimierung (v0.8.16)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/test-advisor-load.js`
+
+**Änderungen (Deutsch):**
+- **Zentrale Benachrichtigungs-Optionen**: Ein neuer Bereich in den Einstellungen fasst das persönliche ntfy-Topic und den Geheimschlüssel zusammen. Zudem wird direkt ein ntfy-Link zur einfachen Einrichtung auf dem Smartphone bereitgestellt.
+- **Master-Checkbox für Pillen-Erinnerungen**: Eine Master-Checkbox steuert jetzt alle Benachrichtigungen für den Pill Reminder (H&H voll, Pillenfenster, Debuff abgelaufen) und synchronisiert deren Zustände automatisch.
+- **In-Game Toasts für Events**: Wenn eine persönliche Benachrichtigung (wie das Pillenfenster) ausgelöst wird, erscheint nun ein optisch ansprechendes Toast-Fenster direkt im Spiel – analog zu den Kopfgeld-Meldungen.
+- **Kopfgeld-Weiterleitung repariert**: Fehler in der Validierung und Filterung von geteilten Kopfgeldern wurden behoben, sodass diese nun zuverlässig an das persönliche ntfy-Topic weitergeleitet werden.
+- **Cleanere Einstellungen**: Der alte Cache-Status-Text wurde entfernt, um das Einstellungsmenü übersichtlicher zu gestalten. Unter *Diagnose* gibt es zudem nun Buttons, um alle Benachrichtigungen zu Testzwecken live auszulösen.
+
+**Changes (English):**
+- **Centralized Notification Options**: A new general notification details block houses the personal ntfy topic and secret key, providing a direct ntfy link for easy subscription on your phone.
+- **Pill Reminder Master Checkbox**: A master checkbox now controls all Pill Reminder notifications (H&H full, preferred window, debuff expired) and keeps sub-states synchronized automatically.
+- **In-Game Event Toasts**: When a personal notification fires, a beautiful visual toast popup is shown directly inside the game UI—similar to the bounty toasts.
+- **Fixed Bounty Forwarding**: Resolved formatting and validation filter issues so that shared bounties are now successfully mirrored to your personal ntfy topic.
+- **Cleaner Settings**: Removed the old cache status strip for a cleaner settings menu. Added notification test buttons under *Diagnose* to trigger each popup and push event on demand.
+
 ## 2026-07-08 | Detaillierter Kassenzettel & Gold-Delta-Abstimmung (v0.8.15)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`
