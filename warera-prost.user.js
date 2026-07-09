@@ -10849,9 +10849,9 @@ function checkInventoryDeltaWear() {
         if (!tags.includes('crossed_swords')) continue;
         const bkey = tags.find(t => t.startsWith('bkey_'));
         if (!bkey) continue;
-        if (!title.startsWith('⚔️') || !title.includes(': ') || !title.includes(' vs ')) continue;
+        if (!title.includes(': ') || !title.includes(' vs ')) continue;
         const hasTopfOrPool = body.includes('Topf') || body.includes('Pool');
-        const hasRateSuffix = /\d+(?:,\d+)?\/1k/.test(body);
+        const hasRateSuffix = /[\d.,]+\/1k/.test(body);
         const hasAction = body.includes('Kämpfe für') || body.includes('Fight for');
         if (!hasTopfOrPool || !hasRateSuffix || !hasAction) continue;
 
@@ -10872,7 +10872,11 @@ function checkInventoryDeltaWear() {
             let countryMatched = false;
             for (const cid of targetSet) {
               const cName = map[cid]?.name;
-              if (cName && cName.toLowerCase() === allyCountryName.toLowerCase()) {
+              const cCode = map[cid]?.code;
+              if (
+                (cName && cName.toLowerCase() === allyCountryName.toLowerCase()) ||
+                (cCode && cCode.toLowerCase() === allyCountryName.toLowerCase())
+              ) {
                 countryMatched = true;
                 break;
               }
