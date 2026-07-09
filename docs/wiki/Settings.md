@@ -29,8 +29,15 @@ panel stays compact.
 ## Diagnostics
 
 A built-in **[Diagnostics](Diagnostics)** panel shows feature health, scan
-performance (a green/yellow/red traffic-light) and a debug dump — handy when
-something looks off after a game update.
+performance (a green/yellow/red traffic-light) and a debug dump.
+* **Test Notifications**: An expandable section allows you to trigger all in-game toasts and ntfy push notifications (Bounty, HnH, Pill Window, Debuff) directly for instant verification.
+
+## Notifications (ntfy.sh)
+
+A dedicated settings category configures your personal recipient feed:
+* **Personal ntfy Topic** — The channel (defaults to `wia-user-<yourPlayerId>`) you want to subscribe to.
+* **Topic Secret (optional)** — A secret key appending to the topic URL to protect your alerts from third parties.
+* **Subscription Link** — A direct link to open and subscribe to your topic on `ntfy.sh`.
 
 ## Cheat Sheet
 

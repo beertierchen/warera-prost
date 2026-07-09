@@ -31,3 +31,16 @@ Um zu verhindern, dass du Regeneration verschenkst oder zum Ende eines Zyklus un
 Diese Funktion ist **standardmäßig deaktiviert**.
 
 Du kannst sie aktivieren, indem du den PROST-Einstellungsdialog (Zahnrad-Symbol ⚙) öffnest und den Haken bei **Pill Reminder** setzt.
+
+---
+
+## 🔔 Benachrichtigungen & Toasts
+
+Der Pill Reminder kann Push- und Desktop-Benachrichtigungen senden, wenn bestimmte Ereignisse eintreffen. Diese können über die **Benachrichtigungs-Checkbox** (auf der rechten Seite der Pill-Reminder-Zeile) oder einzeln im ausgeklappten Detailmenü gesteuert werden:
+
+* **Master-Checkbox:** Aktiviert oder deaktiviert alle drei Pillen-Benachrichtigungen auf einmal.
+* **HP & Hunger voll:** Sendet eine Meldung, sobald Leben und Hunger beide wieder bei 100% sind und du bereit für die nächste Pille bist.
+* **Pillenzeitfenster:** Erinnert dich, sobald dein konfiguriertes bevorzugtes Pillenzeitfenster erreicht ist.
+* **Debuff abgelaufen:** Informiert dich, wenn die Abklingzeit der Pille abgelaufen ist und der Charakter wieder ohne Mali agieren kann.
+
+*Lokale Toasts:* Jedes dieser Events löst zudem direkt im Spiel oben mittig ein animiertes, farbiges Toast-Fenster aus, wenn du im Browser aktiv bist.

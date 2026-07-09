@@ -6,53 +6,38 @@ The **Bounty Push Notifications** feature is a background poller that checks for
 
 ## How It Works
 
-1. **Background Polling:** The script polls active battles in the background every 30 seconds.
-2. **Tab Deduplication:** If you have WareEra open in multiple browser tabs, a cross-tab lock ensures only one tab polls the server at a time.
-3. **Multi-device Staggering:** If you have WareEra open on different devices (e.g. PC and laptop), a randomized stagger delay (0–10s) and a double read-back check on the ntfy.sh history prevent duplicate notifications for the same bounty.
-4. **Target Filtering:** Pushes are only triggered for active, unpaid bounties matching your configured notification scope.
-5. **Local Display (Browser Notification & In-Game Popup):** In addition to the push notification, detection is shown locally on the polling tab: via a native browser notification (lazy permission request on first display) and a centered, stacking in-game popup toast (8s duration, click redirects to the battle page).
+1. **Background Polling & Publishing:** The script polls active battles in the background every 30 seconds and publishes newly detected bounties to community channels (e.g., `wia-bounty-{alliance}-casc`).
+2. **Mirroring to your Personal Topic:** A cross-tab background poller checks the community topic every 3 seconds, filters the entries based on your configured **Notification Scope**, and mirrors matching alerts to your **Personal Topic** (e.g. `wia-user-{userId}`).
+3. **Tab Deduplication & Locks:** If you have WareEra open in multiple browser tabs, a cross-tab lock ensures only one tab polls the topics and mirrors the alerts at any given time.
+4. **Local Display (In-Game Popup & Browser Notification):** In addition to the ntfy push notification, bounty detections are immediately shown as a styled, stackable in-game popup toast at the top center of the page (8s duration, click redirects to the battle) and as a native desktop browser notification.
 
 ---
 
 ## Notification Scopes
 
-You can choose between three notification scopes in the settings dialog:
-* **All (`all`):** Sends notifications for all active bounties in the game (no country/alliance filter).
-* **Allies (`allies`):** Filters bounties for your own country, your alliance members, and your own defensive pacts/allies.
-* **Cascade (`cascade` - Default):** In addition to your own allies, this cascades to include the allies and defensive pacts of all countries in your alliance.
+You can choose which bounties to mirror to your personal topic:
+* **All (`all`):** Mirrors all active community bounties (no country/alliance filter).
+* **Allies (`allies`):** Mirrors only bounties targeting your own country, your alliance members, and your direct defensive pacts/allies.
+* **Cascade (`cascade` - Default):** In addition to your own allies, this cascades to include the allies and defensive pacts of all member countries in your alliance.
 
 ---
 
-## Topic Naming Scheme
+## Personal Topic (ntfy.sh)
 
-By default, the script dynamically generates a public ntfy topic name based on your in-game identity and selected scope:
-* **Scope `all`:** `wia-bounty-all`
-* **Scope `allies`:** `wia-bounty-{alliance}` (or `wia-bounty-{country}` if you are not in an alliance).
-* **Scope `cascade`:** `wia-bounty-{alliance}-casc` (or `wia-bounty-{country}-casc` if you are not in an alliance).
+To receive push notifications, PROST configures a dedicated personal recipient topic:
 
-*Note: Special characters in country or alliance names are automatically stripped (e.g. `b.e.e.r.` becomes `beer` -> `wia-bounty-beer-casc`).*
-
-### Custom Topic & Topic Secrets
-If you want to use a custom topic name, you can type it in the **ntfy topic (base)** field. 
-
-To keep your notifications private and prevent other players from spying on your alerts, add a secret key in the **Topic secret (optional)** field. This will append the secret to your topic URL (e.g. `wia-bounty-beer-x7q2`), ensuring only those who know the secret can listen.
-
-### Mirroring to `wia-bounty-all` & Topic Linking
-Every detected bounty is mirrored to the global topic `wia-bounty-all`.
-* **Linking without Secret:** If no secret is configured, the mirrored notification includes a ntfy action ("Open topic") and a body line referencing the source topic, allowing other players to easily join your feed.
-* **Protection with Secrets:** If a secret is set, the mirrored notification is anonymized — no link or topic reference is attached, preserving the secrecy of your private feed.
+* **Personal ntfy Topic:** Defaults to `wia-user-{yourPlayerId}`. This is the topic you subscribe to on your phone or desktop.
+* **Topic Secret (optional):** To prevent others from guessing your topic URL, you can configure a secret (e.g. `secret123`). Your alerts will then be pushed to `wia-user-{yourPlayerId}-secret123`.
+* **Direct Subscription Link:** Inside the PROST settings modal, click the link directly below the topic input field to quickly open and subscribe to your personal feed in your browser.
 
 ---
 
 ## Central Registry (`wia-bounty-topics`)
 
-To coordinate active notification topics, the script automatically logs its activation on a central directory topic: **`wia-bounty-topics`**.
+To coordinate active community notification topics, clients automatically announce their current alliance/country topics to the registry: **`wia-bounty-topics`**.
 
-* **Privacy Protection:** The script only logs the **base topic** (e.g. `wia-bounty-beer`) and **never leaks your Topic Secret** to the public log.
-* **Announced details:** The registration message displays your base topic name, your country/alliance, and the activation timestamp.
-* **Anti-Spam:** Before logging, the client checks the 12-hour history of `wia-bounty-topics` and skips sending the message if your topic is already registered.
-
-You can visit [https://ntfy.sh/wia-bounty-topics](https://ntfy.sh/wia-bounty-topics) in your browser to see a list of all active bounty topics being utilized by the community.
+* **Privacy Protection:** The script only registers the public **base topic** (e.g. `wia-bounty-beer`) and **never reveals your personal topic or secret key to the public log.**
+* **Anti-Spam:** Detections are cross-referenced with a 12-hour history to prevent duplicate registry announcements.
 
 ---
 
@@ -62,13 +47,11 @@ You can visit [https://ntfy.sh/wia-bounty-topics](https://ntfy.sh/wia-bounty-top
 1. Install the free **ntfy** app on your phone:
    * **Android:** Download from [Google Play Store](https://play.google.com/store/apps/details?id=io.heckel.ntfy) or [F-Droid](https://f-droid.org/en/packages/io.heckel.ntfy/).
    * **iOS:** Download from [Apple App Store](https://apps.apple.com/us/app/ntfy/id1625396347).
-2. Open the ntfy app.
-3. Tap the **+** (Add subscription) button.
-4. Enter the topic name shown in your PROST settings (e.g. `wia-bounty-beer-casc` or `wia-bounty-beer-casc-YOURSECRET`).
-5. Tap **Subscribe**. You will now receive instant push notifications on your phone!
+2. Open the ntfy app and tap the **+** (Add subscription) button.
+3. Enter your personal topic URL as displayed in your PROST settings (e.g., `wia-user-69fa68...` or `wia-user-69fa68...-YOURSECRET`).
+4. Tap **Subscribe**. You will now receive all bounty alerts (and Pill Reminder warnings) directly as push notifications!
 
 ### 💻 On Desktop (Web Interface - No Account Required)
-No registration, app installation, or user account is needed to receive notifications on your PC.
-1. Open your web browser and go to `https://ntfy.sh/[YOUR_TOPIC]` (replace `[YOUR_TOPIC]` with the effective topic displayed in your PROST settings).
-2. Click the **Subscribe** button in the web interface to enable web push notifications.
-3. Ensure browser notifications are permitted for `ntfy.sh`. You will receive desktop popup alerts whenever a bounty becomes active.
+1. Click the subscription link in the PROST settings modal or navigate directly to `https://ntfy.sh/wia-user-[YOUR_ID]-[OPTIONAL_SECRET]`.
+2. Click the **Subscribe** button in the web interface to enable browser push notifications.
+3. Allow browser notifications for `ntfy.sh` when prompted. You will now receive desktop popup alerts.

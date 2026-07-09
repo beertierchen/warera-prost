@@ -32,8 +32,16 @@ Panel kompakt bleibt:
 ## Diagnose
 
 Ein eingebautes **[Diagnose](Diagnostics.de)**-Panel zeigt Feature-Health, Scan-Performance
-(grün/gelb/rot-Ampel) und einen Debug-Dump - praktisch, wenn nach einem Spiel-Update etwas
-nicht stimmt.
+(grün/gelb/rot-Ampel) und einen Debug-Dump. 
+* **Benachrichtigungen testen**: Über das ausklappbare Untermenü können alle In-Game Toasts und ntfy-Push-Events (Kopfgeld, HP & Hunger voll, Pillenfenster, Debuff abgelaufen) direkt per Knopfdruck simuliert und getestet werden.
+
+## Benachrichtigungen (ntfy.sh)
+
+Ein eigener Einstellungsbereich konfiguriert das persönliche Empfänger-Topic:
+* **Persönliches ntfy-Topic** — Der Kanal (Standard: `wia-user-<deineSpielerId>`), auf dem du deine Push-Nachrichten empfangen möchtest.
+* **Topic-Secret (optional)** — Ein Geheimschlüssel zum Schutz deines Topics vor unbefugtem Mitlesen.
+* **Abonnement-Link** — Ein direkter Link zu deinem Topic auf `ntfy.sh` für die unkomplizierte Einrichtung.
+
 
 ## API-Token
 

@@ -31,3 +31,16 @@ To prevent wasting regeneration or dropping below 100% H&H at the end of a cycle
 This feature is **disabled by default**.
 
 To enable it, open the PROST settings dialog (⚙ button) and check the **Pill Reminder** option.
+
+---
+
+## 🔔 Notifications & Toasts
+
+The Pill Reminder can trigger push and desktop notifications when specific events occur. These are controlled via the **Notification Checkbox** (on the right-hand side of the Pill Reminder row) or individually in the expanded details block:
+
+* **Master Checkbox:** Checks or unchecks all three Pill Reminder notification options simultaneously.
+* **H&H Full:** Sends an alert as soon as your Health and Hunger both reach 100%, signaling readiness for the next pill.
+* **Preferred Window:** Alerts you when your configured preferred pill consumption window is reached.
+* **Debuff Expired:** Informs you when the pill cooldown phase ends and your character is clear of active debuffs.
+
+*Local Toasts:* Each of these events also triggers a styled, colored in-game popup toast at the top center of the screen when you are active in the browser.
