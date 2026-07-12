@@ -454,3 +454,177 @@ console.log('bounty-notify: topicPresentKeys return format OK');
   console.log('bounty-notify: identity cache fallback OK');
 })().catch((e) => { console.error(e); process.exit(1); });
 
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Blocks below were lost to an accidental `git checkout` of this file and
+// restored/reconstructed afterwards.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── popup refocus freshness gate (reconstructed) ──
+// Mirror of checkAndShowPendingPopups' gate: on (re)focus the whole queued list
+// replays; only triggers younger than POPUP_FRESH_MS may pop. Stale ones are
+// consumed (marked shown) WITHOUT popping; already-shown keys never repeat.
+{
+  const POPUP_FRESH_MS = 90000;
+  function replayGate(triggers, shownSet, nowMs) {
+    const popped = [];
+    for (const item of triggers) {
+      if (shownSet.has(item.key)) continue;
+      if (nowMs - item.time >= POPUP_FRESH_MS) { shownSet.add(item.key); continue; }
+      shownSet.add(item.key);
+      popped.push(item.key);
+    }
+    return popped;
+  }
+  const t0 = 1_000_000_000_000;
+  const shown = new Set(['old-shown']);
+  const popped = replayGate([
+    { key: 'fresh', time: t0 - 5000 },
+    { key: 'edge-fresh', time: t0 - POPUP_FRESH_MS + 1 },
+    { key: 'stale', time: t0 - POPUP_FRESH_MS },
+    { key: 'ancient', time: t0 - 600000 },
+    { key: 'old-shown', time: t0 - 1000 },
+  ], shown, t0);
+  assert.deepStrictEqual(popped, ['fresh', 'edge-fresh'], 'only fresh triggers pop');
+  assert.ok(shown.has('stale') && shown.has('ancient'), 'stale triggers consumed without popping');
+  assert.deepStrictEqual(replayGate([{ key: 'fresh', time: t0 - 5000 }], shown, t0), [],
+    'replay after consumption pops nothing');
+  console.log('bounty-notify: popup refocus freshness gate OK');
+}
+
+// ── mirror dedup by bkey (time-based) ──
+const MIRROR_TTL = 86400000;
+function mirrorPrune(store, nowMs) {
+  const out = {};
+  for (const k of Object.keys(store)) if (nowMs - store[k] <= MIRROR_TTL) out[k] = store[k];
+  return out;
+}
+function mirrorShouldForward(store, bkey, nowMs) {
+  if (store[bkey]) return false;
+  store[bkey] = nowMs;
+  return true;
+}
+
+{
+  let store = {};
+  const t0 = 1_000_000_000_000;
+  const bkeyA = 'bkey_6a4f1e75a9e526de9f9eaa7f_attacker_1783608484948';
+
+  // 10 polls of the SAME bounty within its 30s window → forwarded exactly once.
+  let fwd = 0;
+  for (let i = 0; i < 10; i++) {
+    store = mirrorPrune(store, t0 + i * 3000);
+    if (mirrorShouldForward(store, bkeyA, t0 + i * 3000)) fwd++;
+  }
+  assert.strictEqual(fwd, 1, 'same bkey across ~10 polls forwards once (cap-10 thrash fixed)');
+
+  // 20 other distinct bounties flow through (would have evicted bkeyA from a cap-10 array)…
+  for (let i = 0; i < 20; i++) mirrorShouldForward(store, `bkey_other_${i}`, t0 + 30000);
+  // …bkeyA reappears (e.g. re-published a minute later) → still deduped, no eviction.
+  assert.strictEqual(mirrorShouldForward(store, bkeyA, t0 + 60000), false,
+    'bkeyA not re-forwarded despite 20 newer entries');
+
+  // A genuinely different bounty round (new effectiveAt → new bkey) DOES forward.
+  const bkeyA2 = 'bkey_6a4f1e75a9e526de9f9eaa7f_attacker_1783608000882';
+  assert.strictEqual(mirrorShouldForward(store, bkeyA2, t0 + 61000), true,
+    'different bkey (new bounty round) forwards');
+
+  // After TTL the entry is pruned → treated as new again (acceptable, 24h later).
+  store = mirrorPrune(store, t0 + MIRROR_TTL + 1);
+  assert.strictEqual(mirrorShouldForward(store, bkeyA, t0 + MIRROR_TTL + 1), true,
+    'after TTL, treated as new');
+  console.log('bounty-notify: mirror dedup by bkey (time-based) OK');
+}
+
+// ── v0.8.17: ntfy 429 layer (backoff, Retry-After, no blind sends) ──
+// Mirror of the userscript's ntfy rate-limit helpers (IIFE can't be required).
+const NTFY_BACKOFF_BASE_MS = 5 * 60 * 1000;
+const NTFY_BACKOFF_CAP_MS = 60 * 60 * 1000;
+function ntfyBackoffMsFor(retryAfterSec, streak) {
+  const escalated = Math.min(NTFY_BACKOFF_BASE_MS * Math.pow(2, Math.max(0, (streak || 1) - 1)), NTFY_BACKOFF_CAP_MS);
+  return Math.max(escalated, (retryAfterSec || 0) * 1000);
+}
+function parseRetryAfterSec(rawHeaders) {
+  const m = /^retry-after:\s*(\d+)\s*$/im.exec(rawHeaders || '');
+  return m ? parseInt(m[1], 10) : 0;
+}
+
+assert.strictEqual(ntfyBackoffMsFor(0, 1), 5 * 60 * 1000, 'first 429 → 5 min');
+assert.strictEqual(ntfyBackoffMsFor(0, 2), 10 * 60 * 1000, 'second consecutive 429 → 10 min');
+assert.strictEqual(ntfyBackoffMsFor(0, 4), 40 * 60 * 1000, 'fourth → 40 min');
+assert.strictEqual(ntfyBackoffMsFor(0, 5), 60 * 60 * 1000, 'escalation capped at 60 min');
+assert.strictEqual(ntfyBackoffMsFor(0, 50), 60 * 60 * 1000, 'huge streak still capped');
+assert.strictEqual(ntfyBackoffMsFor(900, 1), 900 * 1000, 'Retry-After wins when longer than backoff');
+assert.strictEqual(ntfyBackoffMsFor(10, 1), 5 * 60 * 1000, 'short Retry-After never shrinks backoff');
+console.log('bounty-notify: ntfy backoff escalation OK');
+
+assert.strictEqual(parseRetryAfterSec('Content-Type: text/plain\r\nRetry-After: 77\r\n'), 77);
+assert.strictEqual(parseRetryAfterSec('retry-after: 5'), 5, 'case-insensitive');
+assert.strictEqual(parseRetryAfterSec('Content-Type: text/plain'), 0, 'absent → 0');
+assert.strictEqual(parseRetryAfterSec(''), 0);
+assert.strictEqual(parseRetryAfterSec(null), 0);
+console.log('bounty-notify: Retry-After parsing OK');
+
+// Gate semantics: 429 trips a persisted window; requests inside the window are
+// suppressed WITHOUT hitting the network; success resets the escalation streak.
+function makeNtfyGate(store, clockRef) {
+  return {
+    isLimited: () => clockRef.t < (store.until || 0),
+    onResponse: (status, rawHeaders) => {
+      if (status === 429) {
+        store.streak = (store.streak || 0) + 1;
+        store.until = clockRef.t + ntfyBackoffMsFor(parseRetryAfterSec(rawHeaders), store.streak);
+        return null;
+      }
+      store.streak = 0;
+      return { status };
+    },
+  };
+}
+{
+  const store = {}, clock = { t: 1_000_000_000_000 };
+  const gate = makeNtfyGate(store, clock);
+  assert.strictEqual(gate.isLimited(), false, 'starts unlimited');
+  assert.strictEqual(gate.onResponse(429, ''), null, '429 → null (caller must not mark sent)');
+  assert.strictEqual(gate.isLimited(), true, '429 trips the gate');
+  clock.t += 5 * 60 * 1000 - 1;
+  assert.strictEqual(gate.isLimited(), true, 'still limited 1ms before expiry');
+  clock.t += 2;
+  assert.strictEqual(gate.isLimited(), false, 'expires after backoff');
+  gate.onResponse(429, '');
+  clock.t += 10 * 60 * 1000 + 1;   // second consecutive 429 → 10 min window
+  assert.strictEqual(gate.isLimited(), false, 'second window is 10 min (escalated)');
+  assert.ok(gate.onResponse(200, ''), '2xx passes through');
+  assert.strictEqual(store.streak, 0, 'success resets the streak');
+  gate.onResponse(429, '');
+  clock.t += 5 * 60 * 1000 + 1;
+  assert.strictEqual(gate.isLimited(), false, 'post-reset 429 back to 5 min window');
+  console.log('bounty-notify: ntfy gate trip/expiry/reset OK');
+}
+
+// Regression: ntfy answers 429 with a JSON error body. The old reader parsed it
+// as an "empty topic" (no tags → no keys) → dedup defeated → EVERY pending
+// bounty re-published while rate-limited. Non-200 must read as UNKNOWN (null).
+function topicPresentKeysV2(status, resText) {
+  if (status !== 200) return null;
+  const msgs = parseNtfyNdjson(resText);
+  const keys = new Set();
+  let legacy = 0;
+  for (const m of msgs) {
+    const tags = m.tags || [];
+    const bkey = tags.find(t => t.startsWith('bkey_'));
+    if (bkey) {
+      keys.add(bkey);
+      if (!tags.some(t => t.startsWith('v'))) legacy++;
+    }
+  }
+  return { keys, legacy };
+}
+{
+  const ntfy429Body = '{"code":42901,"http":429,"error":"limit reached","link":"https://ntfy.sh/docs/publish/#limitations"}';
+  assert.strictEqual(topicPresentKeysV2(429, ntfy429Body), null, '429 → UNKNOWN, never "empty topic"');
+  assert.strictEqual(topicPresentKeysV2(502, ''), null, 'other non-200 → UNKNOWN too');
+  const okRes = topicPresentKeysV2(200, '{"id":"1","tags":["crossed_swords","bkey_B9_attacker_1","v0.8.17"]}');
+  assert.ok(okRes.keys.has('bkey_B9_attacker_1'), '200 still parses keys');
+  console.log('bounty-notify: 429 readback → null (no blind re-publish) OK');
+}

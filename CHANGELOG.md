@@ -1,5 +1,23 @@
 # CHANGELOG
 
+## 2026-07-12 | ntfy-Schutz vor Sperren, MU-Heilungs-Button-Dimmen & Debuff-Stummschaltung (v0.8.17)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/test-advisor-load.js`, `tests/bounty-notify.test.js`
+
+**Änderungen (Deutsch):**
+- **ntfy-Sperrschutz**: Alle Anfragen an ntfy.sh laufen jetzt über einen zentralen Rate-Limit-Wächter. Meldet ntfy „zu viele Anfragen" (429), pausieren sämtliche Push-Sendungen automatisch (5 Minuten, bei Wiederholung bis zu 60 Minuten) statt weiterzufeuern — das verhinderte bisherige IP-Sperren durch ntfy.sh. Jede Drosselung ist im Debug-Log und auf der Ampel sichtbar.
+- **Sparsamere Kopfgeld-Weiterleitung**: Das Abfrage-Intervall des persönlichen Kopfgeld-Mirrors wurde von 3 auf 10 Sekunden erhöht, um innerhalb des ntfy-Budgets zu bleiben; das Lesefenster wurde auf 60 Sekunden vergrößert, damit nichts verloren geht.
+- **MU-Heilung ausgrauen (neu, optional)**: Auf der MU-Seite wird der „Ask for help"-Button klein und grau dargestellt, solange der Pillen-Debuff läuft oder das Leben voll ist — kein versehentliches Verbrennen des gemeinsamen Heil-Cooldowns mehr. Aktivierbar im Pillen-Bereich der Einstellungen (Standard: aus). Der Button bleibt immer klickbar.
+- **Kopfgeld-Stummschaltung im Debuff (neu, optional)**: Auf Wunsch werden während des Pillen-Debuffs keine Kopfgeld-Pushs an das persönliche Topic weitergeleitet.
+- **Popup-Fix**: Kopfgeld-Popups, die sich in einem inaktiven Tab angestaut haben, werden beim Zurückwechseln nicht mehr nachträglich angezeigt.
+
+**Changes (English):**
+- **ntfy ban protection**: All ntfy.sh requests now pass through a central rate-limit guard. When ntfy answers "too many requests" (429), every push send pauses automatically (5 minutes, escalating up to 60 minutes on repeats) instead of hammering on — this is what previously caused ntfy.sh IP bans. Every throttle is visible in the debug log and on the health lights.
+- **Leaner bounty forwarding**: The personal bounty mirror's poll interval was raised from 3 to 10 seconds to stay inside the ntfy budget; the read window grew to 60 seconds so nothing is missed.
+- **Dim MU heal (new, optional)**: On the MU page the "Ask for help" button is rendered small and gray while your pill debuff is running or your HP is full — no more accidentally burning the shared heal cooldown. Enable it in the pill section of the settings (default: off). The button always stays clickable.
+- **Mute bounties during debuff (new, optional)**: Optionally, no bounty pushes are forwarded to your personal topic while the pill debuff is active.
+- **Popup fix**: Bounty popups that piled up in an inactive tab no longer replay when you switch back.
+
 ## 2026-07-09 | Persönliche Push-Benachrichtigungen, In-Game Toasts & Einstellungs-Optimierung (v0.8.16)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/test-advisor-load.js`

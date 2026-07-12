@@ -2417,6 +2417,70 @@ try {
 
       console.log('Diamond Spam and Crit Threshold tests passed successfully.');
 
+      // Test 6: shouldDimMuHeal core logic (booleans: inDebuff from the TIMER
+      // system via isMuHealDebuffActive, hpFull only when the top bar was parsed)
+      assert.strictEqual(globalThis.shouldDimMuHeal(false, false, false, false), false, 'features off -> false');
+      assert.strictEqual(globalThis.shouldDimMuHeal(true, false, true, true), false, 'featDim off -> false even in debuff/full');
+      assert.strictEqual(globalThis.shouldDimMuHeal(false, true, true, true), false, 'featPill off -> false even in debuff/full');
+      assert.strictEqual(globalThis.shouldDimMuHeal(true, true, false, false), false, 'no debuff, HP not full -> false');
+      assert.strictEqual(globalThis.shouldDimMuHeal(true, true, true, false), true, 'debuff window/KNIFE phase -> true');
+      assert.strictEqual(globalThis.shouldDimMuHeal(true, true, false, true), true, 'full HP -> true');
+      assert.strictEqual(globalThis.shouldDimMuHeal(true, true, true, true), true, 'both -> true');
+      console.log('shouldDimMuHeal tests passed successfully.');
+
+      // Test 7: findMuHealButton DOM-based detection check
+      const testContainer = document.createElement('div');
+      
+      // Button 1: Help All (should be ignored)
+      const helpAllContainer = document.createElement('div');
+      helpAllContainer.id = 'mu-help-all-button';
+      const btnHelpAll = document.createElement('button');
+      const spanHelpAll = document.createElement('span');
+      spanHelpAll.textContent = 'Help All';
+      btnHelpAll.appendChild(spanHelpAll);
+      const svgHelpAll = document.createElement('svg');
+      const pathHelpAll = document.createElement('path');
+      pathHelpAll.setAttribute('d', globalThis.CONFIG.muHealHeartPathFingerprint + 'L10.55,20.03');
+      svgHelpAll.appendChild(pathHelpAll);
+      btnHelpAll.appendChild(svgHelpAll);
+      helpAllContainer.appendChild(btnHelpAll);
+      testContainer.appendChild(helpAllContainer);
+
+      // Button 1b: per-member "Help" row button — heart icon, earlier in DOM
+      // order, NOT inside #mu-help-all-button. The old exclusion-based finder
+      // grabbed exactly this one (live-diag verified) — must be skipped now.
+      const btnRowHelp = document.createElement('button');
+      const spanRow = document.createElement('span');
+      spanRow.textContent = 'Help';
+      btnRowHelp.appendChild(spanRow);
+      const svgRow = document.createElement('svg');
+      const pathRow = document.createElement('path');
+      pathRow.setAttribute('d', globalThis.CONFIG.muHealHeartPathFingerprint + 'L10.55,20.03');
+      svgRow.appendChild(pathRow);
+      btnRowHelp.appendChild(svgRow);
+      testContainer.appendChild(btnRowHelp);
+
+      // Button 2: Ask for help (should be detected)
+      const btnAskForHelp = document.createElement('button');
+      const spanAsk = document.createElement('span');
+      spanAsk.textContent = 'Ask for help';
+      btnAskForHelp.appendChild(spanAsk);
+      const svgAsk = document.createElement('svg');
+      const pathAsk = document.createElement('path');
+      pathAsk.setAttribute('d', globalThis.CONFIG.muHealHeartPathFingerprint + 'L10.55,20.03');
+      svgAsk.appendChild(pathAsk);
+      btnAskForHelp.appendChild(svgAsk);
+      testContainer.appendChild(btnAskForHelp);
+
+      document.body.appendChild(testContainer);
+
+      const detectedBtn = globalThis.findMuHealButton();
+      assert.strictEqual(detectedBtn, btnAskForHelp, 'Should find "Ask for help" and skip "Help All" AND the member-row "Help" button');
+      
+      // Clean up mock DOM
+      testContainer.remove();
+      console.log('findMuHealButton tests passed successfully.');
+
       console.log('Success! The script loaded and initialized without throwing any runtime errors.');
       process.exit(0);
     } catch (err) {

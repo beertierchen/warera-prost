@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.8.16
+// @version      0.8.17
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -75,6 +75,9 @@
     minRequestIntervalMs: 3000,         // throttle: no two network calls closer than this
     rescanDebounceMs: 150,
     rateLimitBackoffMs: 60 * 1000,      // after a 429, suppress requests this long
+    // ntfy.sh has its own (stricter) per-IP budget and BANS IPs that keep
+    // sending after a 429 — back off much longer than for the game API.
+    ntfyBackoffMs: 5 * 60 * 1000,       // after an ntfy 429, suppress ALL ntfy traffic this long
 
     // --- DOM ---
     // Item images all live under this path; we climb from the <img> to its card.
@@ -231,8 +234,10 @@
     featPillNotifHnH: false,
     featPillNotifWindow: false,
     featPillNotifDebuff: false,
+    featMuHealDim: false,
     featBountyNotify: false,
     featBountyNotif: false,
+    bountyMuteDebuff: false,
     ntfyTopic: '',
     ntfyTopicSecret: '',
     personalTopic: '',
@@ -250,6 +255,9 @@
     doubleChevronPath: 'M7.41,18.41',
     pillBuffIconPath: 'M4.22,11.29L11.29,4.22',
     pillDebuffIconPath: 'M22.11 21.46L2.39 1.73',
+    muHealHeartPathFingerprint: 'M12,21.35',
+    muHealButtonTextFallbackEN: 'Ask for help',
+    muHealButtonTextFallbackDE: 'Hilfe anfordern',
 
     debug: false,
 
@@ -366,6 +374,7 @@
         bountyScopeAll: 'All battles (no filter)',
         bountyScopeAllies: 'Only allies (own country + alliance + own allies/pacts)',
         bountyScopeCascade: 'Allies + Cascading (alliance members\' allies/pacts)',
+        settingsBountyMuteDebuff: 'Mute bounty notifications while debuff is active',
         settingsPillSettingsLabel: 'Pill timing options',
         settingsPillBuffLabel: 'Buff Duration (hours)',
         settingsPillKnifeLabel: 'Knife Duration (hours)',
@@ -375,6 +384,10 @@
         settingsFeatPillNotifHnH: 'H&H full notifications (ntfy.sh)',
         settingsFeatPillNotifWindow: 'Preferred pill window notifications (ntfy.sh)',
         settingsFeatPillNotifDebuff: 'Debuff expired notifications (ntfy.sh)',
+        settingsFeatMuHealDim: 'Dim MU heal request while debuffed / at full HP',
+        muHealDimReasonDebuff: 'debuff active',
+        muHealDimReasonFullHP: 'HP full',
+        muHealDimReasonBoth: 'debuff active & HP full',
         ntfyHnHFullTitle: '🍗 Health & Hunger Full',
         ntfyHnHFullBody: 'Your Health and Hunger are both at 100%. Ready to take a pill.',
         ntfyPillWindowTitle: '💊 Preferred Pill Window Reached',
@@ -592,6 +605,7 @@
         bountyScopeAll: 'Alle Schlachten (kein Filter)',
         bountyScopeAllies: 'Nur Verbündete (eigenes Land + Allianz + eigene Allies/Pakte)',
         bountyScopeCascade: 'Verbündete + Kaskade (Allianz-Mitglieder Allies/Pakte)',
+        settingsBountyMuteDebuff: 'Stummschalten während Debuff aktiv ist',
         settingsPillSettingsLabel: 'Optionen für Pillen-Timing',
         settingsPillBuffLabel: 'Buff-Dauer (Stunden)',
         settingsPillKnifeLabel: 'Messer-Dauer (Stunden)',
@@ -601,6 +615,10 @@
         settingsFeatPillNotifHnH: 'H&H voll Benachrichtigungen (ntfy.sh)',
         settingsFeatPillNotifWindow: 'Bevorzugtes Pillenfenster Benachrichtigungen (ntfy.sh)',
         settingsFeatPillNotifDebuff: 'Debuff abgelaufen Benachrichtigungen (ntfy.sh)',
+        settingsFeatMuHealDim: 'MU-Heilung ausgrauen während Debuff / bei vollem Leben',
+        muHealDimReasonDebuff: 'Pillen-Debuff aktiv',
+        muHealDimReasonFullHP: 'Leben voll',
+        muHealDimReasonBoth: 'Debuff aktiv & Leben voll',
         ntfyHnHFullTitle: '🍗 Leben & Hunger voll',
         ntfyHnHFullBody: 'Dein Leben und dein Hunger sind beide bei 100%! Bereit für eine Pille.',
         ntfyPillWindowTitle: '💊 Bevorzugtes Pillenfenster erreicht',
@@ -737,6 +755,8 @@
     transactionsCache: NS + 'transactionsCache', // { [itemCode]: { data, fetchedAt } }-equipment transactions
     apiBase: NS + 'apiBase',
     rateLimitedUntil: NS + 'rlUntil',
+    ntfyRateLimitedUntil: NS + 'ntfyRlUntil',
+    ntfy429Streak: NS + 'ntfy429Streak',
     scrapedPrices: NS + 'scrapedPrices',
     useLiveOffersApi: NS + 'useLiveOffers',
     showScrapFlip: NS + 'scrapFlip',
@@ -797,6 +817,8 @@
     apiBaseGatewayMigrated: NS + 'apiBaseGatewayMigrated',
     bountyAutoTopic: NS + 'bountyAutoTopic',
     bountyIdentityCache: NS + 'bountyIdentityCache',
+    bountyMuteDebuff: NS + 'bountyMuteDebuff',
+    featMuHealDim: NS + 'featMuHealDim',
   };
 
   const memoryCache = {};
@@ -1326,7 +1348,7 @@
         headers: headers || {},
         data,
         timeout: 15000,
-        onload: (res) => resolve({ status: res.status, text: res.responseText }),
+        onload: (res) => resolve({ status: res.status, text: res.responseText, responseHeaders: res.responseHeaders || '' }),
         onerror: () => reject(new Error('network error: ' + url)),
         ontimeout: () => reject(new Error('timeout: ' + url)),
       });
@@ -1352,6 +1374,54 @@
   }
   function tripRateLimit() {
     GM_setValue(KEYS.rateLimitedUntil, now() + CONFIG.rateLimitBackoffMs);
+  }
+
+  // ── ntfy.sh rate-limit layer (separate from the game-API backoff above) ──
+  // ntfy.sh temporarily BANS IPs that keep sending after a 429, so every ntfy
+  // request (GET history reads AND POST publishes) must go through ntfyRequest().
+  // The backoff is GM-persisted → shared across tabs and survives reloads.
+  function isNtfyLimited() {
+    return now() < GM_getValue(KEYS.ntfyRateLimitedUntil, 0);
+  }
+  function ntfyLimitRemainingMs() {
+    return Math.max(0, GM_getValue(KEYS.ntfyRateLimitedUntil, 0) - now());
+  }
+  // Backoff escalates with consecutive 429s (5 → 10 → 20 → 40 → 60 min cap):
+  // a burst-limit hit recovers after one window, but an exhausted DAILY quota
+  // (free tier: 250 msgs/day) would otherwise get poked every 5 min for hours.
+  const NTFY_BACKOFF_CAP_MS = 60 * 60 * 1000;
+  function ntfyBackoffMsFor(retryAfterSec, streak) {
+    const escalated = Math.min(CONFIG.ntfyBackoffMs * Math.pow(2, Math.max(0, (streak || 1) - 1)), NTFY_BACKOFF_CAP_MS);
+    return Math.max(escalated, (retryAfterSec || 0) * 1000);
+  }
+  function parseRetryAfterSec(rawHeaders) {
+    const m = /^retry-after:\s*(\d+)\s*$/im.exec(rawHeaders || '');
+    return m ? parseInt(m[1], 10) : 0;
+  }
+  function tripNtfyLimit(scope, url, retryAfterSec) {
+    const streak = (GM_getValue(KEYS.ntfy429Streak, 0) || 0) + 1;
+    GM_setValue(KEYS.ntfy429Streak, streak);
+    const ms = ntfyBackoffMsFor(retryAfterSec, streak);
+    GM_setValue(KEYS.ntfyRateLimitedUntil, now() + ms);
+    // 'error' level → always logged + in the debug ring buffer, even with CONFIG.debug off.
+    dbg(scope, 'error', 'ntfy 429', url, `backoff ${Math.ceil(ms / 1000)}s (streak ${streak})`);
+    setHealth(scope, 'warn', `ntfy 429 — backoff ${Math.ceil(ms / 1000)}s`);
+  }
+  // Returns the response, or null when the request was suppressed (backoff
+  // active) or answered 429. Callers must treat null as "retry after backoff":
+  // do NOT mark the item as seen/sent, do NOT fall back to sending blind.
+  async function ntfyRequest(scope, opts) {
+    if (isNtfyLimited()) {
+      dbg(scope, 'debug', 'ntfy suppressed', `${Math.ceil(ntfyLimitRemainingMs() / 1000)}s backoff left`, opts.url);
+      return null;
+    }
+    const res = await gmRequest(opts);
+    if (res.status === 429) {
+      tripNtfyLimit(scope, opts.url, parseRetryAfterSec(res.responseHeaders));
+      return null;
+    }
+    if (GM_getValue(KEYS.ntfy429Streak, 0)) GM_setValue(KEYS.ntfy429Streak, 0);
+    return res;
   }
 
   // tRPC v10 GET batch URL: ?batch=1&input={"0":{"json":<args>}}
@@ -2111,6 +2181,12 @@
     globalThis.teardownPillReminder = teardownPillReminder;
     globalThis.tickPillReminder = tickPillReminder;
     globalThis.checkPersonalNotifications = checkPersonalNotifications;
+    globalThis.shouldDimMuHeal = shouldDimMuHeal;
+    globalThis.findMuHealButton = findMuHealButton;
+    globalThis.WIA_muHealDiag = muHealDiag;
+    if (typeof unsafeWindow !== 'undefined') {
+      unsafeWindow.WIA_muHealDiag = muHealDiag;
+    }
     globalThis.simpleHash = simpleHash;
     globalThis.pollBountyTopic = pollBountyTopic;
     globalThis.renderHnHBudget = renderHnHBudget;
@@ -4189,6 +4265,12 @@ async function scanInventory(force) {
         transform: scale(.94);
         transition: transform 0.2s, opacity 0.2s, filter 0.2s;
       }
+      .wia-mu-heal-muted {
+        opacity: .50;
+        filter: grayscale(.75);
+        transform: scale(.94);
+        transition: transform 0.2s, opacity 0.2s, filter 0.2s;
+      }
       .wia-compact-orders {
         display: inline-flex;
         align-items: center;
@@ -4418,6 +4500,7 @@ async function scanInventory(force) {
     const prevFeatNotes = bg.querySelector('.wia-feat-notes')?.checked ?? CONFIG.featNotes;
     const prevFeatBattle = bg.querySelector('.wia-feat-battle')?.checked ?? CONFIG.featBattleAdvisor;
     const prevFeatPill = bg.querySelector('.wia-feat-pill')?.checked ?? CONFIG.featPillReminder;
+    const prevFeatMuHealDim = bg.querySelector('.wia-feat-mu-heal-dim')?.checked ?? CONFIG.featMuHealDim;
     const prevFeatMarketGraph = bg.querySelector('.wia-feat-market-graph')?.checked ?? CONFIG.featMarketGraph;
     const prevFeatPnlTracker = bg.querySelector('.wia-feat-pnl-tracker')?.checked ?? CONFIG.featPnlTracker;
     const prevPillBuff = bg.querySelector('.wia-pill-buff')?.value ?? CONFIG.pillBuffH;
@@ -4435,6 +4518,7 @@ async function scanInventory(force) {
     const prevNtfySecret = bg.querySelector('.wia-ntfy-secret')?.value ?? CONFIG.ntfyTopicSecret;
     const prevBountyOwn = bg.querySelector('.wia-bounty-own')?.value ?? CONFIG.bountyOwnCountryOverride;
     const prevBountyScope = bg.querySelector('.wia-bounty-scope')?.value ?? CONFIG.bountyScope;
+    const prevBountyMuteDebuff = bg.querySelector('.wia-bounty-mute-debuff')?.checked ?? CONFIG.bountyMuteDebuff;
 
     const prevPersonalTopic = bg.querySelector('.wia-personal-topic')?.value ?? CONFIG.personalTopic;
     const prevPersonalSecret = bg.querySelector('.wia-personal-secret')?.value ?? CONFIG.personalTopicSecret;
@@ -4559,6 +4643,10 @@ async function scanInventory(force) {
                 <label style="margin: 0; font-weight: normal; cursor: pointer; font-size: 11px;">${t('settingsFeatPillNotifDebuff')}</label>
                 <input type="checkbox" class="wia-feat-pill-notif-debuff" style="width: auto; margin-right: 8px;" ${prevPillNotifDebuff ? 'checked' : ''} />
               </div>
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                <label style="margin: 0; font-weight: normal; cursor: pointer; font-size: 11px;">${t('settingsFeatMuHealDim')}</label>
+                <input type="checkbox" class="wia-feat-mu-heal-dim" style="width: auto; margin-right: 8px;" ${prevFeatMuHealDim ? 'checked' : ''} />
+              </div>
             </div>
           </details>
         </div>
@@ -4602,6 +4690,10 @@ async function scanInventory(force) {
               <label style="font-size: 11px; color: #8b949e; display: block; margin: 0 0 2px;">${t('settingsBountyOwnCountry')}</label>
               <input type="text" class="wia-bounty-own" placeholder="name or id,id,id..." style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;" value="${prevBountyOwn}" />
               <div class="wia-bounty-detected-identity" style="font-size: 10px; color: #8b949e; margin-top: 2px;">Erkenne Identität...</div>
+            </div>
+            <div style="margin-top: 6px; display: flex; align-items: center; gap: 8px;">
+              <input type="checkbox" class="wia-bounty-mute-debuff" style="width: auto;" ${prevBountyMuteDebuff ? 'checked' : ''} />
+              <label style="font-size: 11px; color: #8b949e; margin: 0; font-weight: normal; cursor: pointer;">${t('settingsBountyMuteDebuff')}</label>
             </div>
           </details>
         </div>
@@ -4946,12 +5038,15 @@ async function scanInventory(force) {
       const featPillNotifHnH = featPill && bg.querySelector('.wia-feat-pill-notif-hnh').checked;
       const featPillNotifWindow = featPill && bg.querySelector('.wia-feat-pill-notif-window').checked;
       const featPillNotifDebuff = featPill && bg.querySelector('.wia-feat-pill-notif-debuff').checked;
+      const featMuHealDim = featPill && bg.querySelector('.wia-feat-mu-heal-dim').checked;
       GM_setValue(KEYS.featPillNotifHnH, featPillNotifHnH);
       GM_setValue(KEYS.featPillNotifWindow, featPillNotifWindow);
       GM_setValue(KEYS.featPillNotifDebuff, featPillNotifDebuff);
+      GM_setValue(KEYS.featMuHealDim, featMuHealDim);
       CONFIG.featPillNotifHnH = featPillNotifHnH;
       CONFIG.featPillNotifWindow = featPillNotifWindow;
       CONFIG.featPillNotifDebuff = featPillNotifDebuff;
+      CONFIG.featMuHealDim = featMuHealDim;
 
       if (featPill) { initPillReminder(); } else { teardownPillReminder(); }
 
@@ -4969,6 +5064,7 @@ async function scanInventory(force) {
       const featBountyNotif = featBounty && bg.querySelector('.wia-feat-bounty-notif').checked;
       const bountyOwn = bg.querySelector('.wia-bounty-own').value.trim();
       const bountyScope = bg.querySelector('.wia-bounty-scope').value;
+      const bountyMuteDebuff = bg.querySelector('.wia-bounty-mute-debuff').checked;
       const personalTopic = bg.querySelector('.wia-personal-topic').value.trim();
       const personalSecret = bg.querySelector('.wia-personal-secret').value.trim();
 
@@ -4976,6 +5072,7 @@ async function scanInventory(force) {
       GM_setValue(KEYS.featBountyNotif, featBountyNotif);
       GM_setValue(KEYS.bountyOwnCountryOverride, bountyOwn);
       GM_setValue(KEYS.bountyScope, bountyScope);
+      GM_setValue(KEYS.bountyMuteDebuff, bountyMuteDebuff);
       GM_setValue(KEYS.personalTopic, personalTopic);
       GM_setValue(KEYS.personalTopicSecret, personalSecret);
 
@@ -4983,6 +5080,7 @@ async function scanInventory(force) {
       CONFIG.featBountyNotif = featBountyNotif;
       CONFIG.bountyOwnCountryOverride = bountyOwn;
       CONFIG.bountyScope = bountyScope;
+      CONFIG.bountyMuteDebuff = bountyMuteDebuff;
       CONFIG.personalTopic = personalTopic;
       CONFIG.personalTopicSecret = personalSecret;
 
@@ -5208,6 +5306,10 @@ function updateObserverTarget() {
 
     if (CONFIG.featPillReminder) {
       setTimeout(tickPillReminder, 50);
+    }
+
+    if (CONFIG.featMuHealDim) {
+      applyMuHealDimSoon();
     }
 
     if (CONFIG.featPnlTracker) {
@@ -5573,6 +5675,174 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
   }
 
   // ───────────────────────────────────────────────────────────────────────────
+  // MU Heal Deemphasis module
+  // ───────────────────────────────────────────────────────────────────────────
+  function isMuPage() {
+    return /^\/mu(\/|$)/.test(location.pathname);
+  }
+
+  function shouldDimMuHeal(featPill, featDim, inDebuff, hpFull) {
+    if (!featPill || !featDim) return false;
+    return inDebuff || hpFull;
+  }
+
+  // Debuff truth comes from the TIMER system (pillTakenAt + configured phase
+  // durations) — the same source as the HUD badge the user actually sees. The
+  // GM pillState icon-detection only flips when a buff/debuff icon is visible
+  // next to an own-profile link, so on pages like /mu/* it routinely lags
+  // (stuck on 'BUFF'/'none') — keyed on it alone, the dim never engaged.
+  function isMuHealDebuffActive() {
+    const info = getPillCycleInfo();
+    // KNIFE = surplus HP must be burned before the next pill — an MU heal is
+    // wasted by definition here, even after the game's debuff itself expired.
+    if (info.phase === 'KNIFE') return true;
+    if (info.pillTakenAt > 0) {
+      const elapsed = Date.now() - info.pillTakenAt;
+      const buffMs = CONFIG.pillBuffH * 3600000;
+      const debuffMs = CONFIG.pillDebuffH * 3600000;
+      if (elapsed >= buffMs && elapsed < buffMs + debuffMs) return true;
+    }
+    // Icon-detection fallback covers a fresh install where pillTakenAt is unknown.
+    return GM_getValue(KEYS.pillState, 'none') === 'DEBUFF';
+  }
+
+  // Inclusion beats exclusion: the MU page carries SEVERAL heart-icon buttons
+  // (per-member "Help" rows, "Help All", donations) — "first heart that isn't
+  // Help All" grabbed a member-row "Help" button (verified via live diag).
+  // Require the heart AND the "Ask for help" label together.
+  function findMuHealButton() {
+    const isAskLabel = (btn) => {
+      const text = btn.textContent;
+      return text.includes(CONFIG.muHealButtonTextFallbackEN) || text.includes(CONFIG.muHealButtonTextFallbackDE);
+    };
+    for (const path of document.querySelectorAll('path')) {
+      if ((path.getAttribute('d') || '').startsWith(CONFIG.muHealHeartPathFingerprint)) {
+        const btn = path.closest('button');
+        if (btn && !btn.closest('#mu-help-all-button') && isAskLabel(btn)) return btn;
+      }
+    }
+    // Icon changed/replaced → fall back to the label alone.
+    for (const btn of document.querySelectorAll('button')) {
+      if (isAskLabel(btn)) return btn;
+    }
+    return null;
+  }
+
+  // Console diagnostic: explains the whole dim decision chain in one call.
+  // Page console: WIA_muHealDiag() — answers "why is/isn't the button dimmed".
+  function muHealDiag() {
+    const info = getPillCycleInfo();
+    const status = parseHealthAndHunger() || {};
+    const btn = findMuHealButton();
+    return {
+      onMuPage: isMuPage(),
+      featPillReminder: CONFIG.featPillReminder,
+      featMuHealDim: CONFIG.featMuHealDim,
+      ownId: getCurrentUserId(),
+      iconDetected: scanOwnPillState(),     // what the icon scanner sees on THIS page
+      gmPillState: GM_getValue(KEYS.pillState, 'none'),
+      phase: info.phase,
+      pillTakenAt: info.pillTakenAt ? new Date(info.pillTakenAt).toISOString() : null,
+      inDebuff: isMuHealDebuffActive(),
+      hpFound: !!status.hpFound,
+      hpPercent: status.hpPercent,
+      buttonFound: !!btn,
+      dimmed: !!(btn && btn.classList.contains('wia-mu-heal-muted')),
+    };
+  }
+
+  // SPA renders the MU content well after the route event — a fixed 50ms delay
+  // missed it and the next chance was the 10s pill tick (user-visible ~3-5s lag).
+  // Poll per animation frame until the button exists (5s cap), then apply.
+  let muHealPollFrame = null;
+  function applyMuHealDimSoon() {
+    const rAF = typeof requestAnimationFrame !== 'undefined' ? requestAnimationFrame : (fn) => setTimeout(fn, 16);
+    const cancelAF = typeof cancelAnimationFrame !== 'undefined' ? cancelAnimationFrame : clearTimeout;
+    if (muHealPollFrame) { cancelAF(muHealPollFrame); muHealPollFrame = null; }
+    if (!CONFIG.featMuHealDim) return;
+    if (!isMuPage()) { guard('muHealDim', applyMuHealDim); return; }   // records 'idle' on the ampel
+    const startTime = Date.now();
+    const poll = () => {
+      muHealPollFrame = null;
+      if (!isMuPage()) return;   // user navigated away mid-poll
+      if (findMuHealButton()) { guard('muHealDim', applyMuHealDim); return; }
+      if (Date.now() - startTime < 5000) { muHealPollFrame = rAF(poll); return; }
+      guard('muHealDim', applyMuHealDim);   // timeout → surfaces 'selector miss' on the ampel
+    };
+    poll();
+  }
+
+  function applyMuHealDim() {
+    if (!isMuPage()) {
+      setHealth('muHealDim', 'idle', 'not on MU page');
+      return;
+    }
+    if (!CONFIG.featMuHealDim) {
+      setHealth('muHealDim', 'idle', 'disabled in settings');
+      const btn = findMuHealButton();
+      if (btn && btn.classList.contains('wia-mu-heal-muted')) {
+        btn.classList.remove('wia-mu-heal-muted');
+        if (btn.hasAttribute('data-wia-orig-title')) {
+          const orig = btn.getAttribute('data-wia-orig-title');
+          if (orig) btn.setAttribute('title', orig);
+          else btn.removeAttribute('title');
+          btn.removeAttribute('data-wia-orig-title');
+        }
+      }
+      return;
+    }
+    if (!CONFIG.featPillReminder) {
+      setHealth('muHealDim', 'warn', 'needs Pill Reminder on');
+      return;
+    }
+
+    const btn = findMuHealButton();
+    if (!btn) {
+      setHealth('muHealDim', 'fail', 'selector miss: heal button not found');
+      return;
+    }
+
+    const inDebuff = isMuHealDebuffActive();
+    // hpFound guard: parseHealthAndHunger() defaults hpPercent to 100 when the
+    // top bar isn't parseable — without the guard an empty read dims at 0 HP.
+    const status = parseHealthAndHunger() || {};
+    const hpFull = !!(status.hpFound && status.hpPercent >= 99.9);
+    const shouldDim = shouldDimMuHeal(CONFIG.featPillReminder, CONFIG.featMuHealDim, inDebuff, hpFull);
+
+    if (shouldDim) {
+      if (!btn.classList.contains('wia-mu-heal-muted')) {
+        if (!btn.hasAttribute('data-wia-orig-title')) {
+          btn.setAttribute('data-wia-orig-title', btn.getAttribute('title') || '');
+        }
+        btn.classList.add('wia-mu-heal-muted');
+      }
+      let reasonKey = 'muHealDimReasonBoth';
+      if (inDebuff && !hpFull) {
+        reasonKey = 'muHealDimReasonDebuff';
+      } else if (!inDebuff && hpFull) {
+        reasonKey = 'muHealDimReasonFullHP';
+      }
+      btn.setAttribute('title', t(reasonKey));
+    } else {
+      if (btn.classList.contains('wia-mu-heal-muted')) {
+        btn.classList.remove('wia-mu-heal-muted');
+        if (btn.hasAttribute('data-wia-orig-title')) {
+          const orig = btn.getAttribute('data-wia-orig-title');
+          if (orig) btn.setAttribute('title', orig);
+          else btn.removeAttribute('title');
+          btn.removeAttribute('data-wia-orig-title');
+        }
+      }
+    }
+    // Ampel carries the decision, not just "ok" — a screenshot of the debug HUD
+    // then answers "why (not) dimmed" without a console session.
+    const why = shouldDim
+      ? `dimmed (${[inDebuff && 'debuff', hpFull && 'hp-full'].filter(Boolean).join('+')})`
+      : 'visible (no debuff, hp not full)';
+    setHealth('muHealDim', 'ok', why);
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
   // Pill Reminder module
   // ───────────────────────────────────────────────────────────────────────────
   let pillInterval = null;
@@ -5661,6 +5931,9 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
     highlightCocaineItems();
     renderHnHBudget();
     checkPersonalNotifications();
+    if (CONFIG.featMuHealDim) {
+      guard('muHealDim', applyMuHealDim);
+    }
   }
 
   function getEffectivePersonalTopic() {
@@ -5766,12 +6039,13 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
     };
 
     try {
-      const res = await gmRequest({
+      const res = await ntfyRequest('pillReminder', {
         method: 'POST',
         url: `${NTFY_BASE}/${topic}`,
         data: body,
         headers
       });
+      if (!res) return false;   // 429 / backoff active — logged inside ntfyRequest
       const ok = res.status >= 200 && res.status < 300;
       dbg('pillReminder', ok ? 'debug' : 'error', `ntfy personal send ${type}`, res.status, topic);
       return ok;
@@ -9951,12 +10225,13 @@ function checkInventoryDeltaWear() {
       Click: `https://app.warera.io/battle/${bounty.battleId}`
     };
 
-    const res = await gmRequest({
+    const res = await ntfyRequest('bountyNotify', {
       method: 'POST',
       url: `${NTFY_BASE}/${topic}`,
       data: body,
       headers
     });
+    if (!res) return false;   // 429 / backoff active — logged inside ntfyRequest
     const ok = res.status >= 200 && res.status < 300;
     dbg('bountyNotify', ok ? 'debug' : 'error', 'ntfy send', res.status, bounty.battleId, topic);
     return ok;
@@ -10190,15 +10465,20 @@ function checkInventoryDeltaWear() {
     return out;
   }
 
+  // true/false = topic history read OK. null = UNKNOWN (429/backoff/network/non-200):
+  // the caller must NOT fall back to sending — a 429 body parsed as "empty topic"
+  // previously defeated dedup and re-published everything while rate-limited.
   async function topicHasBounty(key, customTopic) {
     const topic = customTopic || getEffectiveTopic();
     if (!topic) return false;
     try {
-      const res = await gmRequest({ method: 'GET', url: `${NTFY_BASE}/${topic}/json?poll=1&since=12h` });
+      const res = await ntfyRequest('bountyNotify', { method: 'GET', url: `${NTFY_BASE}/${topic}/json?poll=1&since=12h` });
+      if (!res) return null;
+      if (res.status !== 200) { dbg('bountyNotify', 'error', 'topic read failed', res.status, topic); return null; }
       return parseNtfyNdjson(res.text).some((m) => (m.tags || []).includes(key));
     } catch (e) {
       dbg('bountyNotify', 'error', 'topic read failed', e.message, topic);
-      return false;
+      return null;
     }
   }
 
@@ -10207,7 +10487,11 @@ function checkInventoryDeltaWear() {
   }
 
   const POPUP_TRIGGER_KEY = 'wia-bounty-popups';
-  const POPUP_MAX_AGE_MS = 600000; // 10 minutes
+  const POPUP_MAX_AGE_MS = 600000; // 10 minutes — upper bound the persisted queue is kept
+  // On (re)focus the whole queued list is replayed. Only pop bounties detected within
+  // ~1 poll cycle (incl. background-throttle slack); older triggers — piled up while the
+  // tab was hidden, or left over from a prior load — are stale, so consume without showing.
+  const POPUP_FRESH_MS = 90000; // ~90s
   const shownPopups = new Set();
 
   function getPopupTriggers() {
@@ -10235,14 +10519,17 @@ function checkInventoryDeltaWear() {
   function checkAndShowPendingPopups() {
     if (!CONFIG.featBountyNotify) return;
     if (document.visibilityState !== 'visible') return;
+    const nowMs = now();
     const triggers = getPopupTriggers();
     let changed = false;
     for (const item of triggers) {
-      if (!shownPopups.has(item.key)) {
-        shownPopups.add(item.key);
-        showBountyPopup(item.bounty);
-        changed = true;
-      }
+      if (shownPopups.has(item.key)) continue;
+      // Stale backlog (queued while hidden / leftover from a prior load): mark it
+      // consumed so it never replays, but don't pop it — the bounty is no longer live.
+      if (nowMs - item.time >= POPUP_FRESH_MS) { shownPopups.add(item.key); continue; }
+      shownPopups.add(item.key);
+      showBountyPopup(item.bounty);
+      changed = true;
     }
     if (changed) {
       try {
@@ -10463,7 +10750,9 @@ function checkInventoryDeltaWear() {
 
   async function topicPresentKeys(topic) {
     try {
-      const res = await gmRequest({ method: 'GET', url: `${NTFY_BASE}/${topic}/json?poll=1&since=12h` });
+      const res = await ntfyRequest('bountyNotify', { method: 'GET', url: `${NTFY_BASE}/${topic}/json?poll=1&since=12h` });
+      if (!res) return null;   // 429/backoff — null keeps the mirror loop from sending blind
+      if (res.status !== 200) { dbg('bountyNotify', 'error', 'mirror readback failed', res.status, topic); return null; }
       const msgs = parseNtfyNdjson(res.text);
       const keys = new Set();
       let legacy = 0;
@@ -10573,6 +10862,9 @@ function checkInventoryDeltaWear() {
 
       if (!skipPrimaryPush) {
         for (const b of fresh) {
+          // ntfy backoff active → stop the whole push pass; unsent bounties stay
+          // un-seen and go out on the first poll after the backoff expires.
+          if (isNtfyLimited()) { dbg('bountyNotify', 'debug', 'primary push paused — ntfy backoff'); break; }
           const key = bountyKey(b.battleId, b.side, b.effectiveAt);
           // Cross-device dedup: GM storage is per-browser, so independent devices poll
           // in parallel and would all send. A stable, determinist jitter staggers them
@@ -10581,7 +10873,9 @@ function checkInventoryDeltaWear() {
           dbg('bountyNotify', 'debug', 'jitter', jit, 'primary');
           await new Promise((r) => setTimeout(r, jit));
           renewPollLock();
-          if (await topicHasBounty(key)) { seen[key] = now(); continue; }   // cross-client dedup
+          const present = await topicHasBounty(key);   // cross-client dedup
+          if (present === null) break;                 // read failed/limited — never send blind
+          if (present) { seen[key] = now(); continue; }
           if (await sendNtfy(b)) {
             seen[key] = now();                          // mark seen only on 2xx
           }
@@ -10600,6 +10894,7 @@ function checkInventoryDeltaWear() {
 
       let mirrorChanged = false;
       for (const feed of feeds) {
+        if (isNtfyLimited()) { dbg('bountyNotify', 'debug', 'mirror paused — ntfy backoff'); break; }
         const toSend = feed.set.filter(b =>
           !mirrorSeen[`${feed.topic}|${bountyKey(b.battleId, b.side, b.effectiveAt)}`]);
         if (toSend.length === 0) continue;
@@ -10620,6 +10915,7 @@ function checkInventoryDeltaWear() {
         dbg('bountyNotify', 'debug', 'legacy publishers', feed.topic, present.legacy);
 
         for (const b of toSend) {
+          if (isNtfyLimited()) break;   // a send in this batch tripped the backoff — stop, retry next poll
           const k = bountyKey(b.battleId, b.side, b.effectiveAt);
           const mk = `${feed.topic}|${k}`;
           if (mirrorSeen[mk]) continue;
@@ -10740,7 +11036,10 @@ function checkInventoryDeltaWear() {
     const baseTopic = GM_getValue(KEYS.bountyAutoTopic, '') || 'wia-bounty-all';
     if (!baseTopic) return;
     try {
-      const res = await gmRequest({ method: 'GET', url: `${NTFY_BASE}/wia-bounty-topics/json?poll=1&since=12h` });
+      const res = await ntfyRequest('bountyNotify', { method: 'GET', url: `${NTFY_BASE}/wia-bounty-topics/json?poll=1&since=12h` });
+      // Read failed/limited → skip entirely. Posting without the readback would
+      // re-register on every init while rate-limited.
+      if (!res || res.status !== 200) return;
       const tagToCheck = baseTopic.toLowerCase().replace(/[^a-z0-9_-]/g, '');
       const alreadyRegistered = parseNtfyNdjson(res.text).some((m) => (m.tags || []).includes(tagToCheck));
       if (alreadyRegistered) {
@@ -10751,8 +11050,8 @@ function checkInventoryDeltaWear() {
       if (!identity) return;
       const displayStr = identity.allianceName ? `${identity.countryName} / ${identity.allianceName}` : identity.countryName;
       const body = `Topic: ${baseTopic}\nRegistriert von: ${displayStr}\nZeit: ${new Date().toISOString()}`;
-      
-      await gmRequest({
+
+      const postRes = await ntfyRequest('bountyNotify', {
         method: 'POST',
         url: `${NTFY_BASE}/wia-bounty-topics`,
         data: body,
@@ -10762,7 +11061,7 @@ function checkInventoryDeltaWear() {
           Tags: `crossed_swords,${tagToCheck}`
         }
       });
-      dbg('bountyNotify', 'debug', 'registered topic on wia-bounty-topics', baseTopic);
+      if (postRes) dbg('bountyNotify', 'debug', 'registered topic on wia-bounty-topics', baseTopic);
     } catch (e) {
       dbg('bountyNotify', 'error', 'failed to register topic on wia-bounty-topics', e.message);
     }
@@ -10795,7 +11094,11 @@ function checkInventoryDeltaWear() {
   }
 
   let activeMirrorLockVal = null;
-  const BOUNTY_MIRROR_POLL_MS = 3000;
+  // ntfy.sh free-tier budget: ~60-request burst, then ~1 request per 5s refill
+  // per IP (plus 250 published msgs/day). A 3s GET poll alone (20/min) outruns
+  // the refill (12/min) → guaranteed 429s within minutes → IP ban when ignored.
+  // 10s (6/min) leaves headroom for the 30s scanner reads and the publishes.
+  const BOUNTY_MIRROR_POLL_MS = 10000;
   const BOUNTY_MIRROR_LOCK_TTL_MS = 1500;
 
   async function acquireMirrorPollSlot() {
@@ -10818,18 +11121,37 @@ function checkInventoryDeltaWear() {
 
   async function pollBountyTopic() {
     if (!CONFIG.featBountyNotify || !CONFIG.featBountyNotif) return;
+    // Mute the personal-topic mirror while in pill-debuff (opt-in). pillState is
+    // only refreshed by the Pill Reminder tick, so mute cannot engage without it —
+    // surface that misconfig on the ampel instead of failing silently.
+    if (CONFIG.bountyMuteDebuff) {
+      if (!CONFIG.featPillReminder) {
+        dbg('bountyNotify', 'warn', 'mute-in-debuff on but Pill Reminder off — pill state undetectable, mute inactive');
+        setHealth('bountyNotify', 'warn', 'mute needs Pill Reminder on');
+      } else if (GM_getValue(KEYS.pillState, 'none') === 'DEBUFF') {
+        dbg('bountyNotify', 'debug', 'mirror muted — debuff active');
+        setHealth('bountyNotify', 'ok', 'mirror muted (debuff)');
+        return;
+      }
+    }
     const bountyTopic = getEffectiveTopic();
     if (!bountyTopic) return;
     const personalTopic = getEffectivePersonalTopic();
     if (!personalTopic || bountyTopic === personalTopic) return;
 
+    // Skip before lock churn: during an ntfy backoff this tick fires every 3s
+    // and must stay completely silent (no GM writes, no requests).
+    if (isNtfyLimited()) return;
+
     if (!(await acquireMirrorPollSlot())) return;
 
     try {
-      const res = await gmRequest({
+      const res = await ntfyRequest('bountyNotify', {
         method: 'GET',
-        url: `${NTFY_BASE}/${bountyTopic}/json?poll=1&since=30s`
+        url: `${NTFY_BASE}/${bountyTopic}/json?poll=1&since=60s`
       });
+      if (!res) return;   // 429/backoff — logged inside ntfyRequest
+      if (res.status !== 200) { dbg('bountyNotify', 'error', 'mirror source read failed', res.status); return; }
       const msgs = parseNtfyNdjson(res.text);
       if (!msgs.length) return;
 
@@ -10837,8 +11159,13 @@ function checkInventoryDeltaWear() {
       const cascadeSet = await resolveAllyCountryIds(true);
       const targetSet = CONFIG.bountyScope === 'all' ? null : (CONFIG.bountyScope === 'cascade' ? cascadeSet : alliesSet);
 
-      let processedHashes = GM_getValue(KEYS.bountyMirrorProcessedHashes, []);
-      if (!Array.isArray(processedHashes)) processedHashes = [];
+      // Dedup keyed by bkey (unique per bounty), time-pruned like the scanner's seen
+      // store. A fixed cap-N array thrashed on busy feeds: a bkey's slot was evicted
+      // by newer distinct bounties before its own duplicates (re-published every ~3s
+      // poll within the since=30s window) stopped arriving → same bounty re-forwarded.
+      let mirrorSeen = GM_getValue(KEYS.bountyMirrorProcessedHashes, {});
+      if (!mirrorSeen || typeof mirrorSeen !== 'object' || Array.isArray(mirrorSeen)) mirrorSeen = {};
+      mirrorSeen = pruneSeen(mirrorSeen, now());
 
       for (const m of msgs) {
         if (m.event !== 'message') continue;
@@ -10855,8 +11182,7 @@ function checkInventoryDeltaWear() {
         const hasAction = body.includes('Kämpfe für') || body.includes('Fight for');
         if (!hasTopfOrPool || !hasRateSuffix || !hasAction) continue;
 
-        const msgHash = simpleHash(title + '\n' + body);
-        if (processedHashes.includes(msgHash)) continue;
+        if (mirrorSeen[bkey]) continue;
 
         if (targetSet) {
           let allyCountryName = '';
@@ -10899,20 +11225,20 @@ function checkInventoryDeltaWear() {
         };
         if (m.click) headers.Click = m.click;
 
-        const mirrorRes = await gmRequest({
+        const mirrorRes = await ntfyRequest('bountyNotify', {
           method: 'POST',
           url: `${NTFY_BASE}/${personalTopic}`,
           data: body,
           headers
         });
 
+        // 429/backoff: bkey stays unmarked → re-forwarded after the backoff (if
+        // still inside the poll window). Stop the batch — more sends now = ban risk.
+        if (!mirrorRes) break;
         if (mirrorRes.status >= 200 && mirrorRes.status < 300) {
           dbg('bountyNotify', 'debug', `mirrored bounty to personal topic: ${bkey}`);
-          processedHashes.push(msgHash);
-          if (processedHashes.length > 10) {
-            processedHashes.shift();
-          }
-          GM_setValue(KEYS.bountyMirrorProcessedHashes, processedHashes);
+          mirrorSeen[bkey] = now();
+          GM_setValue(KEYS.bountyMirrorProcessedHashes, mirrorSeen);
         } else {
           dbg('bountyNotify', 'error', `failed to mirror bounty: ${mirrorRes.status}`);
         }
@@ -10958,6 +11284,7 @@ function checkInventoryDeltaWear() {
     regFeature('marketGraph', 'Market Graph');
     regFeature('battleAdvisor', 'Battle Advisor');
     regFeature('pillReminder', 'Pill Reminder');
+    regFeature('muHealDim', 'MU Heal Dim');
     regFeature('notes', 'User Notes');
     regFeature('api', 'API Layer');
     regFeature('bountyNotify', 'Bounty-Push');
@@ -10975,8 +11302,10 @@ function checkInventoryDeltaWear() {
     CONFIG.featPillNotifHnH = GM_getValue(KEYS.featPillNotifHnH, false);
     CONFIG.featPillNotifWindow = GM_getValue(KEYS.featPillNotifWindow, false);
     CONFIG.featPillNotifDebuff = GM_getValue(KEYS.featPillNotifDebuff, false);
+    CONFIG.featMuHealDim = GM_getValue(KEYS.featMuHealDim, false);
     CONFIG.featBountyNotify = GM_getValue(KEYS.featBountyNotify, CONFIG.featBountyNotify);
     CONFIG.featBountyNotif = GM_getValue(KEYS.featBountyNotif, false);
+    CONFIG.bountyMuteDebuff = GM_getValue(KEYS.bountyMuteDebuff, false);
     CONFIG.ntfyTopic = GM_getValue(KEYS.ntfyTopic, CONFIG.ntfyTopic);
     CONFIG.ntfyTopicSecret = GM_getValue(KEYS.ntfyTopicSecret, CONFIG.ntfyTopicSecret);
     CONFIG.personalTopic = GM_getValue(KEYS.personalTopic, '');
@@ -11002,6 +11331,7 @@ function checkInventoryDeltaWear() {
       else setHealth('battleAdvisor', 'idle', 'not on battle page');
     } else setHealth('battleAdvisor', 'idle', 'disabled in settings');
     if (CONFIG.featPillReminder) guard('pillReminder', initPillReminder); else setHealth('pillReminder', 'idle', 'disabled in settings');
+    if (CONFIG.featMuHealDim) applyMuHealDimSoon(); else setHealth('muHealDim', 'idle', 'disabled in settings');
     if (CONFIG.featMarketGraph) guard('marketGraph', initMarketGraph); else setHealth('marketGraph', 'idle', 'disabled in settings');
     if (CONFIG.featPnlTracker) guard('pnl', initPnlTracker); else setHealth('pnl', 'idle', 'disabled in settings');
     if (CONFIG.featBountyNotify) guard('bountyNotify', initBountyNotify); else setHealth('bountyNotify', 'idle', 'disabled in settings');
