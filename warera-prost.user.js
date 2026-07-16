@@ -4737,9 +4737,6 @@ async function scanInventory(force) {
     cachedCards = null;
     if (isInventoryPage()) {
       scanInventory(false);
-    } else if (isMarketPage()) {
-      scrapeMarketPrices();
-      scanInventory(false);
     }
   }, CONFIG.rescanDebounceMs);
 
@@ -4748,9 +4745,6 @@ async function scanInventory(force) {
     if (bypassNextScanDebounce) {
       bypassNextScanDebounce = false;
       if (isInventoryPage()) {
-        scanInventory(force);
-      } else if (isMarketPage()) {
-        scrapeMarketPrices();
         scanInventory(force);
       }
     } else {
@@ -4816,9 +4810,6 @@ function updateObserverTarget() {
       log('Route polling: found cards immediately');
       if (isInventoryPage()) {
         scanInventory(false);
-      } else if (isMarketPage()) {
-        scrapeMarketPrices();
-        scanInventory(false);
       }
       return;
     }
@@ -4836,9 +4827,6 @@ function updateObserverTarget() {
         }
         routePollFrame = null;
         if (isInventoryPage()) {
-          scanInventory(false);
-        } else if (isMarketPage()) {
-          scrapeMarketPrices();
           scanInventory(false);
         }
         return;
@@ -4872,19 +4860,21 @@ function updateObserverTarget() {
       bootstrapObserver = null;
     }
 
-    if (isInventoryPage() || isMarketPage()) {
+    if (isInventoryPage()) {
       updateObserverTarget();
       if (document.querySelector("[id^='item-code-selector-']") || findItemCards().size > 0) {
         log('Route change: cards exist immediately, scanning');
-        if (isInventoryPage()) {
-          guard('advisor', () => scanInventory(false));
-        } else if (isMarketPage()) {
-          scrapeMarketPrices();
-          guard('advisor', () => scanInventory(false));
-        }
+        guard('advisor', () => scanInventory(false));
       } else {
         initBootstrapObserver();
         startRoutePolling();
+      }
+    } else if (isMarketPage()) {
+      observer.disconnect();
+      if (CONFIG.featMarketGraph) {
+        initSharedBodyObserver();
+      } else {
+        teardownSharedBodyObserver();
       }
     } else if (isBattlePage()) {
       observer.disconnect();
@@ -10879,14 +10869,9 @@ function checkInventoryDeltaWear() {
     if (CONFIG.debug) { setTimeout(() => { runProbes(); updateDebugHud(); }, 1500); }
 
     observer = new MutationObserver(() => triggerScan(false));
-    if (isInventoryPage() || isMarketPage()) {
+    if (isInventoryPage()) {
       updateObserverTarget();
-      if (isInventoryPage()) {
-        guard('advisor', () => scanInventory(false));
-      } else {
-        scrapeMarketPrices();
-        guard('advisor', () => scanInventory(false));
-      }
+      guard('advisor', () => scanInventory(false));
       startRoutePolling();
     }
 
@@ -10915,7 +10900,7 @@ function checkInventoryDeltaWear() {
     // badged/suppressed, so this is a no-op cost when the grid is stable.
     setInterval(() => {
       if (scanning) return;
-      if (!isInventoryPage() && !isMarketPage()) return;
+      if (!isInventoryPage()) return;
       if (loopGuard('advisor-heartbeat', 25, 15000)) return;
       const cards = findItemCards();
       if (cards.size > 0 && hasInventoryChanged(cards)) {
