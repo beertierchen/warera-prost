@@ -411,44 +411,6 @@ global.MutationObserver = class {
 try {
   // Run the script by eval'ing it
   eval(code);
-  assert.strictEqual(typeof globalThis.computeScrapFlip, 'function', 'computeScrapFlip should be defined');
-
-  // Float-safe comparison (avoids IEEE-754 rounding noise like 1.7819999999999998)
-  const EPS = 1e-9;
-  const approx = (actual, expected, label) =>
-    assert.ok(Math.abs(actual - expected) < EPS, `${label}: expected ~${expected}, got ${actual}`);
-
-  // Profitable flip: buy 1.4, tier 1 (yield 6), scrap unit 0.3, tax 1%
-  const win = globalThis.computeScrapFlip(1.4, 1, 0.3, 0.01, { 1: 6 });
-  approx(win.scrapValue, 1.8, 'win.scrapValue');
-  approx(win.net, 1.782, 'win.net');
-  approx(win.profit, 0.382, 'win.profit');
-  assert.strictEqual(win.yield, 6, 'win.yield');
-  assert.strictEqual(win.flip, true, 'win.flip');
-
-  // Non-profitable: buy price above net scrap value -> no flip
-  const loss = globalThis.computeScrapFlip(2, 1, 0.3, 0.01, { 1: 6 });
-  assert.strictEqual(loss.flip, false, 'loss.flip');
-  assert.ok(loss.profit < 0, 'loss.profit should be negative');
-
-  // Unknown tier (no yield) -> null, never a false signal
-  assert.strictEqual(globalThis.computeScrapFlip(1.4, 99, 0.3, 0.01, { 1: 6 }), null, 'unknown tier -> null');
-
-  // Missing inputs -> null
-  assert.strictEqual(globalThis.computeScrapFlip(null, 1, 0.3, 0.01, { 1: 6 }), null, 'null buyPrice -> null');
-  assert.strictEqual(globalThis.computeScrapFlip(1.4, 1, null, 0.01, { 1: 6 }), null, 'null scrap price -> null');
-
-  // Grid safety-margin behavior: a marginally-profitable floor must STOP being a
-  // flip once the 5% grid margin is applied (guards against false positives from
-  // a scraped floor sitting below the real cheapest offer).
-  const GRID_MARGIN = 0.05;
-  const realFloor = 1.75; // net scrap value = 6 * 0.3 * 0.99 = 1.782
-  const onRawFloor = globalThis.computeScrapFlip(realFloor, 1, 0.3, 0.01, { 1: 6 });
-  assert.strictEqual(onRawFloor.flip, true, 'marginal floor flips on raw price');
-  const onBufferedFloor = globalThis.computeScrapFlip(realFloor * (1 + GRID_MARGIN), 1, 0.3, 0.01, { 1: 6 });
-  assert.strictEqual(onBufferedFloor.flip, false, 'marginal floor no longer flips after grid margin');
-  assert.ok(onBufferedFloor.profit < 0, 'buffered marginal profit goes negative');
-
   console.log('--- Testing low durability and profile fixes ---');
 
   // Test 1: Durability parsing under cleanIcons.forEach container removal
@@ -662,15 +624,13 @@ try {
   assert.ok(modalEl, 'Settings modal should be rendered');
 
   const hintBtns = bg.querySelectorAll('.wia-hint-toggle');
-  assert.strictEqual(hintBtns.length, 7, 'Should have exactly 7 hint toggle buttons (Notes, Battle, Live Offers, Scrap Flip, Pill Reminder, Market Graph, P&L Tracker)');
+  assert.strictEqual(hintBtns.length, 6, 'Should have exactly 6 hint toggle buttons (Notes, Battle, Live Offers, Pill Reminder, Market Graph, P&L Tracker)');
 
   const liveOffersCheckbox = bg.querySelector('.wia-live-offers');
-  const scrapFlipCheckbox = bg.querySelector('.wia-scrap-flip');
   const featPillCheckbox = bg.querySelector('.wia-feat-pill');
   const featMarketGraphCheckbox = bg.querySelector('.wia-feat-market-graph');
   const featPnlTrackerCheckbox = bg.querySelector('.wia-feat-pnl-tracker');
   assert.ok(liveOffersCheckbox, 'Live offers checkbox should be present');
-  assert.ok(scrapFlipCheckbox, 'Scrap flip checkbox should be present');
   assert.ok(featPillCheckbox, 'Pill reminder checkbox should be present');
   assert.ok(featMarketGraphCheckbox, 'Market graph checkbox should be present');
   assert.ok(featPnlTrackerCheckbox, 'P&L Tracker checkbox should be present');

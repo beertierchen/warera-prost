@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         PROST
+// @name         TEST PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.8.17
-// @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + market floors, plus scrap-flip market indicators. Optional official game API via your own key. No automation.
+// @version      0.8.17-unstable
+// @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
 // @supportURL   https://github.com/beertierchen/warera-prost/issues
@@ -229,7 +229,6 @@
       6: { dmg: { min: 221, max: 300 }, crit: { min: 41, max: 50 } }
     },
 
-    showScrapFlip: false,
     featPillReminder: false,
     featPillNotifHnH: false,
     featPillNotifWindow: false,
@@ -342,9 +341,6 @@
         settingsTokenNote: 'Saved locally (GM_setValue, lightly obfuscated-not real encryption).',
         settingsLiveOffersCheckbox: 'Fetch live offers via API (requires API Token)',
         settingsLiveOffersHint: 'Fetches live market listings from the official API to rank item stats against currently active listings.',
-        settingsScrapFlipCheckbox: 'Scrap-Flip indicator (experimental)',
-        settingsScrapFlipHint: 'Highlights profitable salvage items on the market (buying and dismantling them for profit).',
-        scrapFlipTooltip: 'Buy {buy} → scrap {yield}×{unit} net {net} = +{profit} profit',
         hintToggleLabel: 'Explanation',
         settingsFeatPillCheckbox: 'Pill Reminder (configurable pill-timing overlay) 💊',
         settingsFeatPillHint: 'Shows a top-bar status and countdown timer for the pill cycle, highlights ready pills, and checks health/hunger levels.',
@@ -573,9 +569,6 @@
         settingsTokenNote: 'Lokal gespeichert (GM_setValue, leicht verschleiert-keine echte Verschlüsselung).',
         settingsLiveOffersCheckbox: 'Live-Angebote über API abrufen (benötigt API-Token)',
         settingsLiveOffersHint: 'Ruft aktuelle Angebote über die offizielle API ab, um Gegenstandswerte mit derzeit aktiven Angeboten zu vergleichen.',
-        settingsScrapFlipCheckbox: 'Scrap-Flip-Indikator (experimentell)',
-        settingsScrapFlipHint: 'Markiert profitable Gegenstände auf dem Markt, die für Gewinn gekauft und in Schrott zerlegt werden können.',
-        scrapFlipTooltip: 'Kauf {buy} → Scrap {yield}×{unit} netto {net} = +{profit} Gewinn',
         hintToggleLabel: 'Erklärung',
         settingsFeatPillCheckbox: 'Pill-Reminder (konfigurierbares Pillen-Timing Overlay)',
         settingsFeatPillHint: 'Zeigt einen Status und Countdown in der Menüleiste, markiert nimmbereite Pillen und prüft HP/Hunger-Werte.',
@@ -759,7 +752,6 @@
     ntfy429Streak: NS + 'ntfy429Streak',
     scrapedPrices: NS + 'scrapedPrices',
     useLiveOffersApi: NS + 'useLiveOffers',
-    showScrapFlip: NS + 'scrapFlip',
     stockKeepCount: NS + 'stockKeepCount',
     featNotes: NS + 'featNotes',
     featBattleAdvisor: NS + 'featBattle',
@@ -2124,18 +2116,7 @@
     return isMarketPage() && !!itemCodeFromUrl();
   }
 
-  function computeScrapFlip(buyPrice, tier, scrapUnitPrice, sellTaxRate, yieldByTier) {
-    if (buyPrice == null || tier == null || scrapUnitPrice == null) return null;
-    const y = yieldByTier?.[tier];
-    if (!y) return null;
-    const scrapValue = y * scrapUnitPrice;
-    const net = scrapValue * (1 - sellTaxRate);
-    const profit = net - buyPrice;
-    return { scrapValue, net, profit, flip: profit > 0, yield: y };
-  }
-
   if (typeof globalThis !== 'undefined') {
-    globalThis.computeScrapFlip = computeScrapFlip;
     globalThis.tierForCode = tierForCode;
     globalThis.itemCodeFromUrl = itemCodeFromUrl;
     globalThis.isMarketGridPage = isMarketGridPage;
@@ -3127,195 +3108,6 @@
     return lines.join('\n');
   }
 
-  function cleanupFlipBadge(el) {
-    if (!el) return;
-    const badge = el.querySelector('.wia-flip-badge');
-    if (badge) badge.remove();
-    if (el.classList && el.classList.contains('wia-flip-tile')) {
-      el.classList.remove('wia-flip-tile');
-    }
-    if (el.dataset) {
-      delete el.dataset.wiaFlip;
-      delete el.dataset.wiaFlipPinned;
-    }
-    if (el.style && el.style.position === 'relative') {
-      el.style.position = '';
-    }
-  }
-
-  function renderFlipBadge(el, text, title, isPositive) {
-    let badge = el.querySelector('.wia-flip-badge');
-    if (!badge) {
-      badge = document.createElement('div');
-      badge.className = 'wia-flip-badge';
-      el.appendChild(badge);
-    }
-    badge.textContent = text;
-    badge.title = title;
-    badge.classList.toggle('is-negative', !isPositive);
-    el.classList.add('wia-flip-tile');
-    if (getComputedStyle(el).position === 'static') {
-      el.style.position = 'relative';
-      el.dataset.wiaFlipPinned = '1';
-    }
-    el.dataset.wiaFlip = text;
-  }
-
-  function getFlipTitle(buyPrice, result, tier) {
-    const buy = fmt(buyPrice);
-    const unit = fmt(result.yield ? (result.scrapValue / result.yield) : null);
-    return t('scrapFlipTooltip', {
-      buy,
-      yield: result.yield,
-      unit,
-      net: fmt(result.net),
-      profit: fmt(result.profit),
-      tier: tier != null ? tier : '?'
-    });
-  }
-
-  function getScrapUnitPrice(prices) {
-    return prices ? prices[CONFIG.scrapItemCode] ?? null : null;
-  }
-
-  function getMarketBuyPriceFromTile(tile) {
-    if (!tile) return null;
-    const icon = tile.querySelector('.a6izou0') || tile.querySelector('svg') || null;
-    if (icon) {
-      const n = numberNearClean(icon);
-      if (n != null) return n;
-    }
-    const text = (tile.textContent || '').replace(/\s+/g, ' ').trim();
-    const match = text.match(/(\d+(?:[.,\s]\d+)*)/);
-    return match ? parseNum(match[1]) : null;
-  }
-
-  async function renderScrapFlipIndicators() {
-    if (!CONFIG.showScrapFlip || !isMarketGridPage()) return;
-    const tiles = document.querySelectorAll("[id^='item-code-selector-']");
-    if (!tiles.length) return;
-
-    const prices = await fetchPrices(false);
-    const scrapUnitPrice = getScrapUnitPrice(prices);
-    if (scrapUnitPrice == null) return;
-
-    const scrapedStore = readCache(KEYS.scrapedPrices) || {};
-    suspendObserver();
-    try {
-      tiles.forEach((tile) => {
-        const code = tile.id.replace('item-code-selector-', '').trim();
-        if (!code || code === CONFIG.scrapItemCode) {
-          cleanupFlipBadge(tile);
-          return;
-        }
-        const tier = tierForCode(code);
-        const rawBuyPrice = scrapedStore[code]?.price ?? getMarketBuyPriceFromTile(tile);
-        // Grid floor can undercut the real cheapest offer -> inflate by a safety
-        // margin so only clearly profitable tiles flip (avoids false positives).
-        const buyPrice = rawBuyPrice != null
-          ? rawBuyPrice * (1 + (CONFIG.scrapFlipGridMargin || 0))
-          : null;
-        const result = computeScrapFlip(buyPrice, tier, scrapUnitPrice, CONFIG.sellTaxRate, CONFIG.scrapYieldByTier);
-        if (!result || !result.flip) {
-          cleanupFlipBadge(tile);
-          return;
-        }
-        const nextKey = `${result.profit.toFixed(3)}:${tier}`;
-        if (tile.dataset.wiaFlip === nextKey) return;
-        renderFlipBadge(
-          tile,
-          `🔨↑ +${fmt(result.profit)}`,
-          getFlipTitle(rawBuyPrice, result, tier),
-          true
-        );
-        tile.dataset.wiaFlip = nextKey;
-      });
-    } finally {
-      resumeObserver();
-    }
-  }
-
-  // Detail offer cards carry several .a6izou0 icons (attack, crit, AND price).
-  // The price sits on the coin-stack icon; match it by its unique path signature
-  // so we never mistake the attack value for the buy price.
-  function getOfferBuyPrice(card) {
-    if (!card) return null;
-    const COIN_SIG = 'M12 5C7.031 5'; // coin-stack svg path prefix
-    const icons = card.querySelectorAll('.a6izou0');
-    for (const icon of icons) {
-      const path = icon.querySelector('path');
-      if (path && (path.getAttribute('d') || '').startsWith(COIN_SIG)) {
-        const n = numberNearClean(icon);
-        if (n != null) return n;
-      }
-    }
-    return null;
-  }
-
-  async function renderScrapFlipOffers() {
-    if (!CONFIG.showScrapFlip || !isMarketDetailPage()) return;
-
-    const itemCode = itemCodeFromUrl();
-    const tier = tierForCode(itemCode);
-    if (itemCode == null || tier == null) return;
-
-    const prices = await fetchPrices(false);
-    const scrapUnitPrice = getScrapUnitPrice(prices);
-    if (scrapUnitPrice == null) return;
-
-    let cards = findItemCards(false);
-    if (!cards.size) {
-      // Fallback: collect ONLY offer cards holding this item's image.
-      // Never query the generic .a6izou0 icon class-it exists site-wide
-      // (chat, HUD, nav) and would stamp badges across the whole page.
-      const root = document.querySelector('main') || document.body;
-      const fallbackCards = new Map();
-      root.querySelectorAll(CONFIG.itemImageSelector).forEach((img) => {
-        if ((img.getAttribute('alt') || '').trim() !== itemCode) return;
-        const card = climbToCard(img);
-        if (card && !fallbackCards.has(card)) {
-          fallbackCards.set(card, img);
-        }
-      });
-      cards = fallbackCards;
-    }
-
-    suspendObserver();
-    try {
-      cards.forEach((img, card) => {
-        const buyPrice = getOfferBuyPrice(card) ?? getMarketBuyPriceFromTile(card);
-        const result = computeScrapFlip(buyPrice, tier, scrapUnitPrice, CONFIG.sellTaxRate, CONFIG.scrapYieldByTier);
-        if (!result || !result.flip) {
-          cleanupFlipBadge(card);
-          return;
-        }
-        const nextKey = `${result.profit.toFixed(3)}:${tier}`;
-        if (card.dataset.wiaFlip === nextKey) return;
-        renderFlipBadge(
-          card,
-          `🔨↑ +${fmt(result.profit)}`,
-          getFlipTitle(buyPrice, result, tier),
-          true
-        );
-        card.dataset.wiaFlip = nextKey;
-      });
-    } finally {
-      resumeObserver();
-    }
-  }
-
-  async function renderScrapFlip() {
-    if (!CONFIG.showScrapFlip || !isMarketPage()) {
-      document.querySelectorAll('.wia-flip-badge').forEach((badge) => badge.remove());
-      document.querySelectorAll('.wia-flip-tile').forEach((tile) => cleanupFlipBadge(tile));
-      return;
-    }
-    if (isMarketDetailPage()) {
-      await renderScrapFlipOffers();
-    } else if (isMarketGridPage()) {
-      await renderScrapFlipIndicators();
-    }
-  }
 
   // ───────────────────────────────────────────────────────────────────────────
   // Market scraping & Scan orchestration
@@ -3661,9 +3453,6 @@
         resumeObserver();
       }
       updateStatusIndicator();
-      if (isMarketPage()) {
-        await renderScrapFlip();
-      }
       log(`Background update finished for ${code}`);
     } catch (e) {
       log(`Background load failed for ${code}:`, e);
@@ -3829,9 +3618,6 @@ async function scanInventory(force) {
       }
       updateStatusIndicator();
       log(`scanned ${items.length} items (immediate render done)`);
-      if (isMarketPage()) {
-        await renderScrapFlip();
-      }
 
       // Background Async Loads
       const isGlobalPriceStale = !pc || now() - pc.fetchedAt >= CONFIG.priceCacheTtlMs;
@@ -4057,26 +3843,6 @@ async function scanInventory(force) {
         cursor: pointer; text-align: left; font: 600 13px/1.2 system-ui, sans-serif;
       }
       .wia-locale-item:hover { background: #21262d; }
-      .wia-flip-badge {
-        /* Bottom ribbon pinned INSIDE the tile (where the inventory-quantity
-           banner-always "-" on the equipment market-normally sits), so the
-           indicator never overflows the tile bounds. left+right constrain the
-           width to the tile; overflow clips gracefully on tiny tiles. */
-        position: absolute; left: 2px; right: 2px; bottom: 2px; z-index: 70;
-        display: flex; align-items: center; justify-content: center; gap: 2px;
-        padding: 1px 3px; border-radius: 4px;
-        font: 700 9px/1.1 system-ui, sans-serif;
-        color: #06210f; background: #3fb950;
-        box-shadow: 0 1px 4px rgba(0,0,0,.35), 0 0 0 1px rgba(0,0,0,.25);
-        pointer-events: none; white-space: nowrap;
-        overflow: hidden; text-overflow: ellipsis;
-      }
-      .wia-flip-badge.is-negative {
-        color: #fff; background: #8b949e;
-      }
-      .wia-flip-tile {
-        box-shadow: inset 0 0 0 2px #3fb950 !important;
-      }
 
       /* ── Pill Reminder module styles ── */
       /* Mimic WareEra's native top-bar chips: pill shape, dark translucent
@@ -4496,7 +4262,6 @@ async function scanInventory(force) {
     const nextLocale = currentLocale === 'de' ? 'en' : 'de';
     const prevToken = bg.querySelector('.wia-token')?.value ?? getToken();
     const prevLiveOffers = bg.querySelector('.wia-live-offers')?.checked ?? CONFIG.useLiveOffersApi;
-    const prevScrapFlip = bg.querySelector('.wia-scrap-flip')?.checked ?? CONFIG.showScrapFlip;
     const prevFeatNotes = bg.querySelector('.wia-feat-notes')?.checked ?? CONFIG.featNotes;
     const prevFeatBattle = bg.querySelector('.wia-feat-battle')?.checked ?? CONFIG.featBattleAdvisor;
     const prevFeatPill = bg.querySelector('.wia-feat-pill')?.checked ?? CONFIG.featPillReminder;
@@ -4557,14 +4322,6 @@ async function scanInventory(force) {
             <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
           </div>
           <div class="wia-hint" hidden>${t('settingsLiveOffersHint')}</div>
-        </div>
-        <div class="wia-feat-row" style="margin-top: 6px;">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <input type="checkbox" class="wia-scrap-flip" style="width: auto;" ${prevScrapFlip ? 'checked' : ''} />
-            <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsScrapFlipCheckbox')}</label>
-            <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
-          </div>
-          <div class="wia-hint" hidden>${t('settingsScrapFlipHint')}</div>
         </div>
         <details class="wia-advisor-settings" style="margin-top: 6px; margin-left: 24px;">
           <summary style="font-size: 11px; color: #8b949e; cursor: pointer; user-select: none; font-weight: bold; outline: none; margin-bottom: 6px;">
@@ -5093,9 +4850,6 @@ async function scanInventory(force) {
       bg.remove();
       warnBanner = null;
       settingsModalBg = null;
-      if (isMarketPage()) {
-        renderScrapFlip().catch((e) => log('renderScrapFlip error:', e));
-      }
       scanInventory(tokenChanged);
     };
     bg.querySelector('.wia-clear').onclick = () => { clearCache(); updateStatusIndicator(); };
@@ -11293,7 +11047,6 @@ function checkInventoryDeltaWear() {
       window.__WIA_LOCALE__ = CONFIG.locale;
     }
     CONFIG.useLiveOffersApi = GM_getValue(KEYS.useLiveOffersApi, false);
-    CONFIG.showScrapFlip = GM_getValue(KEYS.showScrapFlip, false);
     CONFIG.stockKeepCount = parseInt(GM_getValue(KEYS.stockKeepCount, 3), 10) || 3;
     CONFIG.featNotes = GM_getValue(KEYS.featNotes, false);
     CONFIG.featBattleAdvisor = GM_getValue(KEYS.featBattleAdvisor, false);
@@ -11347,7 +11100,6 @@ function checkInventoryDeltaWear() {
       } else {
         scrapeMarketPrices();
         guard('advisor', () => scanInventory(false));
-        renderScrapFlip().catch((e) => log('renderScrapFlip error:', e));
       }
       startRoutePolling();
     }
