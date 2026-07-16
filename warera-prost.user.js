@@ -779,7 +779,6 @@
     pnlSnapshots: NS + 'pnl.snapshots',
     pnlSchemaVersion: NS + 'pnl.schemaVersion',
     debug: NS + 'debug',
-    consumablePrices: NS + 'consumablePrices', // { [code]: price } harvested from #item-code-selector-* tiles
     pnlProcessedTxs: NS + 'pnl.processedTxs',  // persistent (history-spanning) tx-id dedup for cost-basis + booking
     pnlBadTx: NS + 'pnl.badTx',                // quarantine retry attempts mapping for bad transactions
     bountyScope: NS + 'bountyScope',
@@ -7620,42 +7619,7 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
     if (pc && pc.data && pc.data[normCode] != null) {
       return pc.data[normCode];
     }
-    // Consumables (ammo/food/drugs) aren't in itemTrading.getPrices (materials only).
-    // Their unit price is shown in the in-game selector tiles-harvested into this cache.
-    const cp = readCache(KEYS.consumablePrices);
-    if (cp && cp[normCode] != null) return cp[normCode];
     return null;
-  }
-
-  // Harvest unit prices from any visible `#item-code-selector-<code>` tiles (Consume/
-  // Buffs/Ammo popovers). The coins-value sits next to the coins SVG (path starts with
-  // CONFIG.coinsIconPathPrefix). Persisted so the consumption-delta booking (which runs
-  // on the inventory page, where these popovers are closed) can price ammo/food/drugs.
-  function harvestSelectorPrices() {
-    const tiles = document.querySelectorAll('[id^="item-code-selector-"]');
-    if (!tiles.length) return;
-    const cache = { ...(readCache(KEYS.consumablePrices) || {}) };
-    let changed = false;
-    tiles.forEach((tile) => {
-      const rawCode = tile.id.replace('item-code-selector-', '');
-      if (!rawCode) return;
-      const code = normalizeItemCode(rawCode);
-      for (const svg of tile.querySelectorAll('svg')) {
-        const p = svg.querySelector('path');
-        if (p && (p.getAttribute('d') || '').startsWith(CONFIG.coinsIconPathPrefix)) {
-          // price text lives in the value wrapper = parent of the icon container
-          const wrap = svg.closest('.a6izou0')?.parentElement || svg.parentElement?.parentElement;
-          const txt = (wrap ? wrap.textContent : '').replace(/\s/g, '');
-          const m = txt.match(/(\d+(?:\.\d+)?)/);
-          if (m) {
-            const price = parseFloat(m[1]);
-            if (isFinite(price) && cache[code] !== price) { cache[code] = price; changed = true; }
-          }
-          break;
-        }
-      }
-    });
-    if (changed) writeCache(KEYS.consumablePrices, cache);
   }
 
   function getItemPriceRange(itemCode) {
@@ -8933,7 +8897,6 @@ function checkInventoryDeltaWear() {
     // reconciles against these booked events so nothing double-counts.
     document.addEventListener('click', (e) => {
       if (!CONFIG.featPnlTracker) return;
-      harvestSelectorPrices(); // capture ammo/food/drug unit prices from any open selector tiles
       const pop = document.getElementById('consume-food-popover');
       if (!pop || !pop.contains(e.target)) return;
       // Find the clicked tile = the LARGEST ancestor (within the popover) whose
