@@ -21,7 +21,6 @@ Browserspiel [**WareEra**](https://app.warera.io).
 | Funktion | Was sie tut |
 | --- | --- |
 | [Inventory Advisor](Inventory-Advisor.de) | KEEP / HOLD / SELL / SCRAP-Empfehlung auf jeder Inventarkarte, inkl. Stat-Ranking, Schrott-vs-Markt-Leisten, Skin-/Ausrüstungserkennung und Haltbarkeit. |
-| [Scrap-Flip-Indikator](Scrap-Flip-Indicator.de) | *Experimentell.* Markiert Equipment-Marktangebote, die sich zum Kaufen und Zerlegen (Schrott) lohnen. |
 | [Täglicher P&L Tracker](Daily-PnL-Tracker.de) | Täglicher Gewinn/Verlust in der Topbar neben deinem Gold, inkl. automatisch gebuchter Verschleiß-(Reparatur-)Kosten. Standardmäßig an. |
 | [Ressourcen-Markt-Graph](Market-Graph.de) | *Experimentell.* Intraday-Preisverlauf (24h/3d) im Kauf-/Verkaufs-Modal von Ressourcen. |
 | [Crafting-Rechner](Crafting-Calculator.de) | *Experimentell.* Profit-Schätzung fürs Herstellen - Ressourcenkosten vs. Marktwert. |
