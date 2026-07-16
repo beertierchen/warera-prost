@@ -781,6 +781,7 @@
     debug: NS + 'debug',
     pnlProcessedTxs: NS + 'pnl.processedTxs',  // persistent (history-spanning) tx-id dedup for cost-basis + booking
     pnlBadTx: NS + 'pnl.badTx',                // quarantine retry attempts mapping for bad transactions
+    gatedProcedures: NS + 'gatedProcedures',
     bountyScope: NS + 'bountyScope',
     bountyAllianceNameCache: NS + 'bountyAllianceNameCache',
     apiBaseGatewayMigrated: NS + 'apiBaseGatewayMigrated',
@@ -854,7 +855,11 @@
     return out;
   }
   function setToken(t) {
+    const old = getToken();
     GM_setValue(KEYS.token, t ? btoa(xor(t, OBF_KEY)) : '');
+    if (old !== t) {
+      GM_setValue(KEYS.gatedProcedures, []);
+    }
   }
   function getToken() {
     const raw = GM_getValue(KEYS.token, '');
@@ -871,6 +876,7 @@
     writeCache(KEYS.priceCache, null);
     writeCache(KEYS.transactionsCache, {});
     writeCache(KEYS.persistedAdvice, {});
+    GM_setValue(KEYS.gatedProcedures, []);
     writeCache(KEYS.pnlLedger, null);
     writeCache(KEYS.pnlYesterday, null);
     writeCache(KEYS.pnlCostBasis, null);
@@ -1343,6 +1349,22 @@
     GM_setValue(KEYS.rateLimitedUntil, now() + CONFIG.rateLimitBackoffMs);
   }
 
+  function isProcedureGated(procedure) {
+    const gated = GM_getValue(KEYS.gatedProcedures, []);
+    return Array.isArray(gated) && gated.includes(procedure);
+  }
+  function gateProcedure(procedure) {
+    const gated = GM_getValue(KEYS.gatedProcedures, []);
+    if (Array.isArray(gated)) {
+      if (!gated.includes(procedure)) {
+        gated.push(procedure);
+        GM_setValue(KEYS.gatedProcedures, gated);
+      }
+    } else {
+      GM_setValue(KEYS.gatedProcedures, [procedure]);
+    }
+  }
+
   // ── ntfy.sh rate-limit layer (separate from the game-API backoff above) ──
   // ntfy.sh temporarily BANS IPs that keep sending after a 429, so every ntfy
   // request (GET history reads AND POST publishes) must go through ntfyRequest().
@@ -1431,6 +1453,7 @@
   // Probe configured bases once, remember the one that works.
   async function resolveApiBase(procedure, args) {
     if (isRateLimited()) throw new Error('429');
+    if (isProcedureGated(procedure)) throw new Error('gated: ' + procedure);
     const cached = GM_getValue(KEYS.apiBase, '');
     const bases = cached ? [cached, ...CONFIG.apiBases.filter((b) => b !== cached)] : CONFIG.apiBases;
     let lastErr;
@@ -1439,6 +1462,10 @@
         await throttle();
         const res = await gmRequest({ method: 'GET', url: trpcUrl(base, procedure, args), headers: authHeaders() });
         if (res.status === 429) { tripRateLimit(); throw new Error('429'); }
+        if (res.status === 401 || res.status === 403) {
+          gateProcedure(procedure);
+          throw new Error(String(res.status));
+        }
         if (res.status >= 200 && res.status < 300) {
           GM_setValue(KEYS.apiBase, base);
           return { base, payload: unwrapTrpc(res.text) };
@@ -1447,6 +1474,7 @@
       } catch (e) {
         lastErr = e;
         if (String(e.message).includes('429')) break;
+        if (String(e.message).includes('401') || String(e.message).includes('403')) break;
       }
     }
     throw lastErr || new Error('all API bases failed');
@@ -1454,6 +1482,7 @@
 
   async function resolveApiPost(procedure, args) {
     if (isRateLimited()) throw new Error('429');
+    if (isProcedureGated(procedure)) throw new Error('gated: ' + procedure);
     const cached = GM_getValue(KEYS.apiBase, '');
     const bases = cached ? [cached, ...CONFIG.apiBases.filter((b) => b !== cached)] : CONFIG.apiBases;
     let lastErr;
@@ -1472,6 +1501,10 @@
           data: JSON.stringify(args)
         });
         if (res.status === 429) { tripRateLimit(); throw new Error('429'); }
+        if (res.status === 401 || res.status === 403) {
+          gateProcedure(procedure);
+          throw new Error(String(res.status));
+        }
         if (res.status >= 200 && res.status < 300) {
           GM_setValue(KEYS.apiBase, base);
           return { base, payload: unwrapTrpc(res.text) };
@@ -1480,6 +1513,7 @@
       } catch (e) {
         lastErr = e;
         if (String(e.message).includes('429')) break;
+        if (String(e.message).includes('401') || String(e.message).includes('403')) break;
       }
     }
     throw lastErr || new Error('all API bases failed');
