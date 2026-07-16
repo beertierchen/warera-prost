@@ -624,13 +624,11 @@ try {
   assert.ok(modalEl, 'Settings modal should be rendered');
 
   const hintBtns = bg.querySelectorAll('.wia-hint-toggle');
-  assert.strictEqual(hintBtns.length, 6, 'Should have exactly 6 hint toggle buttons (Notes, Battle, Live Offers, Pill Reminder, Market Graph, P&L Tracker)');
+  assert.strictEqual(hintBtns.length, 5, 'Should have exactly 5 hint toggle buttons (Notes, Battle, Pill Reminder, Market Graph, P&L Tracker)');
 
-  const liveOffersCheckbox = bg.querySelector('.wia-live-offers');
   const featPillCheckbox = bg.querySelector('.wia-feat-pill');
   const featMarketGraphCheckbox = bg.querySelector('.wia-feat-market-graph');
   const featPnlTrackerCheckbox = bg.querySelector('.wia-feat-pnl-tracker');
-  assert.ok(liveOffersCheckbox, 'Live offers checkbox should be present');
   assert.ok(featPillCheckbox, 'Pill reminder checkbox should be present');
   assert.ok(featMarketGraphCheckbox, 'Market graph checkbox should be present');
   assert.ok(featPnlTrackerCheckbox, 'P&L Tracker checkbox should be present');
@@ -1420,7 +1418,6 @@ try {
   
   // Ensure we start with empty price cache
   globalThis.GM_setValue('wia.priceCache', null);
-  globalThis.GM_setValue('wia.offersCache', {});
   globalThis.GM_setValue('wia.transactionsCache', {});
   globalThis.GM_setValue('wia.persistedAdvice', {});
   

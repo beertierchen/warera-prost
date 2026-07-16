@@ -53,12 +53,6 @@
     pricesEndpoint: 'itemTrading.getPrices',
     // getPrices returns MATERIALS only; the scrap unit price is the 'scraps' key.
     scrapItemCode: 'scraps',
-    // Equipment market data (falls back to api2).
-    // One request per itemCode (e.g. "gloves6") returns live sell offers w/ skills.
-    offersApiBase: 'https://api2.warera.io/trpc',
-    itemOffersEndpoint: 'itemOffer.getItemOffers',
-    offersLimit: 20,                    // how many offers to pull per itemCode
-    useLiveOffersApi: false,            // disabled to avoid 401, using scraped market floors instead
     featNotes: false,                    // experimental: user notes on /user/ links (off by default)
     featBattleAdvisor: false,            // experimental: highlight ally button on /battle/<id> pages
     alliedCountryCodes: ['de','pt','es','gm','ir','na','sr','th','at','fi','ie','no','se','uk','va','bf','cd','ye','ne','au','br','id'],
@@ -68,7 +62,6 @@
 
     // --- caching / rate-limit ---
     priceCacheTtlMs: 20 * 60 * 1000,    // 20 min (spec: 15-30 min)
-    scrapedPriceTtlMs: 6 * 60 * 60 * 1000, // 6 hours for scraped market prices
     txCacheTtlMs: 60 * 60 * 1000,       // 1 hour for transaction history
     priceSampleIntervalMs: 15 * 60 * 1000, // sample every 15 mins
     priceSeriesWindowMs: 3 * 24 * 60 * 60 * 1000, // 3 days history
@@ -276,11 +269,7 @@
         txRef: 'Market value (6d tx ref): {val} (avg of {count} txs with {diff}, total {total} txs)',
         exactMatch: 'exact match',
         diffMatch: 'diff ±{diff}',
-        estNoOffers: 'Market value (est., no offers): {val}',
-        scrapedFloor: 'Market value (scraped floor): {val}',
-        marketRoll: 'Market value @ roll: {val} (floor {floor}, {offers} offers)',
         stalePrices: '⚠ cached/stale prices-refresh in settings',
-        scrapeSuccess: '✓ {count} equipment prices scraped successfully!',
         notEquipment: 'not equipment',
         rangeLabelWeapon: 'score {score} >= {threshold} [90% of range {min} - {max}]',
         rangeLabelArmor: 'stat {stat}{pct} >= {threshold}{pct} [90% of range {min}{pct} - {max}{pct}]',
@@ -289,11 +278,9 @@
         stockKeepReason: 'Stock: top 3 roll (#{rank} of {size} {label})',
         highRollT3: 'high roll basestat {stat} >= 11 (T3 blue)',
         critCondition: 'Critical Condition: {tierLabel} weapon crit {crit}% >= {min}% (range {range})',
-        topRollOffers: 'stat {stat} in top {pct}% of {offers} live offers',
-        notTopRollOffers: 'stat {stat} not top-roll ({offers} offers)',
         topRollInv: 'stat {stat} in top {pct}% of {items} inventory items',
         notTopRollInv: 'stat {stat} not top-roll in inventory ({items} items)',
-        unknownRollRank: 'roll rank unknown (no offers/inventory comparison)',
+        unknownRollRank: 'roll rank unknown (no inventory comparison)',
         noPriceData: 'no price data',
         mktNoScrap: 'market {val} (net {net}, no scrap value)',
         heldCrit: 'held for Critical Condition',
@@ -439,7 +426,7 @@
         localeOption_en: 'English',
         settingsHelpContent: `<strong>Meaning of recommendations (Color + Symbol):</strong>
             <ul>
-              <li>💎 <strong>KEEP (Blue)</strong>: Keep the item. Applies to your top 3 stock (by type/tier) or if the item is in the top 33% (Top Roll) of live offers or inventory.</li>
+              <li>💎 <strong>KEEP (Blue)</strong>: Keep the item. Applies to your top 3 stock (by type/tier) or if the item is in the top 33% (Top Roll) of your inventory.</li>
               <li>✋ <strong>HOLD (Orange)</strong>: Keep/reserve. The item lies in the best 10% of the theoretically possible stat range (Top Itemscore). Only assigned if it is not 💎 KEEP.</li>
               <li>💰 <strong>SELL (Green)</strong>: Sell on the market. Economically sound as the net market price (minus 1% tax) exceeds salvage value.</li>
               <li>🔨 <strong>SCRAP (Red)</strong>: Scrap/salvage. Economically sound as salvage value exceeds net market price.</li>
@@ -503,11 +490,7 @@
         txRef: 'Marktwert (6t Transaktions-Ref): {val} (Schnitt aus {count} Transaktionen mit {diff}, insg. {total} Transaktionen)',
         exactMatch: 'genaue Übereinstimmung',
         diffMatch: 'Diff. ±{diff}',
-        estNoOffers: 'Marktwert (geschätzt, keine Angebote): {val}',
-        scrapedFloor: 'Marktwert (gescraptes Minimum): {val}',
-        marketRoll: 'Marktwert für Roll: {val} (Minimum {floor}, {offers} Angebote)',
         stalePrices: '⚠ Veraltete Preise-in den Einstellungen aktualisieren',
-        scrapeSuccess: '✓ {count} Equipment-Preise erfolgreich gescannt!',
         notEquipment: 'keine Ausrüstung',
         rangeLabelWeapon: 'Score {score} >= {threshold} [90% des Bereichs {min} - {max}]',
         rangeLabelArmor: 'Stat {stat}{pct} >= {threshold}{pct} [90% des Bereichs {min}{pct} - {max}{pct}]',
@@ -516,11 +499,9 @@
         stockKeepReason: 'Lagerbestand: Top 3 Roll (#{rank} von {size} {label})',
         highRollT3: 'Hoher Roll: Basiswert {stat} >= 11 (T3 Blau)',
         critCondition: 'Kritischer Zustand: {tierLabel} Waffenkrit {crit}% >= {min}% (Bereich {range})',
-        topRollOffers: 'Wert {stat} in den Top {pct}% von {offers} Live-Angeboten',
-        notTopRollOffers: 'Wert {stat} nicht im Top-Roll ({offers} Angebote)',
         topRollInv: 'Wert {stat} in den Top {pct}% von {items} Inventar-Gegenständen',
         notTopRollInv: 'Wert {stat} nicht im Top-Roll im Inventar ({items} Gegenstände)',
-        unknownRollRank: 'Roll-Rang unbekannt (keine Angebote/Inventarvergleich)',
+        unknownRollRank: 'Roll-Rang unbekannt (kein Inventarvergleich)',
         noPriceData: 'keine Preisdaten',
         mktNoScrap: 'Markt {val} (Netto {net}, kein Schrottwert)',
         heldCrit: 'behalten wegen kritischem Zustand',
@@ -667,7 +648,7 @@
         localeOption_en: 'Englisch',
         settingsHelpContent: `<strong>Bedeutung der Empfehlungen (Farbe + Symbol):</strong>
             <ul>
-              <li>💎 <strong>KEEP (Blau)</strong>: Item behalten. Gilt für die Top 3 deines Bestands (pro Typ/Tier) oder falls das Item unter den besten 33% (Top-Roll) der Live-Angebote oder deines Inventars liegt.</li>
+              <li>💎 <strong>KEEP (Blau)</strong>: Item behalten. Gilt für die Top 3 deines Bestands (pro Typ/Tier) oder falls das Item unter den besten 33% (Top-Roll) deines Inventars liegt.</li>
               <li>✋ <strong>HOLD (Orange)</strong>: Behalten / Aufheben. Das Item liegt in den besten 10% des theoretisch möglichen Wertebereichs (Top-Itemscore). Wird nur vergeben, wenn es kein 💎 KEEP ist.</li>
               <li>💰 <strong>SELL (Grün)</strong>: Im Markt verkaufen. Lohnt sich wirtschaftlich, da der Netto-Marktpreis (abzüglich 1% Steuer) den Schredder-Wert übersteigt.</li>
               <li>🔨 <strong>SCRAP (Rot)</strong>: Zerschreddern. Lohnt sich wirtschaftlich, da der Schredder-Wert höher ist als der Netto-Verkaufspreis.</li>
@@ -744,14 +725,11 @@
     locale: NS + 'locale',
     priceCache: NS + 'priceCache',     // { data, fetchedAt }-materials map
     scrapCache: NS + 'scrapCache',     // { price, fetchedAt }-legacy, unused
-    offersCache: NS + 'offersCache',   // { [itemCode]: { data, fetchedAt } }-equipment offers
     transactionsCache: NS + 'transactionsCache', // { [itemCode]: { data, fetchedAt } }-equipment transactions
     apiBase: NS + 'apiBase',
     rateLimitedUntil: NS + 'rlUntil',
     ntfyRateLimitedUntil: NS + 'ntfyRlUntil',
     ntfy429Streak: NS + 'ntfy429Streak',
-    scrapedPrices: NS + 'scrapedPrices',
-    useLiveOffersApi: NS + 'useLiveOffers',
     stockKeepCount: NS + 'stockKeepCount',
     featNotes: NS + 'featNotes',
     featBattleAdvisor: NS + 'featBattle',
@@ -892,9 +870,7 @@
   // fallback prices helper removed
   function clearCache() {
     writeCache(KEYS.priceCache, null);
-    writeCache(KEYS.offersCache, {});
     writeCache(KEYS.transactionsCache, {});
-    writeCache(KEYS.scrapedPrices, {});
     writeCache(KEYS.persistedAdvice, {});
     writeCache(KEYS.pnlLedger, null);
     writeCache(KEYS.pnlYesterday, null);
@@ -1513,8 +1489,6 @@
   // Returns a map { itemCode -> price } (best-effort; shape depends on the API).
   async function fetchPrices(force) {
     const cache = readCache(KEYS.priceCache);
-    const scrapedStore = readCache(KEYS.scrapedPrices) || {};
-    const scrapedScrap = scrapedStore[CONFIG.scrapItemCode];
 
     let baseData = {};
     if (!force && cache && now() - cache.fetchedAt < CONFIG.priceCacheTtlMs) {
@@ -1543,12 +1517,9 @@
       baseData = await inFlightPrices;
     }
 
-    // Inject/override scraped scrap price ONLY as fallback (if not already present from API)
-    if (baseData[CONFIG.scrapItemCode] == null && scrapedScrap && now() - scrapedScrap.fetchedAt < CONFIG.scrapedPriceTtlMs) {
-      baseData = { ...baseData, [CONFIG.scrapItemCode]: scrapedScrap.price };
-    }
     return baseData;
   }
+
 
   // Accepts several plausible response shapes -> { code: price }.
   function normalizePrices(payload) {
@@ -1578,54 +1549,6 @@
     return map;
   }
 
-  // ── Equipment offers (api2/dynamic) ──────────────────────────────────────
-  // One request per itemCode ("gloves6"), cached hard (priceCacheTtlMs). Returns
-  // { offers: [{price, skills}], floor }. We use the resolved working apiBase to
-  // bypass unreachable API hosts.
-  const offersInFlight = {}; // code -> promise (dedup)
-
-  async function fetchItemOffers(code, force) {
-    if (!code) return null;
-    if (!CONFIG.useLiveOffersApi) {
-      const store = readCache(KEYS.scrapedPrices) || {};
-      const cached = store[code];
-      if (cached && now() - cached.fetchedAt < CONFIG.scrapedPriceTtlMs) {
-        return { offers: [], floor: cached.price, fetchedAt: cached.fetchedAt };
-      }
-      return null;
-    }
-    const store = readCache(KEYS.offersCache);
-    const cached = store[code];
-    if (!force && cached && now() - cached.fetchedAt < CONFIG.priceCacheTtlMs) return cached.data;
-    if (isRateLimited()) return cached ? cached.data : null;
-    if (offersInFlight[code]) return offersInFlight[code];
-
-    offersInFlight[code] = (async () => {
-      try {
-        await throttle();
-        const input = encodeURIComponent(JSON.stringify({
-          0: { itemCode: code, limit: CONFIG.offersLimit, direction: 'forward' },
-        }));
-        const base = GM_getValue(KEYS.apiBase, CONFIG.offersApiBase);
-        const url = `${base}/${encodeURIComponent(CONFIG.itemOffersEndpoint)}?batch=1&input=${input}`;
-        const res = await gmRequest({ method: 'GET', url, headers: authHeaders() });
-        if (res.status === 429) { tripRateLimit(); return cached ? cached.data : null; }
-        if (res.status < 200 || res.status >= 300) return cached ? cached.data : null;
-        const data = normalizeOffers(unwrapTrpc(res.text));
-        const next = { ...readCache(KEYS.offersCache) };
-        next[code] = { data, fetchedAt: now() };
-        writeCache(KEYS.offersCache, next);
-        return data;
-      } catch (e) {
-        reportError('api', e, 'fetchItemOffers failed for ' + code, 'warn');
-        return cached ? cached.data : null;
-      } finally {
-        renderRateLimitBanner();
-        delete offersInFlight[code];
-      }
-    })();
-    return offersInFlight[code];
-  }
 
   function getTypeFromCode(code) {
     if (!code) return 'unknown';
@@ -1741,16 +1664,6 @@
     return transactionsInFlight[code];
   }
 
-  // payload: { items: [{ price, item: { skills: {...} } }], nextCursor }
-  function normalizeOffers(payload) {
-    const items = (payload && payload.items) || [];
-    const offers = items.map((o) => ({
-      price: Number(o.price),
-      skills: (o.item && o.item.skills) || {},
-    })).filter((o) => !isNaN(o.price));
-    const floor = offers.length ? Math.min(...offers.map((o) => o.price)) : null;
-    return { offers, floor };
-  }
 
   // ───────────────────────────────────────────────────────────────────────────
   // DOM parsing
@@ -2561,27 +2474,6 @@
     return item.stats.primaryPercent;
   }
 
-  // Market value for MY roll: cheapest live offer at-or-above my stat (what I'd
-  // have to undercut), else the floor. null if no offers.
-  function marketForRoll(offerData, type, myStat) {
-    if (!offerData || !offerData.offers.length) return null;
-    if (myStat == null) return offerData.floor;
-    const atOrAbove = offerData.offers
-      .filter((o) => { const s = statForType(type, o.skills); return s != null && s >= myStat; })
-      .map((o) => o.price);
-    return atOrAbove.length ? Math.min(...atOrAbove) : offerData.floor;
-  }
-
-  // Is my stat in the top fraction of the live offer distribution? null if too
-  // few offers to judge.
-  function isTopRoll(offerData, type, myStat) {
-    if (!offerData) return null;
-    const stats = offerData.offers.map((o) => statForType(type, o.skills)).filter((n) => n != null).sort((a, b) => a - b);
-    if (stats.length < CONFIG.goodRollMinOffers) return null;
-    const k = Math.max(1, Math.floor(stats.length * CONFIG.goodRollTopFraction));
-    const cutoff = stats[stats.length - k];
-    return myStat != null && myStat >= cutoff;
-  }
 
   function getTransactionReferencePrice(txs, type, myStat) {
     if (!txs || !txs.length || myStat == null) return null;
@@ -2685,8 +2577,6 @@
     item.scrapPriceUnit = scrapPrice;
     const scrapValue = scrapPrice != null && scrapYield != null ? scrapPrice * scrapYield : null;
 
-    // market value from live offers (roll-aware)
-    const offerData = item.code ? ctx.offers[item.code] : null;
     const txData = item.code ? ctx.txs[item.code] : null;
 
     const txRef = getTransactionReferencePrice(txData, type, myStat);
@@ -2704,21 +2594,7 @@
 
     let market = item.txRefPrice;
     let marketSource = 'transactions';
-
-    if (market == null) {
-      market = marketForRoll(offerData, type, myStat);
-      marketSource = 'offers';
-      if (market == null) {
-        if (offerData && offerData.floor != null) {
-          market = offerData.floor;
-          marketSource = 'offersFloor';
-        }
-      }
-    }
     item.marketSource = marketSource;
-    item.marketIsFallback = false;
-    item.marketFloor = offerData ? offerData.floor : null;
-    item.offerCount = offerData ? offerData.offers.length : 0;
 
     // 1) Rule: Keep top 3 of stock per color/tier
     if (item.isStockKeep === true) {
@@ -2742,24 +2618,15 @@
       }
     }
 
-    // 4) top roll -> KEEP (data-driven against live offers) - only if not explicitly rejected from stock keep
+    // 4) top roll -> KEEP (data-driven against inventory rolls) - only if not explicitly rejected from stock keep
     if (item.isStockKeep !== false) {
-      const top = isTopRoll(offerData, type, myStat);
-      if (top === true) {
-        reasons.push(t('topRollOffers', { stat: fmt(myStat), pct: Math.round(CONFIG.goodRollTopFraction * 100), offers: item.offerCount }));
+      if (item.isInventoryTopRoll === true) {
+        reasons.push(t('topRollInv', { stat: fmt(myStat), pct: Math.round(CONFIG.goodRollTopFraction * 100), items: item.inventorySampleCount }));
         return decide(ACTION.KEEP, reasons, market, scrapValue);
-      }
-      if (top === false) {
-        reasons.push(t('notTopRollOffers', { stat: fmt(myStat), offers: item.offerCount }));
+      } else if (item.isInventoryTopRoll === false) {
+        reasons.push(t('notTopRollInv', { stat: fmt(myStat), items: item.inventorySampleCount }));
       } else {
-        if (item.isInventoryTopRoll === true) {
-          reasons.push(t('topRollInv', { stat: fmt(myStat), pct: Math.round(CONFIG.goodRollTopFraction * 100), items: item.inventorySampleCount }));
-          return decide(ACTION.KEEP, reasons, market, scrapValue);
-        } else if (item.isInventoryTopRoll === false) {
-          reasons.push(t('notTopRollInv', { stat: fmt(myStat), items: item.inventorySampleCount }));
-        } else {
-          reasons.push(t('unknownRollRank'));
-        }
+        reasons.push(t('unknownRollRank'));
       }
     }
 
@@ -2841,22 +2708,16 @@
 
   function cacheStatus() {
     const pc = readCache(KEYS.priceCache);
-    const oc = readCache(KEYS.offersCache) || {};
     const tc = readCache(KEYS.transactionsCache) || {};
     const priceStale = pc ? now() - pc.fetchedAt > CONFIG.priceCacheTtlMs : true;
-    const offerTimes = Object.values(oc).map((o) => o.fetchedAt).filter(Boolean);
     const txTimes = Object.values(tc).map((t) => t.fetchedAt).filter(Boolean);
-    const newestOffer = offerTimes.length ? Math.max(...offerTimes) : null;
     const newestTx = txTimes.length ? Math.max(...txTimes) : null;
-    const newestMkt = newestOffer && newestTx ? Math.max(newestOffer, newestTx) : (newestOffer || newestTx);
     return {
       scrapPrice: pc && pc.data ? pc.data[CONFIG.scrapItemCode] ?? null : null,
       scrapFetchedAt: pc ? pc.fetchedAt : null,
       priceFetchedAt: pc ? pc.fetchedAt : null,
       priceCount: pc && pc.data ? Object.keys(pc.data).length : 0,
-      offerCodes: Object.keys(oc).length,
       txCodes: Object.keys(tc).length,
-      offerFetchedAt: newestMkt,
       // "stale" = materials cache past TTL / missing, or actively rate-limited
       stale: isRateLimited() || priceStale,
     };
@@ -3092,16 +2953,11 @@
     if (item.stats.durability != null) lines.push(t('durability', { durability: item.stats.durability }));
     // scrap side: yield × unit-price = total (yield is a per-tier estimate)
     lines.push(t('scrapTooltip', { yield: item.scrapYield ?? '?', price: fmt(item.scrapPriceUnit), val: fmt(result.scrapValue) }));
-    // market side: transactions reference, live offers (floor + count) or per-tier estimate
-    if (item.marketSource === 'transactions') {
+    if (item.txRefPrice != null) {
       const diffStr = item.txClosestDiff === 0 ? t('exactMatch') : t('diffMatch', { diff: fmt(item.txClosestDiff) });
       lines.push(t('txRef', { val: fmt(result.market), count: item.txClosestCount, diff: diffStr, total: item.txCount }));
-    } else if (item.marketIsFallback) {
-      lines.push(t('estNoOffers', { val: fmt(result.market) }));
-    } else if (item.offerCount === 0 && item.marketFloor != null) {
-      lines.push(t('scrapedFloor', { val: fmt(item.marketFloor) }));
     } else {
-      lines.push(t('marketRoll', { val: fmt(result.market), floor: fmt(item.marketFloor), offers: item.offerCount }));
+      lines.push(t('noPriceData'));
     }
     lines.push(`→ ${result.action}: ${result.reason}`);
     if (item.stale) lines.push(t('stalePrices'));
@@ -3355,13 +3211,8 @@
   const pendingFetches = new Set();
 
   function hasFreshCachedData(code) {
-    const oc = GM_getValue(KEYS.offersCache, {}) || {};
     const tc = GM_getValue(KEYS.transactionsCache, {}) || {};
-    const cachedOffer = oc[code];
     const cachedTx = tc[code];
-    if (CONFIG.useLiveOffersApi) {
-      if (!cachedOffer || now() - cachedOffer.fetchedAt >= CONFIG.priceCacheTtlMs) return false;
-    }
     if (!cachedTx || now() - cachedTx.fetchedAt >= CONFIG.txCacheTtlMs) return false;
     return true;
   }
@@ -3372,11 +3223,8 @@
 
     try {
       log(`Background load started for ${code}`);
-      // fetch live equipment offers + transactions
-      const [offerData, txData] = await Promise.all([
-        fetchItemOffers(code, force),
-        fetchItemTransactions(code, force)
-      ]);
+      // fetch live equipment transactions
+      await fetchItemTransactions(code, force);
 
       const cards = findItemCards(false);
       if (!cards.size) return;
@@ -3402,30 +3250,18 @@
       const prices = pc ? pc.data : {};
       const scrapPrice = prices ? prices[CONFIG.scrapItemCode] ?? null : null;
 
-      const oc = readCache(KEYS.offersCache);
       const tc = readCache(KEYS.transactionsCache);
-      const scraped = readCache(KEYS.scrapedPrices);
 
-      const offers = {};
       const txs = {};
       const uniqueCodes = [...new Set(allItems.map((i) => i.code).filter(Boolean))];
 
       uniqueCodes.forEach((c) => {
-        if (!CONFIG.useLiveOffersApi) {
-          const cached = scraped[c];
-          if (cached && now() - cached.fetchedAt < CONFIG.scrapedPriceTtlMs) {
-            offers[c] = { offers: [], floor: cached.price, fetchedAt: cached.fetchedAt };
-          }
-        } else if (oc[c]) {
-          offers[c] = oc[c].data;
-        }
-
         if (tc[c]) {
           txs[c] = tc[c].data;
         }
       });
 
-      const ctx = { prices, scrapPrice, offers, txs, stale: cacheStatus().stale };
+      const ctx = { prices, scrapPrice, txs, stale: cacheStatus().stale };
 
       suspendObserver();
       try {
@@ -3557,11 +3393,8 @@ async function scanInventory(force) {
       const prices = pc ? pc.data : {};
       const scrapPrice = prices ? prices[CONFIG.scrapItemCode] ?? null : null;
 
-      const oc = readCache(KEYS.offersCache);
       const tc = readCache(KEYS.transactionsCache);
-      const scraped = readCache(KEYS.scrapedPrices);
 
-      const offers = {};
       const txs = {};
       const codesToFetch = [];
 
@@ -3577,21 +3410,12 @@ async function scanInventory(force) {
           }
         }
 
-        if (!CONFIG.useLiveOffersApi) {
-          const cached = scraped[c];
-          if (cached && now() - cached.fetchedAt < CONFIG.scrapedPriceTtlMs) {
-            offers[c] = { offers: [], floor: cached.price, fetchedAt: cached.fetchedAt };
-          }
-        } else if (oc[c]) {
-          offers[c] = oc[c].data;
-        }
-
         if (tc[c]) {
           txs[c] = tc[c].data;
         }
       });
 
-      const ctx = { prices, scrapPrice, offers, txs, stale: cacheStatus().stale };
+      const ctx = { prices, scrapPrice, txs, stale: cacheStatus().stale };
 
       // Synchronous First Paint
       suspendObserver();
@@ -3641,7 +3465,6 @@ async function scanInventory(force) {
               const nextCtx = {
                 prices: nextPrices,
                 scrapPrice: nextScrapPrice,
-                offers: ctx.offers,
                 txs: ctx.txs,
                 stale: cacheStatus().stale
               };
@@ -4261,7 +4084,6 @@ async function scanInventory(force) {
     const currentLocale = getLocale();
     const nextLocale = currentLocale === 'de' ? 'en' : 'de';
     const prevToken = bg.querySelector('.wia-token')?.value ?? getToken();
-    const prevLiveOffers = bg.querySelector('.wia-live-offers')?.checked ?? CONFIG.useLiveOffersApi;
     const prevFeatNotes = bg.querySelector('.wia-feat-notes')?.checked ?? CONFIG.featNotes;
     const prevFeatBattle = bg.querySelector('.wia-feat-battle')?.checked ?? CONFIG.featBattleAdvisor;
     const prevFeatPill = bg.querySelector('.wia-feat-pill')?.checked ?? CONFIG.featPillReminder;
@@ -4314,14 +4136,6 @@ async function scanInventory(force) {
         <div style="display: flex; justify-content: space-between; font-size: 10px; color: #8b949e; border-bottom: 1px solid rgba(148,163,184,.15); padding-bottom: 4px; margin-bottom: 8px; margin-top: 14px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">
           <span>${t('settingsHeaderFeature')}</span>
           <span style="margin-right: 4px;">${t('settingsHeaderNotif')}</span>
-        </div>
-        <div class="wia-feat-row" style="margin-top: 10px;">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <input type="checkbox" class="wia-live-offers" style="width: auto;" ${prevLiveOffers ? 'checked' : ''} />
-            <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsLiveOffersCheckbox')}</label>
-            <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
-          </div>
-          <div class="wia-hint" hidden>${t('settingsLiveOffersHint')}</div>
         </div>
         <details class="wia-advisor-settings" style="margin-top: 6px; margin-left: 24px;">
           <summary style="font-size: 11px; color: #8b949e; cursor: pointer; user-select: none; font-weight: bold; outline: none; margin-bottom: 6px;">
@@ -4746,13 +4560,6 @@ async function scanInventory(force) {
       const tokenChanged = prevToken !== newToken;
       setToken(newToken);
 
-      const useLiveOffers = bg.querySelector('.wia-live-offers').checked;
-      GM_setValue(KEYS.useLiveOffersApi, useLiveOffers);
-      CONFIG.useLiveOffersApi = useLiveOffers;
-
-      const showScrapFlip = bg.querySelector('.wia-scrap-flip').checked;
-      GM_setValue(KEYS.showScrapFlip, showScrapFlip);
-      CONFIG.showScrapFlip = showScrapFlip;
 
       const stockKeepCount = parseInt(bg.querySelector('.wia-stock-keep-count').value, 10) || 3;
       GM_setValue(KEYS.stockKeepCount, stockKeepCount);
@@ -7813,10 +7620,6 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
     if (pc && pc.data && pc.data[normCode] != null) {
       return pc.data[normCode];
     }
-    const scrapedStore = readCache(KEYS.scrapedPrices) || {};
-    if (scrapedStore[normCode] != null) {
-      return scrapedStore[normCode].price;
-    }
     // Consumables (ammo/food/drugs) aren't in itemTrading.getPrices (materials only).
     // Their unit price is shown in the in-game selector tiles-harvested into this cache.
     const cp = readCache(KEYS.consumablePrices);
@@ -7859,31 +7662,18 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
     let minPrice = null;
     let maxPrice = null;
 
-    // 1. Check live offers cache
-    const oc = readCache(KEYS.offersCache) || {};
-    const itemOffers = oc[itemCode];
-    if (itemOffers && Array.isArray(itemOffers.data) && itemOffers.data.length > 0) {
-      const prices = itemOffers.data.map(o => o.price).filter(p => p != null && !isNaN(p));
+    // Check transaction history cache
+    const tc = readCache(KEYS.transactionsCache) || {};
+    const itemTxs = tc[itemCode];
+    if (itemTxs && Array.isArray(itemTxs.data) && itemTxs.data.length > 0) {
+      const prices = itemTxs.data.map(t => getTxPrice(t)).filter(p => p != null && !isNaN(p));
       if (prices.length > 0) {
         minPrice = Math.min(...prices);
         maxPrice = Math.max(...prices);
       }
     }
 
-    // 2. Check transaction history cache
-    const tc = readCache(KEYS.transactionsCache) || {};
-    const itemTxs = tc[itemCode];
-    if (itemTxs && Array.isArray(itemTxs.data) && itemTxs.data.length > 0) {
-      const prices = itemTxs.data.map(t => getTxPrice(t)).filter(p => p != null && !isNaN(p));
-      if (prices.length > 0) {
-        const txMin = Math.min(...prices);
-        const txMax = Math.max(...prices);
-        if (minPrice == null || txMin < minPrice) minPrice = txMin;
-        if (maxPrice == null || txMax > maxPrice) maxPrice = txMax;
-      }
-    }
-
-    // 3. Fallback to scraped floor price
+    // Fallback to cached price
     if (minPrice == null) {
       const floor = getCachedPrice(itemCode);
       if (floor != null) {
@@ -11046,7 +10836,6 @@ function checkInventoryDeltaWear() {
     if (typeof window !== 'undefined') {
       window.__WIA_LOCALE__ = CONFIG.locale;
     }
-    CONFIG.useLiveOffersApi = GM_getValue(KEYS.useLiveOffersApi, false);
     CONFIG.stockKeepCount = parseInt(GM_getValue(KEYS.stockKeepCount, 3), 10) || 3;
     CONFIG.featNotes = GM_getValue(KEYS.featNotes, false);
     CONFIG.featBattleAdvisor = GM_getValue(KEYS.featBattleAdvisor, false);
