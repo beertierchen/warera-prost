@@ -12,7 +12,7 @@ Rein lesend, keine Automatisierung.
 
 | Symbol | Empfehlung | Bedeutung |
 | --- | --- | --- |
-| 💎 | **KEEP** (Blau) | Behalten. Greift bei deinen Top-Beständen (standardmäßig Top 3, in den Einstellungen anpassbar, je Typ/Tier) — vorausgesetzt, die Stats liegen bei T1-T3 nicht in der unteren Hälfte des Wertebereichs. Gilt auch für Marktgegenstände im obersten Drittel (Top Roll, Top 33 %) der Live-Angebote. |
+| 💎 | **KEEP** (Blau) | Behalten. Greift bei deinen Top-Beständen (standardmäßig Top 3, in den Einstellungen anpassbar, je Typ/Tier) — vorausgesetzt, die Stats liegen bei T1-T3 nicht in der unteren Hälfte des Wertebereichs. |
 | ✋ | **HOLD** (Orange) | Zurückhalten/reservieren. Item liegt in den besten 10 % der theoretisch möglichen Stat-Spanne (Top Itemscore). Wird nur vergeben, wenn nicht ohnehin 💎 KEEP. |
 | 💰 | **SELL** (Grün) | Auf dem Markt verkaufen. Netto-Marktpreis (abzüglich 1 % Steuer) liegt über dem Schrottwert. |
 | 🔨 | **SCRAP** (Rot) | Zerlegen/verschrotten. Schrottwert liegt über dem Netto-Marktpreis. |
@@ -44,15 +44,12 @@ die Overlays in einem eigenen Band liegen und die nativen Stats nicht mehr verde
 - **Ausgerüstete Items** (Badge „Equip.") und Items unter 100 % Haltbarkeit
   erhalten keine Verkaufs-/Schrott-Empfehlung - ihr Wert ist nicht mit einem
   frischen Angebot vergleichbar.
-- Items in **Charakter-Profil**-Slots werden ausgenommen, und der gesamte
-  **Shop** (`/shop/…`) wird übersprungen, damit nur dein handelbares Inventar
+- Items in **Charakter-Profil**-Slots werden ausgenommen, der gesamte
+  **Shop** (`/shop/…`) wird übersprungen und **Markt-Seiten** werden ausgeschlossen, damit nur dein eigenes Inventar
   annotiert wird.
 
 ## Preis-Frische
 
-Preise stammen aus zwischengespeicherten Marktdaten und (optional) der Live-API.
-Der Punkt am ⚙-Zahnrad zeigt die Frische; in den [Einstellungen](Settings.de)
-aktualisieren oder einen [API-Token](Settings.de#api-token) für Live-Werte hinterlegen.
+Preise werden im Hintergrund aus abgeschlossenen Markttransaktionen über die offizielle API geladen. In den [Einstellungen](Settings.de) kannst du die Daten aktualisieren oder deinen API-Token hinterlegen.
 
-Siehe auch: [Scrap-Flip-Indikator](Scrap-Flip-Indicator.de) ·
-[Einstellungen](Settings.de)
+Siehe auch: [Einstellungen](Settings.de)

@@ -20,7 +20,6 @@ browser game [**WareEra**](https://app.warera.io).
 | Feature | What it does |
 | --- | --- |
 | [Inventory Advisor](Inventory-Advisor) | KEEP / HOLD / SELL / SCRAP advice on every inventory card, with stat ranking, scrap-vs-market price bars, skin/equipment recognition and durability. |
-| [Scrap-Flip Indicator](Scrap-Flip-Indicator) | *Experimental.* Flags equipment-market listings that are profitable to buy and dismantle for scrap. |
 | [Daily P&L Tracker](Daily-PnL-Tracker) | Daily profit/loss in the topbar next to your gold, including auto-booked gear-wear (repair) costs. On by default. |
 | [Resource Market Graph](Market-Graph) | *Experimental.* Intraday (24h/3d) price graph on resource-market buy/sell modals. |
 | [Crafting Calculator](Crafting-Calculator) | *Experimental.* Profit estimate for crafting — resource cost vs. market value. |

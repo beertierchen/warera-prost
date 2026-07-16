@@ -12,7 +12,7 @@ value against the market. Read-only — it never sells, scraps, or moves anythin
 
 | Badge | Meaning | When |
 | --- | --- | --- |
-| 💎 **KEEP** (blue) | Keep the item. | One of your top stock items (default top 3, configurable in settings, by type/tier) — provided its stats for T1-T3 are not in the lower half of the possible range. Also applies to market items in the top 33% ("Top Roll") of live offers. |
+| 💎 **KEEP** (blue) | Keep the item. | One of your top stock items (default top 3, configurable in settings, by type/tier) — provided its stats for T1-T3 are not in the lower half of the possible range. |
 | ✋ **HOLD** (orange) | Reserve it. | In the best 10% of the theoretically possible stat range ("Top Itemscore"). Only assigned when it is *not* 💎 KEEP. |
 | 💰 **SELL** (green) | Sell on the market. | Net market price (minus 1% tax) **exceeds** salvage value. |
 | 🔨 **SCRAP** (red) | Salvage it. | Salvage value **exceeds** net market price. |
@@ -43,15 +43,13 @@ in their own band and no longer cover the game's native stats.
 
 - **Equipped items** (`Equip.` label) and items below 100% durability get no
   sell/scrap advice — their value isn't comparable to a fresh listing.
-- Items on **character profile** equipment slots are excluded, and the whole
-  **shop** (`/shop/…`) is skipped, so the advisor only annotates your tradable
-  inventory.
+- Items on **character profile** equipment slots are excluded, the whole
+  **shop** (`/shop/…`) is skipped, and **market** pages are excluded, so the
+  advisor only annotates your own inventory.
 
 ## Price freshness
 
-Prices come from cached market data and (optionally) the live API. The dot on
-the ⚙ gear shows freshness; open [Settings](Settings) to refresh or to add an
-[API token](Settings#api-token) for live values.
+Prices are retrieved in the background from completed market transactions on the official API. Open [Settings](Settings) to refresh or configure the API token for live values.
 
 > All scores are computed locally from item stats and market floors. PROST only
 > advises — you stay in control.

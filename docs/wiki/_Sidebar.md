@@ -5,7 +5,6 @@
 
 **Features**
 - [Inventory Advisor](Inventory-Advisor)
-- [Scrap-Flip Indicator](Scrap-Flip-Indicator)
 - [Daily P&L Tracker](Daily-PnL-Tracker)
 - [Resource Market Graph](Market-Graph)
 - [Crafting Calculator](Crafting-Calculator)
@@ -20,7 +19,6 @@
 - [Startseite](Home.de)
 - [Installation](Installation.de)
 - [Inventory Advisor](Inventory-Advisor.de)
-- [Scrap-Flip-Indikator](Scrap-Flip-Indicator.de)
 - [Täglicher P&L Tracker](Daily-PnL-Tracker.de)
 - [Ressourcen-Markt-Graph](Market-Graph.de)
 - [Crafting-Rechner](Crafting-Calculator.de)

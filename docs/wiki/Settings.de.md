@@ -12,16 +12,12 @@ den Frische-Status der Marktdaten (grün = aktuell, orange = veraltet, rot = Rat
 Jeder Schalter hat ein **ℹ**, das eine kurze Erklärung ein-/ausklappt, damit das
 Panel kompakt bleibt:
 
-- **Live-Angebote über API abrufen** - holt aktuelle Marktangebote über die offizielle
-  API, um Item-Stats gegen derzeit aktive Angebote zu ranken. Benötigt API-Token.
 - **Täglicher P&L Tracker** - zeigt deinen [täglichen Gewinn/Verlust](Daily-PnL-Tracker.de)
   in der Topbar. Standardmäßig an.
 - **Ressourcen-Markt Intraday-Grafik** - *experimentell.* Blendet einen
   [Intraday-Preisverlauf](Market-Graph.de) in Ressourcen-Modals ein.
 - **Pill Reminder** - *experimentell.* Topbar-Status & Timer für den
   [Pillen-Zyklus](Pill-Reminder.de).
-- **Scrap-Flip-Indikator** - *experimentell.* Markiert profitable Schrott-Flips auf dem
-  Markt. Siehe [Scrap-Flip-Indikator](Scrap-Flip-Indicator.de).
 - **Spieler-Notizen 📒** - *experimentell.* Notiz-Icon neben Spieler-Links. Siehe
   [Spieler-Notizen](Player-Notes.de).
 - **Battle-Advisor ⚔️** - *experimentell.* Button-Hervorhebung auf Kampfseiten; blendet

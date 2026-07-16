@@ -16,11 +16,9 @@ panel stays compact.
 | Setting | Purpose |
 | --- | --- |
 | **API Token** | Optional. Fetches fresh equipment & scrap prices from the official API. See below. |
-| **Fetch live offers via API** | Ranks item stats against currently active market listings (needs token). |
 | **Daily P&L Tracker** | Shows your [daily profit/loss](Daily-PnL-Tracker) in the topbar. On by default. |
 | **Resource Market Intraday Graph** | *Experimental.* Adds an [intraday price graph](Market-Graph) to resource market modals. |
 | **Pill Reminder** | *Experimental.* Topbar [pill-cycle status & timer](Pill-Reminder). |
-| **Scrap-Flip indicator** | *Experimental.* Enables the [market flip badges](Scrap-Flip-Indicator). |
 | **User notes on player links** | *Experimental.* Enables [Player Notes](Player-Notes). |
 | **Battle advisor** | *Experimental.* Enables [Battle Advisor](Battle-Advisor); reveals the allied-codes field. |
 | **Allied country codes** | Comma-separated, lowercase (e.g. `de,pt`). Your side on battle pages. |
