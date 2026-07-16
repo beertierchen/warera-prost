@@ -1,5 +1,21 @@
 # CHANGELOG
 
+## 2026-07-16 | Deaktivierung des Item Advisors im Markt & Entfernung von DOM-Scraping (v0.8.18)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/test-advisor-load.js`
+
+**Änderungen (Deutsch):**
+- **Deaktivierung des Advisors im Markt**: Der Item Advisor (inklusive aller Overlays, Bewertungen und Preisvorschläge) wurde auf den Markt-Seiten komplett deaktiviert, um den Spielrichtlinien voll zu entsprechen.
+- **Entfernung von DOM-Preisscraping**: Das Auslesen von aktuellen Marktangeboten aus dem HTML (DOM-Scraping) wurde vollständig aus dem Skript entfernt. Die Bewertung der Ausrüstung im Inventar erfolgt stattdessen sicher über die offizielle API für historische Transaktionsdaten.
+- **Entfernung der API-Vorschau für Angebote**: Der nicht mehr genutzte Code-Pfad für den blockierten API-Endpunkt der Marktangebote wurde gelöscht.
+- **Entfernung des Scrap-Flips**: Der Scrap-Flip-Rechner und die zugehörige Option in den Einstellungen wurden entfernt.
+
+**Changes (English):**
+- **Disabled Advisor on Market Pages**: The Item Advisor (including overlays, evaluations, and price recommendations) has been completely disabled on market pages to fully comply with game policies.
+- **Removed DOM Price Scraping**: Scraping live equipment listing prices from the market HTML has been completely removed. Inventory equipment evaluation now safely relies on the official API for historical transaction logs.
+- **Removed Dead Offers API Path**: The unused code path for the blocked offers API endpoint has been deleted.
+- **Removed Scrap-Flip**: The Scrap-Flip calculator and its settings option have been removed.
+
 ## 2026-07-12 | ntfy-Schutz vor Sperren, MU-Heilungs-Button-Dimmen & Debuff-Stummschaltung (v0.8.17)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/test-advisor-load.js`, `tests/bounty-notify.test.js`
