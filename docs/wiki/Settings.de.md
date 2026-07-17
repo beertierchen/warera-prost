@@ -43,8 +43,9 @@ Ein eigener Einstellungsbereich konfiguriert das persönliche Empfänger-Topic:
 
 <a id="api-token"></a>
 
-- Das Skript läuft **session-los** — es liest oder überträgt niemals deine Spiel-Session-Cookies/JWT.
-- Ein offizieller **API-Key** ist optional. Er dient nur dazu, das API-Rate-Limit zu erhöhen (100 -> 200 rpm).
+- Das Skript läuft **session-los** — es liest oder überträgt niemals deine Spiel-Session-Cookies.
+- Ein offizieller **API-Key** ist für alle offiziellen API-Funktionen erforderlich. Ohne Key nutzt das Skript nur das Community-Gateway (Preise, Transaktionen, Schlachten); Allianz- und Suchfunktionen bleiben deaktiviert.
+- Das Skript kontaktiert `api2.warera.io` niemals ohne deinen API-Key.
 - Der API-Key wird lokal im GM-Speicher im Klartext gespeichert, um Audits zu ermöglichen.
 - So erstellst du einen Key:
   1. Gehe im Spiel auf Einstellungen > API-Keys.

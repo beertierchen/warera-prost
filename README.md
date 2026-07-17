@@ -21,13 +21,13 @@ A suite of client-side [userscripts](https://en.wikipedia.org/wiki/Userscript) f
 
 ## ⚠️ No automation
 
-PROST is a **client-side visual assistant only**. It runs session-less (never reads or forwards your game session cookies/JWT), reads the page, and optionally queries the official game API with *your* API key to raise rate limits. It never clicks, trades, or plays for you. Use at your own risk and within WareEra's terms.
+PROST is a **client-side visual assistant only**. It runs session-less (never reads or forwards your game session cookies) and reads the page. Official-API features require your personal API key; without it, only the community gateway is used. It never clicks, trades, or plays for you. Use at your own risk and within WareEra's terms.
 
 ## Scripts
 
 | Script | What it does |
 |--------|--------------|
-| **PROST** (`warera-prost.user.js`) | KEEP / SELL / SCRAP advice from local stats + market floors. Scrap-flip profitability badges on the market. Session-less design with optional WareEra API key to raise rate limits. i18n (DE/EN). Includes built-in 📒 **player notes** and ⚔️ **ntfy push notifications** for active allied bounties (configurable in settings). |
+| **PROST** (`warera-prost.user.js`) | KEEP / SELL / SCRAP advice from local stats + market floors. Scrap-flip profitability badges on the market. Session-less design requiring a personal API key for official-API features (runs keyless using the gateway for prices/battles). i18n (DE/EN). Includes built-in 📒 **player notes** and ⚔️ **ntfy push notifications** for active allied bounties (configurable in settings). |
 | **User Notes** (`warera-notes.user.js`) | Standalone script for local, persistent notes on player links. Use this *or* the built-in notes in PROST — not both at the same time. |
 
 ## Install
@@ -63,7 +63,7 @@ Updates werden automatisch über deinen Userscript-Manager eingespielt (`@update
 
 ## Privacy & API key
 
-The script is strictly **session-less** — it never accesses or transmits your game session cookies/JWT. Outbound requests are anonymous or authenticated solely with your optional official **API key** (used to raise rate limits). The API key is stored locally in GM storage as plain text to allow auditing.
+The script is strictly **session-less** — it never accesses or transmits your game session cookies. Outbound requests are anonymous (to the community gateway) or authenticated solely with your official **API key** (required for official-API features). The script never contacts `api2.warera.io` without your API key. The API key is stored locally in GM storage as plain text to allow auditing.
 
 ## Roadmap
 

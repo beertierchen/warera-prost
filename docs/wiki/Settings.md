@@ -15,7 +15,7 @@ panel stays compact.
 
 | Setting | Purpose |
 | --- | --- |
-| **API Key** | Optional. Raises API rate limits. Runs anonymously without it. See below. |
+| **API Key** | Required for official-API features. Without it, the script only uses the community gateway. |
 | **Daily P&L Tracker** | Shows your [daily profit/loss](Daily-PnL-Tracker) in the topbar. On by default. |
 | **Resource Market Intraday Graph** | *Experimental.* Adds an [intraday price graph](Market-Graph) to resource market modals. |
 | **Pill Reminder** | *Experimental.* Topbar [pill-cycle status & timer](Pill-Reminder). |
@@ -52,8 +52,9 @@ the dialog.
 
 <a id="api-token"></a>
 
-- The script runs **session-less** — it never reads or forwards your game session cookies/JWT.
-- An official **API key** is optional. It only serves to raise the API rate limits (100 -> 200 rpm).
+- The script runs **session-less** — it never reads or forwards your game session cookies.
+- An official **API key** is required for all official-API features. Without it, the script only uses the community gateway (prices, transactions, battles), and alliance- and search-based features stay off.
+- The script never contacts `api2.warera.io` without your API key.
 - The API key is stored locally in GM storage as plain text to allow auditing.
 - To obtain a key:
   1. Go to Settings > API Keys in the game.
