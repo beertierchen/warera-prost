@@ -154,20 +154,10 @@
     // Market tax rate when selling items
     sellTaxRate: 0.01,
 
-    // Scrap-flip safety margin for the OVERVIEW GRID only. The grid shows a
-    // scraped FLOOR price, which can sit below the cheapest *real* offer (e.g.
-    // floor 3.9 vs. real cheapest 4.1) and produce false-positive flips. We
-    // inflate the grid buy price by this fraction so only clearly profitable
-    // tiles flip. Detail-page offers use the real offer price and skip this.
-    scrapFlipGridMargin: 0.05,
-
-    // "Good roll" = item stat in the top fraction of LIVE market offers for its
-    // itemCode. Data-driven; no hardcoded stat bands. Applies to armor (single
-    // skill) and weapons (score). Falls back to inventory ranking if too few
-    // offers; if neither is available, decide purely on scrap-vs-market.
+    // "Good roll" = item stat in the top fraction of the user's own inventory items.
+    // Ranks an item's stat against the user's OWN INVENTORY items only.
+    // Too few items in inventory -> no roll verdict, decide purely scrap-vs-market.
     goodRollTopFraction: 1 / 3,
-    goodRollMinOffers: 4,               // need >= this many offers to rank a roll
-    weaponMinSampleForRanking: 3,       // inventory fallback: >=3 weapons to rank
 
     statRangesByTier: {
       gloves: {
