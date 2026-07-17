@@ -2104,7 +2104,7 @@
     const bountyAllies = () => resolveAllyCountryIds().then((s) => [...s]);
     globalThis.bountyAllies = bountyAllies;
     globalThis.extractAllyBounties = extractAllyBounties;
-    if (typeof unsafeWindow !== 'undefined') {
+    if (typeof unsafeWindow !== 'undefined' && CONFIG.debug) {
       unsafeWindow.getCurrentUserId = getCurrentUserId;
       unsafeWindow.WIA_resolve = resolveApiBase;
       unsafeWindow.WIA_post = resolveApiPost;
@@ -2127,7 +2127,7 @@
     globalThis.shouldDimMuHeal = shouldDimMuHeal;
     globalThis.findMuHealButton = findMuHealButton;
     globalThis.WIA_muHealDiag = muHealDiag;
-    if (typeof unsafeWindow !== 'undefined') {
+    if (typeof unsafeWindow !== 'undefined' && CONFIG.debug) {
       unsafeWindow.WIA_muHealDiag = muHealDiag;
     }
     globalThis.simpleHash = simpleHash;
@@ -9948,7 +9948,7 @@ function checkInventoryDeltaWear() {
     return 'ally + country-map cache cleared';
   }
   globalThis.bountyResetAllyCache = bountyResetAllyCache;
-  if (typeof unsafeWindow !== 'undefined') unsafeWindow.bountyResetAllyCache = bountyResetAllyCache;
+  if (typeof unsafeWindow !== 'undefined' && CONFIG.debug) unsafeWindow.bountyResetAllyCache = bountyResetAllyCache;
 
   const BOUNTY_POLL_MS = 30000;
   const BOUNTY_PAGE_CAP = 10;
