@@ -312,13 +312,15 @@
         settingsDesc: 'The Inventory Advisor gives a quick overview of whether items should be kept (KEEP/HOLD), sold (SELL), or salvaged (SCRAP).',
         settingsHeaderFeature: 'Feature / Option',
         settingsHeaderNotif: '🔔 Notif',
-        settingsApiToken: 'Optional API Key (api2.warera.io)',
+        settingsApiToken: 'API Key (api2.warera.io)',
         settingsTokenPlaceholder: 'API Key',
-        settingsTokenNote: 'Optional API key — only raises your rate limit. The script works anonymously without it and never uses your game session.',
+        settingsTokenNote: 'API key — required for all official-API features. Without it the script only uses the community gateway (prices, transactions, battles); alliance- and search-based features stay off. Never your game session.',
         // UNVERIFIED: steps to create an API key in-game
-        settingsTokenHelpText: 'No API key set — the script runs anonymously (lower rate limit). To get a key: 1. Go to Settings > API Keys in the game. 2. Create a read-only key. 3. Paste it above. (The key only raises your rate limit and never touches your game session. Detail guide: https://github.com/beertierchen/warera-prost/wiki/Settings)',
-        tokenStorageUpgraded: 'API key storage was upgraded — please re-enter your API key in Settings.',
+        settingsTokenHelpText: 'No API key set — official-API features are disabled. To get a key: 1. Go to Settings > API Keys in the game. 2. Create a read-only key. 3. Paste it above. (Required for official-API features, never touches your game session. Detail guide: https://github.com/beertierchen/warera-prost/wiki/Settings)',
+        tokenStorageUpgraded: 'API key storage was upgraded — please re-enter your API key in Settings. API features stay off until you re-enter it.',
         tokenStorageUpgradedTitle: 'API key upgraded',
+        apiKeyRequiredMsg: 'This feature needs your API key (Settings).',
+        apiKeyRequiredSuffix: 'needs key',
         hintToggleLabel: 'Explanation',
         settingsFeatPillCheckbox: 'Pill Reminder (configurable pill-timing overlay) 💊',
         settingsFeatPillHint: 'Shows a top-bar status and countdown timer for the pill cycle, highlights ready pills, and checks health/hunger levels.',
@@ -536,13 +538,15 @@
         settingsDesc: 'Der Inventory Advisor soll eine schnelle Übersicht geben, ob Items behalten (KEEP/HOLD), gewinnbringend verkauft (SELL) oder zerschreddert (SCRAP) werden sollten.',
         settingsHeaderFeature: 'Feature / Option',
         settingsHeaderNotif: '🔔 Benachr.',
-        settingsApiToken: 'Optionaler API-Key (api2.warera.io)',
+        settingsApiToken: 'API-Key (api2.warera.io)',
         settingsTokenPlaceholder: 'API-Key',
-        settingsTokenNote: 'Optionaler API-Key — erhöht nur das Rate-Limit. Das Skript funktioniert anonym ohne Key und nutzt niemals deine Spiel-Session.',
+        settingsTokenNote: 'API-Key — erforderlich für alle offiziellen API-Funktionen. Ohne Key nutzt das Skript nur das Community-Gateway (Preise, Transaktionen, Schlachten); Allianz- und Suchfunktionen bleiben deaktiviert. Niemals deine Spiel-Session.',
         // UNVERIFIED: steps to create an API key in-game
-        settingsTokenHelpText: 'Kein API-Key gesetzt — das Skript läuft anonym (niedrigeres Rate-Limit). Um einen Key zu erstellen: 1. Gehe im Spiel auf Einstellungen > API-Keys. 2. Erstelle einen Key mit Lese-Rechten. 3. Oben einfügen. (Der Key erhöht nur dein Rate-Limit und nutzt niemals deine Spiel-Session. Anleitung: https://github.com/beertierchen/warera-prost/wiki/Settings.de)',
-        tokenStorageUpgraded: 'Der Speicherort für den API-Key wurde aktualisiert — bitte trage deinen API-Key in den Einstellungen neu ein.',
+        settingsTokenHelpText: 'Kein API-Key gesetzt — offizielle API-Funktionen sind deaktiviert. Um einen Key zu erstellen: 1. Gehe im Spiel auf Einstellungen > API-Keys. 2. Erstelle einen Key mit Lese-Rechten. 3. Oben einfügen. (Erforderlich für offizielle API-Funktionen, nutzt niemals deine Spiel-Session. Anleitung: https://github.com/beertierchen/warera-prost/wiki/Settings.de)',
+        tokenStorageUpgraded: 'Der Speicherort für den API-Key wurde aktualisiert — bitte trage deinen API-Key in den Einstellungen neu ein. API-Funktionen bleiben deaktiviert, bis du ihn neu einträgst.',
         tokenStorageUpgradedTitle: 'API-Key aktualisiert',
+        apiKeyRequiredMsg: 'Diese Funktion benötigt deinen API-Key (Einstellungen).',
+        apiKeyRequiredSuffix: 'benötigt Key',
         hintToggleLabel: 'Erklärung',
         settingsFeatPillCheckbox: 'Pill-Reminder (konfigurierbares Pillen-Timing Overlay)',
         settingsFeatPillHint: 'Zeigt einen Status und Countdown in der Menüleiste, markiert nimmbereite Pillen und prüft HP/Hunger-Werte.',
@@ -784,6 +788,13 @@
     bountyMuteDebuff: NS + 'bountyMuteDebuff',
     featMuHealDim: NS + 'featMuHealDim',
   };
+
+  const gatewayBases = CONFIG.apiBases.filter((b) => {
+    try { return new URL(b).hostname === 'gateway.warerastats.io'; } catch (e) { return false; }
+  });
+  const api2Bases = CONFIG.apiBases.filter((b) => {
+    try { return new URL(b).hostname === 'api2.warera.io'; } catch (e) { return false; }
+  });
 
   const memoryCache = {};
 
@@ -1468,7 +1479,15 @@
     if (isRateLimited()) throw new Error('429');
     if (isProcedureGated(procedure)) throw new Error('gated: ' + procedure);
     const cached = GM_getValue(KEYS.apiBase, '');
-    const bases = cached ? [cached, ...CONFIG.apiBases.filter((b) => b !== cached)] : CONFIG.apiBases;
+    const hasKey = !!getToken();
+    let allowedBases = CONFIG.apiBases;
+    if (!hasKey) {
+      allowedBases = gatewayBases;
+    }
+    const bases = cached && allowedBases.includes(cached)
+      ? [cached, ...allowedBases.filter((b) => b !== cached)]
+      : allowedBases;
+
     let lastErr;
     for (const base of bases) {
       try {
@@ -1490,6 +1509,9 @@
         if (String(e.message).includes('401') || String(e.message).includes('403')) break;
       }
     }
+    if (!hasKey && api2Bases.length > 0) {
+      throw new Error('apiKeyRequired: ' + procedure);
+    }
     throw lastErr || new Error('all API bases failed');
   }
 
@@ -1497,7 +1519,15 @@
     if (isRateLimited()) throw new Error('429');
     if (isProcedureGated(procedure)) throw new Error('gated: ' + procedure);
     const cached = GM_getValue(KEYS.apiBase, '');
-    const bases = cached ? [cached, ...CONFIG.apiBases.filter((b) => b !== cached)] : CONFIG.apiBases;
+    const hasKey = !!getToken();
+    let allowedBases = CONFIG.apiBases;
+    if (!hasKey) {
+      allowedBases = gatewayBases;
+    }
+    const bases = cached && allowedBases.includes(cached)
+      ? [cached, ...allowedBases.filter((b) => b !== cached)]
+      : allowedBases;
+
     let lastErr;
     for (const base of bases) {
       try {
@@ -1528,6 +1558,9 @@
         if (String(e.message).includes('429')) break;
         if (String(e.message).includes('401') || String(e.message).includes('403')) break;
       }
+    }
+    if (!hasKey && api2Bases.length > 0) {
+      throw new Error('apiKeyRequired: ' + procedure);
     }
     throw lastErr || new Error('all API bases failed');
   }
@@ -4133,6 +4166,7 @@ async function scanInventory(force) {
     const currentLocale = getLocale();
     const nextLocale = currentLocale === 'de' ? 'en' : 'de';
     const prevToken = bg.querySelector('.wia-token')?.value ?? getToken();
+    const hasKey = !!prevToken.trim();
     const prevFeatNotes = bg.querySelector('.wia-feat-notes')?.checked ?? CONFIG.featNotes;
     const prevFeatBattle = bg.querySelector('.wia-feat-battle')?.checked ?? CONFIG.featBattleAdvisor;
     const prevFeatPill = bg.querySelector('.wia-feat-pill')?.checked ?? CONFIG.featPillReminder;
@@ -4152,8 +4186,8 @@ async function scanInventory(force) {
     const prevFeatBountyNotif = CONFIG.featBountyNotif;
     const prevNtfyTopic = bg.querySelector('.wia-ntfy-topic')?.value ?? CONFIG.ntfyTopic;
     const prevNtfySecret = bg.querySelector('.wia-ntfy-secret')?.value ?? CONFIG.ntfyTopicSecret;
-    const prevBountyOwn = bg.querySelector('.wia-bounty-own')?.value ?? CONFIG.bountyOwnCountryOverride;
-    const prevBountyScope = bg.querySelector('.wia-bounty-scope')?.value ?? CONFIG.bountyScope;
+    const prevBountyOwn = !hasKey ? '' : (bg.querySelector('.wia-bounty-own')?.value ?? CONFIG.bountyOwnCountryOverride);
+    const prevBountyScope = !hasKey ? 'all' : (bg.querySelector('.wia-bounty-scope')?.value ?? CONFIG.bountyScope);
     const prevBountyMuteDebuff = bg.querySelector('.wia-bounty-mute-debuff')?.checked ?? CONFIG.bountyMuteDebuff;
 
     const prevPersonalTopic = bg.querySelector('.wia-personal-topic')?.value ?? CONFIG.personalTopic;
@@ -4304,14 +4338,14 @@ async function scanInventory(force) {
             <div style="margin-top: 4px;">
               <label style="font-size: 11px; color: #8b949e; display: block; margin: 0 0 2px;">${t('settingsBountyScope')}</label>
               <select class="wia-bounty-scope" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px; outline: none; cursor: pointer;">
-                <option value="cascade" ${prevBountyScope === 'cascade' ? 'selected' : ''}>${t('bountyScopeCascade')}</option>
-                <option value="allies" ${prevBountyScope === 'allies' ? 'selected' : ''}>${t('bountyScopeAllies')}</option>
+                <option value="cascade" ${!hasKey ? 'disabled' : ''} ${prevBountyScope === 'cascade' ? 'selected' : ''}>${t('bountyScopeCascade')}${!hasKey ? ' (' + t('apiKeyRequiredSuffix') + ')' : ''}</option>
+                <option value="allies" ${!hasKey ? 'disabled' : ''} ${prevBountyScope === 'allies' ? 'selected' : ''}>${t('bountyScopeAllies')}${!hasKey ? ' (' + t('apiKeyRequiredSuffix') + ')' : ''}</option>
                 <option value="all" ${prevBountyScope === 'all' ? 'selected' : ''}>${t('bountyScopeAll')}</option>
               </select>
             </div>
             <div style="margin-top: 4px;">
               <label style="font-size: 11px; color: #8b949e; display: block; margin: 0 0 2px;">${t('settingsBountyOwnCountry')}</label>
-              <input type="text" class="wia-bounty-own" placeholder="name or id,id,id..." style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;" value="${prevBountyOwn}" />
+              <input type="text" class="wia-bounty-own" placeholder="name or id,id,id..." ${!hasKey ? 'disabled style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px; opacity: 0.5; cursor: not-allowed;"' : 'style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;"'} value="${prevBountyOwn}" />
               <div class="wia-bounty-detected-identity" style="font-size: 10px; color: #8b949e; margin-top: 2px;">Erkenne Identität...</div>
             </div>
             <div style="margin-top: 6px; display: flex; align-items: center; gap: 8px;">
@@ -4688,8 +4722,9 @@ async function scanInventory(force) {
 
       const featBounty = bg.querySelector('.wia-feat-bounty').checked;
       const featBountyNotif = featBounty && bg.querySelector('.wia-feat-bounty-notif').checked;
-      const bountyOwn = bg.querySelector('.wia-bounty-own').value.trim();
-      const bountyScope = bg.querySelector('.wia-bounty-scope').value;
+      const hasKey = !!getToken();
+      const bountyOwn = !hasKey ? '' : bg.querySelector('.wia-bounty-own').value.trim();
+      const bountyScope = !hasKey ? 'all' : bg.querySelector('.wia-bounty-scope').value;
       const bountyMuteDebuff = bg.querySelector('.wia-bounty-mute-debuff').checked;
       const personalTopic = bg.querySelector('.wia-personal-topic').value.trim();
       const personalSecret = bg.querySelector('.wia-personal-secret').value.trim();
@@ -9904,6 +9939,9 @@ function checkInventoryDeltaWear() {
       }
     } catch (e) {
       dbg('bountyNotify', 'error', 'ally resolve failed', e.message);
+      if (String(e.message).includes('apiKeyRequired')) {
+        setHealth('bountyNotify', 'warn', t('apiKeyRequiredMsg'));
+      }
     }
     if (ids.size) GM_setValue(ckey, { at: now(), ids: [...ids] });
     dbg('bountyNotify', 'debug', 'ally set', ids.size, [...ids]);
@@ -10568,6 +10606,9 @@ function checkInventoryDeltaWear() {
       return identity;
     } catch (e) {
       dbg('bountyNotify', 'error', 'identity resolve failed', e.message);
+      if (String(e.message).includes('apiKeyRequired')) {
+        setHealth('bountyNotify', 'warn', t('apiKeyRequiredMsg'));
+      }
       return cachedIdentity();   // reuse last-known rather than falling back to the global feed
     }
   }
