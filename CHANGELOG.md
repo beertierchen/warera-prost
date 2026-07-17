@@ -1,5 +1,23 @@
 # CHANGELOG
 
+## 2026-07-17 | API-Härtung: session-lose Requests, nur x-api-key (v0.9.0)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `package.json`, `README.md`, `CHANGELOG.md`, `tests/test-advisor-load.js`, `docs/wiki/Settings.md`, `docs/wiki/Settings.de.md`
+
+**Änderungen (Deutsch):**
+- **Session-lose Anfragen**: Die Anfragen an die offizielle API (`api2.warera.io`) und das Gateway erfolgen nun ausschließlich session-los. Zur Absicherung wurde eine strikte Header-Allowlist etabliert, die die Übertragung von Cookie- oder Authorization-Headern systemseitig ausschließt.
+- **Erforderlicher API-Key**: Für den Zugriff auf die offizielle API (`api2.warera.io`) ist nun ein API-Key zwingend erforderlich. Ohne API-Key nutzt das Skript ausschließlich das Community-Gateway (Preise, Transaktionen, Schlachten) und kontaktiert die offizielle API niemals. Allianz- und suchbasierte Funktionen sind ohne Key deaktiviert.
+- **Klartext-Speicherung**: Der API-Key wird zur einfachen Nachvollziehbarkeit im lokalen Speicher im Klartext abgelegt.
+- **API-Key Hilfestellung**: In den Einstellungen wird ein Hilfebereich eingeblendet, wenn kein Key hinterlegt ist, und abhängige Optionen werden ausgegraut.
+- **Sicherheits-Compliance-Tests**: Die Testsuite wurde um automatisierte Prüfungen erweitert, die die Einhaltung des session-losen Designs statisch und zur Laufzeit sicherstellen.
+
+**Changes (English):**
+- **Session-less Requests**: Network requests to the official API (`api2.warera.io`) and gateway are now strictly session-less. A strict header allowlist has been introduced to programmatically prevent sending cookie or authorization headers.
+- **Required API Key**: An official API key is now required for all official-API access. Without a key, the script only uses the community gateway (prices, transactions, battles) and never contacts `api2.warera.io`. Alliance- and search-based features stay off.
+- **Plaintext Storage**: The API key is stored locally in plain text to allow easy auditability.
+- **Onboarding Help**: An inline help section is displayed in Settings when the API key field is blank, and key-dependent options are disabled.
+- **Compliance Tests**: Automated tests have been added to verify compliance with the session-less design statically and at runtime.
+
 ## 2026-07-16 | Deaktivierung des Item Advisors im Markt & Entfernung von DOM-Scraping (v0.8.18)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/test-advisor-load.js`

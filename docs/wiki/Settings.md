@@ -15,7 +15,7 @@ panel stays compact.
 
 | Setting | Purpose |
 | --- | --- |
-| **API Token** | Optional. Fetches fresh equipment & scrap prices from the official API. See below. |
+| **API Key** | Required for official-API features. Without it, the script only uses the community gateway. |
 | **Daily P&L Tracker** | Shows your [daily profit/loss](Daily-PnL-Tracker) in the topbar. On by default. |
 | **Resource Market Intraday Graph** | *Experimental.* Adds an [intraday price graph](Market-Graph) to resource market modals. |
 | **Pill Reminder** | *Experimental.* Topbar [pill-cycle status & timer](Pill-Reminder). |
@@ -48,16 +48,15 @@ of the settings dialog; on narrow screens it expands **below**.
 Switch between 🇬🇧 English and 🇩🇪 German with the flag button in the top-right of
 the dialog.
 
-## API token
+## API key
 
 <a id="api-token"></a>
 
-- The token is **your** personal WareEra credential.
-- Stored locally via `GM_setValue`, lightly **obfuscated** (XOR) — this guards
-  against casual shoulder-surfing in the storage viewer only. **It is not
-  encryption** and gives no protection against local malware or other scripts
-  with GM access.
-- Treat the machine as trusted. **Revoke/rotate** the token in WareEra if you
-  suspect exposure.
-
-> PROST works without a token — you just get cached prices instead of live ones.
+- The script runs **session-less** — it never reads or forwards your game session cookies.
+- An official **API key** is required for all official-API features. Without it, the script only uses the community gateway (prices, transactions, battles), and alliance- and search-based features stay off.
+- The script never contacts `api2.warera.io` without your API key.
+- The API key is stored locally in GM storage as plain text to allow auditing.
+- To obtain a key:
+  1. Go to Settings > API Keys in the game.
+  2. Create a read-only key.
+  3. Paste it in Settings.

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.8.18
+// @version      0.9.0
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -49,7 +49,6 @@
     // tRPC base. The script probes both until one answers; first success wins
     // and is cached for the session.
     apiBases: ['https://gateway.warerastats.io/trpc', 'https://api2.warera.io/trpc', 'https://api2.warera.io/api/trpc'],
-    authHeaderMode: 'bearer',           // 'bearer' -> "Authorization: Bearer <t>", or 'x-api-token' / 'x-api-key'
     pricesEndpoint: 'itemTrading.getPrices',
     // getPrices returns MATERIALS only; the scrap unit price is the 'scraps' key.
     scrapItemCode: 'scraps',
@@ -65,7 +64,7 @@
     txCacheTtlMs: 60 * 60 * 1000,       // 1 hour for transaction history
     priceSampleIntervalMs: 15 * 60 * 1000, // sample every 15 mins
     priceSeriesWindowMs: 3 * 24 * 60 * 60 * 1000, // 3 days history
-    minRequestIntervalMs: 3000,         // throttle: no two network calls closer than this
+    minRequestIntervalMs: 3000,         // throttle: no two network calls closer than this (official limits: 100 rpm anonymous / 200 rpm keyed)
     rescanDebounceMs: 150,
     rateLimitBackoffMs: 60 * 1000,      // after a 429, suppress requests this long
     // ntfy.sh has its own (stricter) per-IP budget and BANS IPs that keep
@@ -155,20 +154,10 @@
     // Market tax rate when selling items
     sellTaxRate: 0.01,
 
-    // Scrap-flip safety margin for the OVERVIEW GRID only. The grid shows a
-    // scraped FLOOR price, which can sit below the cheapest *real* offer (e.g.
-    // floor 3.9 vs. real cheapest 4.1) and produce false-positive flips. We
-    // inflate the grid buy price by this fraction so only clearly profitable
-    // tiles flip. Detail-page offers use the real offer price and skip this.
-    scrapFlipGridMargin: 0.05,
-
-    // "Good roll" = item stat in the top fraction of LIVE market offers for its
-    // itemCode. Data-driven; no hardcoded stat bands. Applies to armor (single
-    // skill) and weapons (score). Falls back to inventory ranking if too few
-    // offers; if neither is available, decide purely on scrap-vs-market.
+    // "Good roll" = item stat in the top fraction of the user's own inventory items.
+    // Ranks an item's stat against the user's OWN INVENTORY items only.
+    // Too few items in inventory -> no roll verdict, decide purely scrap-vs-market.
     goodRollTopFraction: 1 / 3,
-    goodRollMinOffers: 4,               // need >= this many offers to rank a roll
-    weaponMinSampleForRanking: 3,       // inventory fallback: >=3 weapons to rank
 
     statRangesByTier: {
       gloves: {
@@ -323,11 +312,15 @@
         settingsDesc: 'The Inventory Advisor gives a quick overview of whether items should be kept (KEEP/HOLD), sold (SELL), or salvaged (SCRAP).',
         settingsHeaderFeature: 'Feature / Option',
         settingsHeaderNotif: '🔔 Notif',
-        settingsApiToken: 'API Token (api2.warera.io)',
-        settingsTokenPlaceholder: 'Bearer token',
-        settingsTokenNote: 'Saved locally (GM_setValue, lightly obfuscated-not real encryption).',
-        settingsLiveOffersCheckbox: 'Fetch live offers via API (requires API Token)',
-        settingsLiveOffersHint: 'Fetches live market listings from the official API to rank item stats against currently active listings.',
+        settingsApiToken: 'API Key (api2.warera.io)',
+        settingsTokenPlaceholder: 'API Key',
+        settingsTokenNote: 'API key — required for all official-API features. Without it the script only uses the community gateway (prices, transactions, battles); alliance- and search-based features stay off. Never your game session.',
+        // UNVERIFIED: steps to create an API key in-game
+        settingsTokenHelpText: 'No API key set — official-API features are disabled. To get a key: 1. Go to Settings > API Keys in the game. 2. Create a read-only key. 3. Paste it above. (Required for official-API features, never touches your game session. Detail guide: https://github.com/beertierchen/warera-prost/wiki/Settings)',
+        tokenStorageUpgraded: 'API key storage was upgraded — please re-enter your API key in Settings. API features stay off until you re-enter it.',
+        tokenStorageUpgradedTitle: 'API key upgraded',
+        apiKeyRequiredMsg: 'This feature needs your API key (Settings).',
+        apiKeyRequiredSuffix: 'needs key',
         hintToggleLabel: 'Explanation',
         settingsFeatPillCheckbox: 'Pill Reminder (configurable pill-timing overlay) 💊',
         settingsFeatPillHint: 'Shows a top-bar status and countdown timer for the pill cycle, highlights ready pills, and checks health/hunger levels.',
@@ -545,11 +538,15 @@
         settingsDesc: 'Der Inventory Advisor soll eine schnelle Übersicht geben, ob Items behalten (KEEP/HOLD), gewinnbringend verkauft (SELL) oder zerschreddert (SCRAP) werden sollten.',
         settingsHeaderFeature: 'Feature / Option',
         settingsHeaderNotif: '🔔 Benachr.',
-        settingsApiToken: 'API-Token (api2.warera.io)',
-        settingsTokenPlaceholder: 'Bearer-Token',
-        settingsTokenNote: 'Lokal gespeichert (GM_setValue, leicht verschleiert-keine echte Verschlüsselung).',
-        settingsLiveOffersCheckbox: 'Live-Angebote über API abrufen (benötigt API-Token)',
-        settingsLiveOffersHint: 'Ruft aktuelle Angebote über die offizielle API ab, um Gegenstandswerte mit derzeit aktiven Angeboten zu vergleichen.',
+        settingsApiToken: 'API-Key (api2.warera.io)',
+        settingsTokenPlaceholder: 'API-Key',
+        settingsTokenNote: 'API-Key — erforderlich für alle offiziellen API-Funktionen. Ohne Key nutzt das Skript nur das Community-Gateway (Preise, Transaktionen, Schlachten); Allianz- und Suchfunktionen bleiben deaktiviert. Niemals deine Spiel-Session.',
+        // UNVERIFIED: steps to create an API key in-game
+        settingsTokenHelpText: 'Kein API-Key gesetzt — offizielle API-Funktionen sind deaktiviert. Um einen Key zu erstellen: 1. Gehe im Spiel auf Einstellungen > API-Keys. 2. Erstelle einen Key mit Lese-Rechten. 3. Oben einfügen. (Erforderlich für offizielle API-Funktionen, nutzt niemals deine Spiel-Session. Anleitung: https://github.com/beertierchen/warera-prost/wiki/Settings.de)',
+        tokenStorageUpgraded: 'Der Speicherort für den API-Key wurde aktualisiert — bitte trage deinen API-Key in den Einstellungen neu ein. API-Funktionen bleiben deaktiviert, bis du ihn neu einträgst.',
+        tokenStorageUpgradedTitle: 'API-Key aktualisiert',
+        apiKeyRequiredMsg: 'Diese Funktion benötigt deinen API-Key (Einstellungen).',
+        apiKeyRequiredSuffix: 'benötigt Key',
         hintToggleLabel: 'Erklärung',
         settingsFeatPillCheckbox: 'Pill-Reminder (konfigurierbares Pillen-Timing Overlay)',
         settingsFeatPillHint: 'Zeigt einen Status und Countdown in der Menüleiste, markiert nimmbereite Pillen und prüft HP/Hunger-Werte.',
@@ -722,6 +719,7 @@
   const NS = 'wia.';
   const KEYS = {
     token: NS + 'token',
+    tokenFormat: NS + 'tokenFormat',
     locale: NS + 'locale',
     priceCache: NS + 'priceCache',     // { data, fetchedAt }-materials map
     scrapCache: NS + 'scrapCache',     // { price, fetchedAt }-legacy, unused
@@ -791,6 +789,13 @@
     featMuHealDim: NS + 'featMuHealDim',
   };
 
+  const gatewayBases = CONFIG.apiBases.filter((b) => {
+    try { return new URL(b).hostname === 'gateway.warerastats.io'; } catch (e) { return false; }
+  });
+  const api2Bases = CONFIG.apiBases.filter((b) => {
+    try { return new URL(b).hostname === 'api2.warera.io'; } catch (e) { return false; }
+  });
+
   const memoryCache = {};
 
   function readCache(key) {
@@ -845,31 +850,34 @@
   let menuClearId = null;
   let menuDebugId = null;
   let menuPickId = null;
-  const OBF_KEY = 'wareEra.advisor.v1'; // XOR pad-obfuscation only, not encryption
-
-  function xor(str, pad) {
-    let out = '';
-    for (let i = 0; i < str.length; i++) {
-      out += String.fromCharCode(str.charCodeAt(i) ^ pad.charCodeAt(i % pad.length));
-    }
-    return out;
-  }
   function setToken(t) {
     const old = getToken();
-    GM_setValue(KEYS.token, t ? btoa(xor(t, OBF_KEY)) : '');
+    // Plaintext storage makes stored values auditable.
+    // TM/GM storage is sandboxed and not accessible by page scripts.
+    GM_setValue(KEYS.token, t || '');
+    GM_setValue(KEYS.tokenFormat, 'plain');
     if (old !== t) {
       GM_setValue(KEYS.gatedProcedures, []);
     }
   }
   function getToken() {
-    const raw = GM_getValue(KEYS.token, '');
-    if (!raw) return '';
-    try {
-      return xor(atob(raw), OBF_KEY);
-    } catch (e) {
-      setHealth('api', 'warn', 'token unreadable');
+    const token = GM_getValue(KEYS.token, '');
+    const format = GM_getValue(KEYS.tokenFormat, '');
+    if (token && format !== 'plain') {
+      // One-time upgrade: clear legacy key and set marker
+      GM_setValue(KEYS.token, '');
+      GM_setValue(KEYS.tokenFormat, 'plain');
+      const msg = t('tokenStorageUpgraded') || 'API key storage was upgraded — please re-enter your API key in Settings.';
+      setHealth('api', 'warn', msg);
+      if (typeof showLocalPersonalPopup === 'function') {
+        showLocalPersonalPopup('api', t('tokenStorageUpgradedTitle') || 'API Key Upgraded', msg, '⚠️');
+      }
       return '';
     }
+    if (!token && format !== 'plain') {
+      GM_setValue(KEYS.tokenFormat, 'plain');
+    }
+    return token;
   }
   // fallback prices helper removed
   function clearCache() {
@@ -1313,13 +1321,29 @@
   // ───────────────────────────────────────────────────────────────────────────
   let inFlightPrices = null; // promise dedup
 
+  // COMPLIANCE INVARIANT (enforced by tests/test-advisor-load.js compliance suite):
+  // Every request is anonymous (no game session cookies) and its headers are built
+  // from a fixed allowlist. Cookie / Authorization / bearer tokens can NEVER be sent,
+  // regardless of what a caller passes. The user's optional API key travels ONLY as
+  // x-api-key. Cross-engine note: Tampermonkey honors `anonymous`; some Violentmonkey
+  // builds do not — the allowlist below, not the flag, is the real guarantee.
+  const GM_HEADER_ALLOWLIST = ['content-type', 'accept', 'x-api-key', 'title', 'priority', 'tags', 'click'];
+
   function gmRequest({ method, url, headers, data }) {
+    const safe = {};
+    for (const [k, v] of Object.entries(headers || {})) {
+      if (v == null) continue;
+      if (GM_HEADER_ALLOWLIST.includes(String(k).toLowerCase())) {
+        safe[k] = v;
+      }
+    }
     return new Promise((resolve, reject) => {
       GM_xmlhttpRequest({
         method: method || 'GET',
         url,
-        headers: headers || {},
+        headers: safe,
         data,
+        anonymous: true,            // strip ambient game-session cookies
         timeout: 15000,
         onload: (res) => resolve({ status: res.status, text: res.responseText, responseHeaders: res.responseHeaders || '' }),
         onerror: () => reject(new Error('network error: ' + url)),
@@ -1328,15 +1352,15 @@
     });
   }
 
-  function authHeaders() {
-    const t = getToken();
-    if (!t) return {};
-    switch (CONFIG.authHeaderMode) {
-      case 'x-api-token': return { 'x-api-token': t };
-      case 'x-api-key':   return { 'x-api-key': t };
-      case 'bearer':
-      default:            return { Authorization: 'Bearer ' + t };
-    }
+  function publicHeaders() { return {}; }                 // anonymous public calls
+  function keyedHeaders() {                               // key only upgrades rate limit
+    const k = getToken();
+    return k ? { 'x-api-key': k } : {};
+  }
+  function headersForBase(base) {
+    let h = '';
+    try { h = new URL(base).hostname; } catch (e) {}
+    return h === 'api2.warera.io' ? keyedHeaders() : publicHeaders();
   }
 
   function isRateLimited() {
@@ -1455,12 +1479,20 @@
     if (isRateLimited()) throw new Error('429');
     if (isProcedureGated(procedure)) throw new Error('gated: ' + procedure);
     const cached = GM_getValue(KEYS.apiBase, '');
-    const bases = cached ? [cached, ...CONFIG.apiBases.filter((b) => b !== cached)] : CONFIG.apiBases;
+    const hasKey = !!getToken();
+    let allowedBases = CONFIG.apiBases;
+    if (!hasKey) {
+      allowedBases = gatewayBases;
+    }
+    const bases = cached && allowedBases.includes(cached)
+      ? [cached, ...allowedBases.filter((b) => b !== cached)]
+      : allowedBases;
+
     let lastErr;
     for (const base of bases) {
       try {
         await throttle();
-        const res = await gmRequest({ method: 'GET', url: trpcUrl(base, procedure, args), headers: authHeaders() });
+        const res = await gmRequest({ method: 'GET', url: trpcUrl(base, procedure, args), headers: headersForBase(base) });
         if (res.status === 429) { tripRateLimit(); throw new Error('429'); }
         if (res.status === 401 || res.status === 403) {
           gateProcedure(procedure);
@@ -1477,6 +1509,9 @@
         if (String(e.message).includes('401') || String(e.message).includes('403')) break;
       }
     }
+    if (!hasKey && api2Bases.length > 0) {
+      throw new Error('apiKeyRequired: ' + procedure);
+    }
     throw lastErr || new Error('all API bases failed');
   }
 
@@ -1484,7 +1519,15 @@
     if (isRateLimited()) throw new Error('429');
     if (isProcedureGated(procedure)) throw new Error('gated: ' + procedure);
     const cached = GM_getValue(KEYS.apiBase, '');
-    const bases = cached ? [cached, ...CONFIG.apiBases.filter((b) => b !== cached)] : CONFIG.apiBases;
+    const hasKey = !!getToken();
+    let allowedBases = CONFIG.apiBases;
+    if (!hasKey) {
+      allowedBases = gatewayBases;
+    }
+    const bases = cached && allowedBases.includes(cached)
+      ? [cached, ...allowedBases.filter((b) => b !== cached)]
+      : allowedBases;
+
     let lastErr;
     for (const base of bases) {
       try {
@@ -1494,7 +1537,7 @@
           method: 'POST',
           url,
           headers: {
-            ...authHeaders(),
+            ...headersForBase(base),
             'Content-Type': 'application/json',
             'accept': '*/*'
           },
@@ -1515,6 +1558,9 @@
         if (String(e.message).includes('429')) break;
         if (String(e.message).includes('401') || String(e.message).includes('403')) break;
       }
+    }
+    if (!hasKey && api2Bases.length > 0) {
+      throw new Error('apiKeyRequired: ' + procedure);
     }
     throw lastErr || new Error('all API bases failed');
   }
@@ -2068,7 +2114,10 @@
     globalThis.isMarketGridPage = isMarketGridPage;
     globalThis.isMarketDetailPage = isMarketDetailPage;
     globalThis.CONFIG = CONFIG;
+    globalThis.KEYS = KEYS;
     // Export internal functions for unit tests
+    globalThis.setToken = setToken;
+    globalThis.getToken = getToken;
     globalThis.parseStats = parseStats;
     globalThis.getItemState = getItemState;
     globalThis.isInsideProfileEquipment = isInsideProfileEquipment;
@@ -2088,7 +2137,7 @@
     const bountyAllies = () => resolveAllyCountryIds().then((s) => [...s]);
     globalThis.bountyAllies = bountyAllies;
     globalThis.extractAllyBounties = extractAllyBounties;
-    if (typeof unsafeWindow !== 'undefined') {
+    if (typeof unsafeWindow !== 'undefined' && CONFIG.debug) {
       unsafeWindow.getCurrentUserId = getCurrentUserId;
       unsafeWindow.WIA_resolve = resolveApiBase;
       unsafeWindow.WIA_post = resolveApiPost;
@@ -2111,7 +2160,7 @@
     globalThis.shouldDimMuHeal = shouldDimMuHeal;
     globalThis.findMuHealButton = findMuHealButton;
     globalThis.WIA_muHealDiag = muHealDiag;
-    if (typeof unsafeWindow !== 'undefined') {
+    if (typeof unsafeWindow !== 'undefined' && CONFIG.debug) {
       unsafeWindow.WIA_muHealDiag = muHealDiag;
     }
     globalThis.simpleHash = simpleHash;
@@ -4117,6 +4166,7 @@ async function scanInventory(force) {
     const currentLocale = getLocale();
     const nextLocale = currentLocale === 'de' ? 'en' : 'de';
     const prevToken = bg.querySelector('.wia-token')?.value ?? getToken();
+    const hasKey = !!prevToken.trim();
     const prevFeatNotes = bg.querySelector('.wia-feat-notes')?.checked ?? CONFIG.featNotes;
     const prevFeatBattle = bg.querySelector('.wia-feat-battle')?.checked ?? CONFIG.featBattleAdvisor;
     const prevFeatPill = bg.querySelector('.wia-feat-pill')?.checked ?? CONFIG.featPillReminder;
@@ -4136,8 +4186,8 @@ async function scanInventory(force) {
     const prevFeatBountyNotif = CONFIG.featBountyNotif;
     const prevNtfyTopic = bg.querySelector('.wia-ntfy-topic')?.value ?? CONFIG.ntfyTopic;
     const prevNtfySecret = bg.querySelector('.wia-ntfy-secret')?.value ?? CONFIG.ntfyTopicSecret;
-    const prevBountyOwn = bg.querySelector('.wia-bounty-own')?.value ?? CONFIG.bountyOwnCountryOverride;
-    const prevBountyScope = bg.querySelector('.wia-bounty-scope')?.value ?? CONFIG.bountyScope;
+    const prevBountyOwn = !hasKey ? '' : (bg.querySelector('.wia-bounty-own')?.value ?? CONFIG.bountyOwnCountryOverride);
+    const prevBountyScope = !hasKey ? 'all' : (bg.querySelector('.wia-bounty-scope')?.value ?? CONFIG.bountyScope);
     const prevBountyMuteDebuff = bg.querySelector('.wia-bounty-mute-debuff')?.checked ?? CONFIG.bountyMuteDebuff;
 
     const prevPersonalTopic = bg.querySelector('.wia-personal-topic')?.value ?? CONFIG.personalTopic;
@@ -4166,6 +4216,9 @@ async function scanInventory(force) {
         <label>${t('settingsApiToken')}</label>
         <input type="password" class="wia-token" placeholder="${t('settingsTokenPlaceholder')}" />
         <div class="wia-note">${t('settingsTokenNote')}</div>
+        <div class="wia-token-help" style="font-size: 11px; color: #8b949e; border: 1px dashed rgba(148,163,184,0.3); border-radius: 4px; padding: 8px; margin-top: 6px; line-height: 1.4; display: none;">
+          ${t('settingsTokenHelpText')}
+        </div>
         <div style="display: flex; justify-content: space-between; font-size: 10px; color: #8b949e; border-bottom: 1px solid rgba(148,163,184,.15); padding-bottom: 4px; margin-bottom: 8px; margin-top: 14px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">
           <span>${t('settingsHeaderFeature')}</span>
           <span style="margin-right: 4px;">${t('settingsHeaderNotif')}</span>
@@ -4285,14 +4338,14 @@ async function scanInventory(force) {
             <div style="margin-top: 4px;">
               <label style="font-size: 11px; color: #8b949e; display: block; margin: 0 0 2px;">${t('settingsBountyScope')}</label>
               <select class="wia-bounty-scope" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px; outline: none; cursor: pointer;">
-                <option value="cascade" ${prevBountyScope === 'cascade' ? 'selected' : ''}>${t('bountyScopeCascade')}</option>
-                <option value="allies" ${prevBountyScope === 'allies' ? 'selected' : ''}>${t('bountyScopeAllies')}</option>
+                <option value="cascade" ${!hasKey ? 'disabled' : ''} ${prevBountyScope === 'cascade' ? 'selected' : ''}>${t('bountyScopeCascade')}${!hasKey ? ' (' + t('apiKeyRequiredSuffix') + ')' : ''}</option>
+                <option value="allies" ${!hasKey ? 'disabled' : ''} ${prevBountyScope === 'allies' ? 'selected' : ''}>${t('bountyScopeAllies')}${!hasKey ? ' (' + t('apiKeyRequiredSuffix') + ')' : ''}</option>
                 <option value="all" ${prevBountyScope === 'all' ? 'selected' : ''}>${t('bountyScopeAll')}</option>
               </select>
             </div>
             <div style="margin-top: 4px;">
               <label style="font-size: 11px; color: #8b949e; display: block; margin: 0 0 2px;">${t('settingsBountyOwnCountry')}</label>
-              <input type="text" class="wia-bounty-own" placeholder="name or id,id,id..." style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;" value="${prevBountyOwn}" />
+              <input type="text" class="wia-bounty-own" placeholder="name or id,id,id..." ${!hasKey ? 'disabled style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px; opacity: 0.5; cursor: not-allowed;"' : 'style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;"'} value="${prevBountyOwn}" />
               <div class="wia-bounty-detected-identity" style="font-size: 10px; color: #8b949e; margin-top: 2px;">Erkenne Identität...</div>
             </div>
             <div style="margin-top: 6px; display: flex; align-items: center; gap: 8px;">
@@ -4363,6 +4416,16 @@ async function scanInventory(force) {
     tokenInput.value = prevToken;
     warnBanner = bg.querySelector('.wia-warn');
     renderRateLimitBanner();
+
+    // Check settings token help visibility
+    const tokenHelp = bg.querySelector('.wia-token-help');
+    const updateHelpVisibility = () => {
+      if (tokenHelp) {
+        tokenHelp.style.display = tokenInput.value.trim() ? 'none' : 'block';
+      }
+    };
+    tokenInput.oninput = updateHelpVisibility;
+    updateHelpVisibility();
 
     localeBtn.onclick = (e) => {
       e.preventDefault();
@@ -4659,8 +4722,9 @@ async function scanInventory(force) {
 
       const featBounty = bg.querySelector('.wia-feat-bounty').checked;
       const featBountyNotif = featBounty && bg.querySelector('.wia-feat-bounty-notif').checked;
-      const bountyOwn = bg.querySelector('.wia-bounty-own').value.trim();
-      const bountyScope = bg.querySelector('.wia-bounty-scope').value;
+      const hasKey = !!getToken();
+      const bountyOwn = !hasKey ? '' : bg.querySelector('.wia-bounty-own').value.trim();
+      const bountyScope = !hasKey ? 'all' : bg.querySelector('.wia-bounty-scope').value;
       const bountyMuteDebuff = bg.querySelector('.wia-bounty-mute-debuff').checked;
       const personalTopic = bg.querySelector('.wia-personal-topic').value.trim();
       const personalSecret = bg.querySelector('.wia-personal-secret').value.trim();
@@ -9709,7 +9773,7 @@ function checkInventoryDeltaWear() {
     return id;
   }
 
-  const SCRIPT_VERSION = (typeof GM_info !== 'undefined' && GM_info && GM_info.script && GM_info.script.version) || '0.8.10';
+  const SCRIPT_VERSION = (typeof GM_info !== 'undefined' && GM_info && GM_info.script && GM_info.script.version) || '0.9.0';
 
   function cleanHeaderValue(str) {
     if (!str) return '';
@@ -9875,6 +9939,9 @@ function checkInventoryDeltaWear() {
       }
     } catch (e) {
       dbg('bountyNotify', 'error', 'ally resolve failed', e.message);
+      if (String(e.message).includes('apiKeyRequired')) {
+        setHealth('bountyNotify', 'warn', t('apiKeyRequiredMsg'));
+      }
     }
     if (ids.size) GM_setValue(ckey, { at: now(), ids: [...ids] });
     dbg('bountyNotify', 'debug', 'ally set', ids.size, [...ids]);
@@ -9919,7 +9986,7 @@ function checkInventoryDeltaWear() {
     return 'ally + country-map cache cleared';
   }
   globalThis.bountyResetAllyCache = bountyResetAllyCache;
-  if (typeof unsafeWindow !== 'undefined') unsafeWindow.bountyResetAllyCache = bountyResetAllyCache;
+  if (typeof unsafeWindow !== 'undefined' && CONFIG.debug) unsafeWindow.bountyResetAllyCache = bountyResetAllyCache;
 
   const BOUNTY_POLL_MS = 30000;
   const BOUNTY_PAGE_CAP = 10;
@@ -10539,6 +10606,9 @@ function checkInventoryDeltaWear() {
       return identity;
     } catch (e) {
       dbg('bountyNotify', 'error', 'identity resolve failed', e.message);
+      if (String(e.message).includes('apiKeyRequired')) {
+        setHealth('bountyNotify', 'warn', t('apiKeyRequiredMsg'));
+      }
       return cachedIdentity();   // reuse last-known rather than falling back to the global feed
     }
   }
