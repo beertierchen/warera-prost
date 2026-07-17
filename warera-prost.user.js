@@ -322,9 +322,10 @@
         settingsDesc: 'The Inventory Advisor gives a quick overview of whether items should be kept (KEEP/HOLD), sold (SELL), or salvaged (SCRAP).',
         settingsHeaderFeature: 'Feature / Option',
         settingsHeaderNotif: '🔔 Notif',
-        settingsApiToken: 'API Token (api2.warera.io)',
-        settingsTokenPlaceholder: 'Bearer token',
-        settingsTokenNote: 'Saved locally (GM_setValue, lightly obfuscated-not real encryption).',
+        settingsApiToken: 'Optional API Key (api2.warera.io)',
+        settingsTokenPlaceholder: 'API Key',
+        settingsTokenNote: 'Optional API key — only raises your rate limit. The script works anonymously without it and never uses your game session.',
+        settingsTokenHelpText: 'No API key set — the script runs anonymously (lower rate limit). To get a key: 1. Go to Settings > API Keys in the game. 2. Create a read-only key. 3. Paste it above. (The key only raises your rate limit and never touches your game session.)',
         settingsLiveOffersCheckbox: 'Fetch live offers via API (requires API Token)',
         settingsLiveOffersHint: 'Fetches live market listings from the official API to rank item stats against currently active listings.',
         hintToggleLabel: 'Explanation',
@@ -544,9 +545,10 @@
         settingsDesc: 'Der Inventory Advisor soll eine schnelle Übersicht geben, ob Items behalten (KEEP/HOLD), gewinnbringend verkauft (SELL) oder zerschreddert (SCRAP) werden sollten.',
         settingsHeaderFeature: 'Feature / Option',
         settingsHeaderNotif: '🔔 Benachr.',
-        settingsApiToken: 'API-Token (api2.warera.io)',
-        settingsTokenPlaceholder: 'Bearer-Token',
-        settingsTokenNote: 'Lokal gespeichert (GM_setValue, leicht verschleiert-keine echte Verschlüsselung).',
+        settingsApiToken: 'Optionaler API-Key (api2.warera.io)',
+        settingsTokenPlaceholder: 'API-Key',
+        settingsTokenNote: 'Optionaler API-Key — erhöht nur das Rate-Limit. Das Skript funktioniert anonym ohne Key und nutzt niemals deine Spiel-Session.',
+        settingsTokenHelpText: 'Kein API-Key gesetzt — das Skript läuft anonym (niedrigeres Rate-Limit). Um einen Key zu erstellen: 1. Gehe im Spiel auf Einstellungen > API-Keys. 2. Erstelle einen Key mit Lese-Rechten. 3. Oben einfügen. (Der Key erhöht nur dein Rate-Limit und nutzt niemals deine Spiel-Session.)',
         settingsLiveOffersCheckbox: 'Live-Angebote über API abrufen (benötigt API-Token)',
         settingsLiveOffersHint: 'Ruft aktuelle Angebote über die offizielle API ab, um Gegenstandswerte mit derzeit aktiven Angeboten zu vergleichen.',
         hintToggleLabel: 'Erklärung',
@@ -4162,6 +4164,9 @@ async function scanInventory(force) {
         <label>${t('settingsApiToken')}</label>
         <input type="password" class="wia-token" placeholder="${t('settingsTokenPlaceholder')}" />
         <div class="wia-note">${t('settingsTokenNote')}</div>
+        <div class="wia-token-help" style="font-size: 11px; color: #8b949e; border: 1px dashed rgba(148,163,184,0.3); border-radius: 4px; padding: 8px; margin-top: 6px; line-height: 1.4; display: none;">
+          ${t('settingsTokenHelpText')}
+        </div>
         <div style="display: flex; justify-content: space-between; font-size: 10px; color: #8b949e; border-bottom: 1px solid rgba(148,163,184,.15); padding-bottom: 4px; margin-bottom: 8px; margin-top: 14px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">
           <span>${t('settingsHeaderFeature')}</span>
           <span style="margin-right: 4px;">${t('settingsHeaderNotif')}</span>
@@ -4359,6 +4364,16 @@ async function scanInventory(force) {
     tokenInput.value = prevToken;
     warnBanner = bg.querySelector('.wia-warn');
     renderRateLimitBanner();
+
+    // UNVERIFIED: Check settings token help visibility
+    const tokenHelp = bg.querySelector('.wia-token-help');
+    const updateHelpVisibility = () => {
+      if (tokenHelp) {
+        tokenHelp.style.display = tokenInput.value.trim() ? 'none' : 'block';
+      }
+    };
+    tokenInput.oninput = updateHelpVisibility;
+    updateHelpVisibility();
 
     localeBtn.onclick = (e) => {
       e.preventDefault();
