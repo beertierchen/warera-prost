@@ -2501,20 +2501,28 @@ try {
               }
             }
           }
-          if (isApi2Host && global.GM_getValue(globalThis.KEYS.token)) {
+          if (isApi2Host) {
             const keys = Object.keys(opts.headers).map(k => k.toLowerCase());
-            assert.ok(keys.includes('x-api-key'), 'Request to api2.warera.io with a key set must include x-api-key header');
-          } else if (!isApi2Host) {
+            assert.ok(keys.includes('x-api-key'), 'Request to api2.warera.io must include x-api-key header');
+          } else {
             const keys = Object.keys(opts.headers).map(k => k.toLowerCase());
             assert.ok(!keys.includes('x-api-key'), 'Request to non-api2 host must not include x-api-key header');
           }
         }
         if (opts.onload) {
-          // Fail gateway to force fallback to api2, allowing us to test both hosts in one flow
-          let fallbackHost = '';
-          try { fallbackHost = new URL(opts.url).hostname; } catch (e) {}
-          const status = fallbackHost === 'gateway.warerastats.io' ? 500 : 200;
-          opts.onload({ status, responseText: '{"result":{"data":{"json":{}}}}', responseHeaders: '' });
+          let host = '';
+          try { host = new URL(opts.url).hostname; } catch (e) {}
+          if (host === 'gateway.warerastats.io') {
+            if (gatewayUnknownMethod) {
+              opts.onload({ status: 200, responseText: '[{"error":{"json":{"message":"unknown method"}}}]', responseHeaders: '' });
+            } else if (gatewayShouldFail) {
+              opts.onload({ status: 500, responseText: 'gateway error', responseHeaders: '' });
+            } else {
+              opts.onload({ status: 200, responseText: '[{"result":{"data":{"json":{}}}}]', responseHeaders: '' });
+            }
+          } else {
+            opts.onload({ status: 200, responseText: '[{"result":{"data":{"json":{}}}}]', responseHeaders: '' });
+          }
         }
       };
 
@@ -2522,18 +2530,59 @@ try {
       globalThis.GM_setValue('wia.gatedProcedures', []);
       globalThis.GM_setValue('wia.rateLimitedUntil', 0);
 
-      // (a) Anonymous fetch (tries gateway -> 500 -> api2 -> 200)
+      // (a) Keyless fetch (successful gateway response)
+      requestInterceptedCount = 0;
       globalThis.setToken('');
       globalThis.GM_setValue('wia.apiBase', '');
-      await globalThis.WIA_resolve('itemTrading.getPrices', {});
-      assert.strictEqual(requestInterceptedCount, 2, 'Should intercept gateway and api2 requests');
+      let gatewayShouldFail = false;
+      let gatewayUnknownMethod = false;
 
-      // (b) Keyed fetch
+      await globalThis.WIA_resolve('itemTrading.getPrices', {});
+      assert.strictEqual(requestInterceptedCount, 1, 'Should only query gateway under keyless mode');
+
+      // (b) Keyless fetch (gateway failure -> throws apiKeyRequired)
+      requestInterceptedCount = 0;
+      globalThis.setToken('');
+      globalThis.GM_setValue('wia.apiBase', '');
+      gatewayShouldFail = true;
+      
+      let threwExpectedError = false;
+      try {
+        await globalThis.WIA_resolve('itemTrading.getPrices', {});
+      } catch (err) {
+        if (String(err.message).includes('apiKeyRequired: itemTrading.getPrices')) {
+          threwExpectedError = true;
+        }
+      }
+      assert.ok(threwExpectedError, 'Should throw apiKeyRequired when gateway fails and no key is set');
+      assert.strictEqual(requestInterceptedCount, 1, 'Should not attempt any api2 requests when keyless');
+
+      // (c) Keyed fetch (tries gateway -> 500 -> api2 -> 200)
       requestInterceptedCount = 0;
       globalThis.setToken('test-compliance-api-key');
       globalThis.GM_setValue('wia.apiBase', '');
+      gatewayShouldFail = true;
+      
       await globalThis.WIA_resolve('itemTrading.getPrices', {});
-      assert.strictEqual(requestInterceptedCount, 2, 'Should intercept gateway (no key) and api2 (with key) requests');
+      assert.strictEqual(requestInterceptedCount, 2, 'Should query gateway first, then fall back to api2 (with key)');
+
+      // (d) Keyless call to api2-only procedure (gateway returns unknown method -> throws apiKeyRequired)
+      requestInterceptedCount = 0;
+      globalThis.setToken('');
+      globalThis.GM_setValue('wia.apiBase', '');
+      gatewayShouldFail = false;
+      gatewayUnknownMethod = true;
+      
+      threwExpectedError = false;
+      try {
+        await globalThis.WIA_resolve('alliance.getById', { allianceId: '123' });
+      } catch (err) {
+        if (String(err.message).includes('apiKeyRequired: alliance.getById')) {
+          threwExpectedError = true;
+        }
+      }
+      assert.ok(threwExpectedError, 'Should throw apiKeyRequired for api2-only procedure');
+      assert.strictEqual(requestInterceptedCount, 1, 'Should not attempt any api2 requests when keyless');
 
       global.GM_xmlhttpRequest = oldXmlhttp;
       console.log('Runtime compliance tripwire passed.');
