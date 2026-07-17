@@ -2465,12 +2465,17 @@ try {
       assert.strictEqual(cleanCode.includes('sessionStorage'), false, 'Source must not reference sessionStorage');
 
       // (f) localStorage is only accessed via POPUP_TRIGGER_KEY
-      // Let's verify that every occurrence of localStorage matches POPUP_TRIGGER_KEY access.
-      const localStorageOccurrences = (cleanCode.match(/localStorage/g) || []).length;
-      const triggerKeyOccurrences = (cleanCode.match(/POPUP_TRIGGER_KEY/g) || []).length;
-      // We expect localStorage to only appear when triggerKey is nearby or in specific methods.
-      // A simple check is that the number of localStorage uses is strictly <= number of POPUP_TRIGGER_KEY uses.
-      assert.ok(localStorageOccurrences <= triggerKeyOccurrences, 'localStorage should only be accessed via POPUP_TRIGGER_KEY');
+      // Let's verify that every statement/line containing localStorage also contains POPUP_TRIGGER_KEY.
+      const sourceLines = code.split('\n');
+      for (let idx = 0; idx < sourceLines.length; idx++) {
+        const line = sourceLines[idx];
+        if (line.includes('localStorage') && !line.includes('POPUP_TRIGGER_KEY') && !line.includes('*') && !line.includes('//')) {
+          const cleanLine = stripComments(line);
+          if (cleanLine.includes('localStorage') && !cleanLine.includes('POPUP_TRIGGER_KEY')) {
+            throw new Error(`localStorage compliance violation at line ${idx + 1}: ${line.trim()}`);
+          }
+        }
+      }
 
       // (g) @connect set == exactly {api2.warera.io, gateway.warerastats.io, ntfy.sh}
       const headerConnects = [];
@@ -2491,16 +2496,35 @@ try {
       global.GM_xmlhttpRequest = (opts) => {
         requestInterceptedCount++;
         assert.strictEqual(opts.anonymous, true, 'GM_xmlhttpRequest must be invoked with anonymous: true');
+        
+        const isApi2Host = opts.url && opts.url.includes('api2.warera.io');
+        
         if (opts.headers) {
           for (const k of Object.keys(opts.headers)) {
             const lower = k.toLowerCase();
             assert.notStrictEqual(lower, 'cookie', 'Outgoing headers must not contain Cookie');
             assert.notStrictEqual(lower, 'authorization', 'Outgoing headers must not contain Authorization');
             assert.notStrictEqual(lower, 'x-api-token', 'Outgoing headers must not contain x-api-token');
+            if (lower === 'x-api-key') {
+              assert.ok(isApi2Host, 'x-api-key header must only be sent to api2.warera.io');
+              const keyVal = global.GM_getValue('wia.token');
+              if (keyVal) {
+                assert.strictEqual(opts.headers[k], keyVal, 'x-api-key must match the stored API key value');
+              }
+            }
+          }
+          if (isApi2Host && global.GM_getValue('wia.token')) {
+            const keys = Object.keys(opts.headers).map(k => k.toLowerCase());
+            assert.ok(keys.includes('x-api-key'), 'Request to api2.warera.io with a key set must include x-api-key header');
+          } else if (!isApi2Host) {
+            const keys = Object.keys(opts.headers).map(k => k.toLowerCase());
+            assert.ok(!keys.includes('x-api-key'), 'Request to non-api2 host must not include x-api-key header');
           }
         }
         if (opts.onload) {
-          opts.onload({ status: 200, responseText: '{"result":{"data":{"json":{}}}}', responseHeaders: '' });
+          // Fail gateway to force fallback to api2, allowing us to test both hosts in one flow
+          const status = opts.url.includes('gateway.warerastats.io') ? 500 : 200;
+          opts.onload({ status, responseText: '{"result":{"data":{"json":{}}}}', responseHeaders: '' });
         }
       };
 
@@ -2508,27 +2532,41 @@ try {
       globalThis.GM_setValue('wia.gatedProcedures', []);
       globalThis.GM_setValue('wia.rateLimitedUntil', 0);
 
-      // (a) Anonymous fetch
+      // (a) Anonymous fetch (tries gateway -> 500 -> api2 -> 200)
       globalThis.setToken('');
+      globalThis.GM_setValue('wia.apiBase', '');
       await globalThis.WIA_resolve('itemTrading.getPrices', {});
-      assert.strictEqual(requestInterceptedCount, 1, 'One request should be intercepted');
+      assert.strictEqual(requestInterceptedCount, 2, 'Should intercept gateway and api2 requests');
 
       // (b) Keyed fetch
+      requestInterceptedCount = 0;
       globalThis.setToken('test-compliance-api-key');
+      globalThis.GM_setValue('wia.apiBase', '');
       await globalThis.WIA_resolve('itemTrading.getPrices', {});
-      assert.strictEqual(requestInterceptedCount, 2, 'Two requests should be intercepted');
+      assert.strictEqual(requestInterceptedCount, 2, 'Should intercept gateway (no key) and api2 (with key) requests');
 
       global.GM_xmlhttpRequest = oldXmlhttp;
       console.log('Runtime compliance tripwire passed.');
 
-      // 3. Unit tests for setToken and getToken (plaintext check)
+      // 3. Unit tests for setToken and getToken (plaintext check + legacy migration)
+      // (a) Standard set and get
       globalThis.setToken('test-token-123');
       assert.strictEqual(globalThis.getToken(), 'test-token-123', 'getToken must retrieve the saved token');
       const valInStorage = global.GM_getValue('wia.token');
       assert.strictEqual(valInStorage, 'test-token-123', 'Token storage must be raw plaintext (no XOR or base64)');
+      assert.strictEqual(global.GM_getValue('wia.tokenFormat'), 'plain', 'wia.tokenFormat marker must be "plain"');
       
       globalThis.setToken('');
       assert.strictEqual(globalThis.getToken(), '', 'getToken must be empty after setToken("")');
+
+      // (b) Legacy migration
+      global.GM_setValue('wia.token', 'legacy_token_base64_blob');
+      global.GM_setValue('wia.tokenFormat', ''); // legacy / pre-migration state
+      
+      const migratedToken = globalThis.getToken();
+      assert.strictEqual(migratedToken, '', 'getToken must return empty string for legacy stored keys');
+      assert.strictEqual(global.GM_getValue('wia.token'), '', 'legacy stored token must be cleared from storage');
+      assert.strictEqual(global.GM_getValue('wia.tokenFormat'), 'plain', 'wia.tokenFormat marker must be set to "plain" after migration');
       
       console.log('Token storage unit tests passed.');
       console.log('Compliance tests passed successfully.');

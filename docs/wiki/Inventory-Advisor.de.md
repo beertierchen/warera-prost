@@ -50,6 +50,6 @@ die Overlays in einem eigenen Band liegen und die nativen Stats nicht mehr verde
 
 ## Preis-Frische
 
-Preise werden im Hintergrund aus abgeschlossenen Markttransaktionen über die offizielle API geladen. In den [Einstellungen](Settings.de) kannst du die Daten aktualisieren oder deinen API-Token hinterlegen.
+Preise werden im Hintergrund aus abgeschlossenen Markttransaktionen über die offizielle API geladen. In den [Einstellungen](Settings.de) kannst du die Daten aktualisieren oder einen optionalen API-Key hinterlegen.
 
 Siehe auch: [Einstellungen](Settings.de)

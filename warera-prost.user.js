@@ -325,9 +325,9 @@
         settingsApiToken: 'Optional API Key (api2.warera.io)',
         settingsTokenPlaceholder: 'API Key',
         settingsTokenNote: 'Optional API key — only raises your rate limit. The script works anonymously without it and never uses your game session.',
-        settingsTokenHelpText: 'No API key set — the script runs anonymously (lower rate limit). To get a key: 1. Go to Settings > API Keys in the game. 2. Create a read-only key. 3. Paste it above. (The key only raises your rate limit and never touches your game session.)',
-        settingsLiveOffersCheckbox: 'Fetch live offers via API (requires API Token)',
-        settingsLiveOffersHint: 'Fetches live market listings from the official API to rank item stats against currently active listings.',
+        // UNVERIFIED: steps to create an API key in-game
+        settingsTokenHelpText: 'No API key set — the script runs anonymously (lower rate limit). To get a key: 1. Go to Settings > API Keys in the game. 2. Create a read-only key. 3. Paste it above. (The key only raises your rate limit and never touches your game session. Detail guide: https://github.com/beertierchen/warera-prost/wiki/Settings)',
+        tokenStorageUpgraded: 'API key storage was upgraded — please re-enter your API key in Settings.',
         hintToggleLabel: 'Explanation',
         settingsFeatPillCheckbox: 'Pill Reminder (configurable pill-timing overlay) 💊',
         settingsFeatPillHint: 'Shows a top-bar status and countdown timer for the pill cycle, highlights ready pills, and checks health/hunger levels.',
@@ -548,9 +548,9 @@
         settingsApiToken: 'Optionaler API-Key (api2.warera.io)',
         settingsTokenPlaceholder: 'API-Key',
         settingsTokenNote: 'Optionaler API-Key — erhöht nur das Rate-Limit. Das Skript funktioniert anonym ohne Key und nutzt niemals deine Spiel-Session.',
-        settingsTokenHelpText: 'Kein API-Key gesetzt — das Skript läuft anonym (niedrigeres Rate-Limit). Um einen Key zu erstellen: 1. Gehe im Spiel auf Einstellungen > API-Keys. 2. Erstelle einen Key mit Lese-Rechten. 3. Oben einfügen. (Der Key erhöht nur dein Rate-Limit und nutzt niemals deine Spiel-Session.)',
-        settingsLiveOffersCheckbox: 'Live-Angebote über API abrufen (benötigt API-Token)',
-        settingsLiveOffersHint: 'Ruft aktuelle Angebote über die offizielle API ab, um Gegenstandswerte mit derzeit aktiven Angeboten zu vergleichen.',
+        // UNVERIFIED: steps to create an API key in-game
+        settingsTokenHelpText: 'Kein API-Key gesetzt — das Skript läuft anonym (niedrigeres Rate-Limit). Um einen Key zu erstellen: 1. Gehe im Spiel auf Einstellungen > API-Keys. 2. Erstelle einen Key mit Lese-Rechten. 3. Oben einfügen. (Der Key erhöht nur dein Rate-Limit und nutzt niemals deine Spiel-Session. Anleitung: https://github.com/beertierchen/warera-prost/wiki/Settings.de)',
+        tokenStorageUpgraded: 'Der Speicherort für den API-Key wurde aktualisiert — bitte trage deinen API-Key in den Einstellungen neu ein.',
         hintToggleLabel: 'Erklärung',
         settingsFeatPillCheckbox: 'Pill-Reminder (konfigurierbares Pillen-Timing Overlay)',
         settingsFeatPillHint: 'Zeigt einen Status und Countdown in der Menüleiste, markiert nimmbereite Pillen und prüft HP/Hunger-Werte.',
@@ -851,12 +851,29 @@
     // Plaintext storage makes stored values auditable.
     // TM/GM storage is sandboxed and not accessible by page scripts.
     GM_setValue(KEYS.token, t || '');
+    GM_setValue('wia.tokenFormat', 'plain');
     if (old !== t) {
       GM_setValue(KEYS.gatedProcedures, []);
     }
   }
   function getToken() {
-    return GM_getValue(KEYS.token, '');
+    const token = GM_getValue(KEYS.token, '');
+    const format = GM_getValue('wia.tokenFormat', '');
+    if (token && format !== 'plain') {
+      // One-time upgrade: clear legacy key and set marker
+      GM_setValue(KEYS.token, '');
+      GM_setValue('wia.tokenFormat', 'plain');
+      const msg = t('tokenStorageUpgraded') || 'API key storage was upgraded — please re-enter your API key in Settings.';
+      setHealth('api', 'warn', msg);
+      if (typeof showLocalPersonalPopup === 'function') {
+        showLocalPersonalPopup('api', 'API Key Upgraded', msg, '⚠️');
+      }
+      return '';
+    }
+    if (!token && format !== 'plain') {
+      GM_setValue('wia.tokenFormat', 'plain');
+    }
+    return token;
   }
   // fallback prices helper removed
   function clearCache() {
@@ -1336,6 +1353,12 @@
     const k = getToken();
     return k ? { 'x-api-key': k } : {};
   }
+  function headersForBase(base) {
+    if (typeof base === 'string' && base.includes('api2.warera.io')) {
+      return keyedHeaders();
+    }
+    return publicHeaders();
+  }
 
   function isRateLimited() {
     return now() < GM_getValue(KEYS.rateLimitedUntil, 0);
@@ -1458,7 +1481,7 @@
     for (const base of bases) {
       try {
         await throttle();
-        const res = await gmRequest({ method: 'GET', url: trpcUrl(base, procedure, args), headers: keyedHeaders() });
+        const res = await gmRequest({ method: 'GET', url: trpcUrl(base, procedure, args), headers: headersForBase(base) });
         if (res.status === 429) { tripRateLimit(); throw new Error('429'); }
         if (res.status === 401 || res.status === 403) {
           gateProcedure(procedure);
@@ -1492,7 +1515,7 @@
           method: 'POST',
           url,
           headers: {
-            ...keyedHeaders(),
+            ...headersForBase(base),
             'Content-Type': 'application/json',
             'accept': '*/*'
           },
@@ -4367,7 +4390,7 @@ async function scanInventory(force) {
     warnBanner = bg.querySelector('.wia-warn');
     renderRateLimitBanner();
 
-    // UNVERIFIED: Check settings token help visibility
+    // Check settings token help visibility
     const tokenHelp = bg.querySelector('.wia-token-help');
     const updateHelpVisibility = () => {
       if (tokenHelp) {

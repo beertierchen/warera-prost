@@ -49,7 +49,7 @@ in their own band and no longer cover the game's native stats.
 
 ## Price freshness
 
-Prices are retrieved in the background from completed market transactions on the official API. Open [Settings](Settings) to refresh or configure the API token for live values.
+Prices are retrieved in the background from completed market transactions on the official API. Open [Settings](Settings) to refresh or configure an optional API key to raise rate limits.
 
 > All scores are computed locally from item stats and market floors. PROST only
 > advises — you stay in control.
