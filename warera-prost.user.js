@@ -49,7 +49,6 @@
     // tRPC base. The script probes both until one answers; first success wins
     // and is cached for the session.
     apiBases: ['https://gateway.warerastats.io/trpc', 'https://api2.warera.io/trpc', 'https://api2.warera.io/api/trpc'],
-    authHeaderMode: 'bearer',           // 'bearer' -> "Authorization: Bearer <t>", or 'x-api-token' / 'x-api-key'
     pricesEndpoint: 'itemTrading.getPrices',
     // getPrices returns MATERIALS only; the scrap unit price is the 'scraps' key.
     scrapItemCode: 'scraps',
@@ -845,31 +844,17 @@
   let menuClearId = null;
   let menuDebugId = null;
   let menuPickId = null;
-  const OBF_KEY = 'wareEra.advisor.v1'; // XOR pad-obfuscation only, not encryption
-
-  function xor(str, pad) {
-    let out = '';
-    for (let i = 0; i < str.length; i++) {
-      out += String.fromCharCode(str.charCodeAt(i) ^ pad.charCodeAt(i % pad.length));
-    }
-    return out;
-  }
   function setToken(t) {
     const old = getToken();
-    GM_setValue(KEYS.token, t ? btoa(xor(t, OBF_KEY)) : '');
+    // Plaintext storage makes stored values auditable.
+    // TM/GM storage is sandboxed and not accessible by page scripts.
+    GM_setValue(KEYS.token, t || '');
     if (old !== t) {
       GM_setValue(KEYS.gatedProcedures, []);
     }
   }
   function getToken() {
-    const raw = GM_getValue(KEYS.token, '');
-    if (!raw) return '';
-    try {
-      return xor(atob(raw), OBF_KEY);
-    } catch (e) {
-      setHealth('api', 'warn', 'token unreadable');
-      return '';
-    }
+    return GM_getValue(KEYS.token, '');
   }
   // fallback prices helper removed
   function clearCache() {
@@ -1344,15 +1329,10 @@
     });
   }
 
-  function authHeaders() {
-    const t = getToken();
-    if (!t) return {};
-    switch (CONFIG.authHeaderMode) {
-      case 'x-api-token': return { 'x-api-token': t };
-      case 'x-api-key':   return { 'x-api-key': t };
-      case 'bearer':
-      default:            return { Authorization: 'Bearer ' + t };
-    }
+  function publicHeaders() { return {}; }                 // anonymous public calls
+  function keyedHeaders() {                               // key only upgrades rate limit
+    const k = getToken();
+    return k ? { 'x-api-key': k } : {};
   }
 
   function isRateLimited() {
@@ -1476,7 +1456,7 @@
     for (const base of bases) {
       try {
         await throttle();
-        const res = await gmRequest({ method: 'GET', url: trpcUrl(base, procedure, args), headers: authHeaders() });
+        const res = await gmRequest({ method: 'GET', url: trpcUrl(base, procedure, args), headers: keyedHeaders() });
         if (res.status === 429) { tripRateLimit(); throw new Error('429'); }
         if (res.status === 401 || res.status === 403) {
           gateProcedure(procedure);
@@ -1510,7 +1490,7 @@
           method: 'POST',
           url,
           headers: {
-            ...authHeaders(),
+            ...keyedHeaders(),
             'Content-Type': 'application/json',
             'accept': '*/*'
           },
