@@ -1,7 +1,7 @@
 {
   "name": "warera-prost",
   "version": "0.6.8",
-  "description": "PROST — Personal Recommendation Overlay & Support Tool. A suite of client-side userscripts for WareEra: inventory advice, market scrap-flip indicators, notes, and more overlay helpers. No automation.",
+  "description": "PROST — Personal Recommendation Overlay & Support Tool. A suite of client-side userscripts for WareEra: session-less design, optional API key, local notes, and overlay helpers. No automation.",
   "author": "beertierchen",
   "license": "MIT",
   "homepage": "https://github.com/beertierchen/warera-prost#readme",
@@ -23,5 +23,8 @@
   "scripts": {
     "test": "node tests/test-advisor-load.js"
   },
-  "private": false
+  "private": false,
+  "devDependencies": {
+    "@wareraprojects/api": "^0.3.3"
+  }
 }

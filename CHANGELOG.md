@@ -1,5 +1,23 @@
 # CHANGELOG
 
+## 2026-07-17 | API-Härtung: session-lose Requests, nur x-api-key (v0.9.0)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `package.json`, `README.md`, `CHANGELOG.md`, `tests/test-advisor-load.js`, `docs/wiki/Settings.md`, `docs/wiki/Settings.de.md`
+
+**Änderungen (Deutsch):**
+- **Session-lose Anfragen**: Die Anfragen an die offizielle API (`api2.warera.io`) und das Gateway erfolgen nun ausschließlich session-los. Zur Absicherung wurde eine strikte Header-Allowlist etabliert, die die Übertragung von Cookie- oder Authorization-Headern systemseitig ausschließt.
+- **Optionaler API-Key**: Für das Abrufen von API-Daten wird nun optional ein offizieller API-Key unterstützt. Dieser dient ausschließlich der Erhöhung des Abfrage-Rate-Limits.
+- **Klartext-Speicherung**: Der API-Key wird zur einfachen Nachvollziehbarkeit im lokalen Speicher im Klartext abgelegt.
+- **API-Key Hilfestellung**: In den Einstellungen wird ein Hilfebereich eingeblendet, wenn kein Key hinterlegt ist, um die Einrichtung eines optionalen Keys zu erklären.
+- **Sicherheits-Compliance-Tests**: Die Testsuite wurde um automatisierte Prüfungen erweitert, die die Einhaltung des session-losen Designs statisch und zur Laufzeit sicherstellen.
+
+**Changes (English):**
+- **Session-less Requests**: Network requests to the official API (`api2.warera.io`) and gateway are now strictly session-less. A strict header allowlist has been introduced to programmatically prevent sending cookie or authorization headers.
+- **Optional API Key**: An official API key is now supported to raise API request rate limits.
+- **Plaintext Storage**: The optional API key is stored locally in plain text to allow easy auditability.
+- **Onboarding Help**: An inline help section is displayed in Settings when the API key field is blank, explaining how to set up an optional key.
+- **Compliance Tests**: Automated tests have been added to verify compliance with the session-less design statically and at runtime.
+
 ## 2026-07-16 | Deaktivierung des Item Advisors im Markt & Entfernung von DOM-Scraping (v0.8.18)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/test-advisor-load.js`

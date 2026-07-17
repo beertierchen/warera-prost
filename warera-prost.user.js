@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.8.18
+// @version      0.9.0
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -64,7 +64,7 @@
     txCacheTtlMs: 60 * 60 * 1000,       // 1 hour for transaction history
     priceSampleIntervalMs: 15 * 60 * 1000, // sample every 15 mins
     priceSeriesWindowMs: 3 * 24 * 60 * 60 * 1000, // 3 days history
-    minRequestIntervalMs: 3000,         // throttle: no two network calls closer than this
+    minRequestIntervalMs: 3000,         // throttle: no two network calls closer than this (official limits: 100 rpm anonymous / 200 rpm keyed)
     rescanDebounceMs: 150,
     rateLimitBackoffMs: 60 * 1000,      // after a 429, suppress requests this long
     // ntfy.sh has its own (stricter) per-IP budget and BANS IPs that keep
@@ -9722,7 +9722,7 @@ function checkInventoryDeltaWear() {
     return id;
   }
 
-  const SCRIPT_VERSION = (typeof GM_info !== 'undefined' && GM_info && GM_info.script && GM_info.script.version) || '0.8.10';
+  const SCRIPT_VERSION = (typeof GM_info !== 'undefined' && GM_info && GM_info.script && GM_info.script.version) || '0.9.0';
 
   function cleanHeaderValue(str) {
     if (!str) return '';

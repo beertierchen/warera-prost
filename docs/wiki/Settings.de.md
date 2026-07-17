@@ -39,20 +39,17 @@ Ein eigener Einstellungsbereich konfiguriert das persönliche Empfänger-Topic:
 * **Abonnement-Link** — Ein direkter Link zu deinem Topic auf `ntfy.sh` für die unkomplizierte Einrichtung.
 
 
-## API-Token
+## API-Key
 
 <a id="api-token"></a>
 
-Optionaler Token für `api2.warera.io`, um frische Equipment- und Schrottpreise zu laden.
-
-> **Sicherheit:** Der Token ist **deine** persönliche Zugangsberechtigung. Er wird
-> lokal via `GM_setValue` gespeichert und nur **leicht verschleiert (XOR)** - das ist
-> *keine* Verschlüsselung und schützt nur gegen flüchtiges Mitlesen im GM-Storage-Viewer,
-> nicht gegen lokale Schadsoftware oder andere Scripts mit GM-Zugriff. Behandle den
-> Rechner als vertrauenswürdig. Bei Verdacht auf Kompromittierung den Token in WareEra
-> widerrufen/erneuern.
-
-> PROST funktioniert auch ohne Token - du bekommst dann gecachte statt Live-Preise.
+- Das Skript läuft **session-los** — es liest oder überträgt niemals deine Spiel-Session-Cookies/JWT.
+- Ein offizieller **API-Key** ist optional. Er dient nur dazu, das API-Rate-Limit zu erhöhen (100 -> 200 rpm).
+- Der API-Key wird lokal im GM-Speicher im Klartext gespeichert, um Audits zu ermöglichen.
+- So erstellst du einen Key:
+  1. Gehe im Spiel auf Einstellungen > API-Keys.
+  2. Erstelle einen Key mit Lese-Rechten.
+  3. Füge ihn in den PROST-Einstellungen ein.
 
 ## Sprache
 
