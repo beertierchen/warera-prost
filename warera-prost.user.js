@@ -1313,13 +1313,29 @@
   // ───────────────────────────────────────────────────────────────────────────
   let inFlightPrices = null; // promise dedup
 
+  // COMPLIANCE INVARIANT (enforced by tests/test-advisor-load.js compliance suite):
+  // Every request is anonymous (no game session cookies) and its headers are built
+  // from a fixed allowlist. Cookie / Authorization / bearer tokens can NEVER be sent,
+  // regardless of what a caller passes. The user's optional API key travels ONLY as
+  // x-api-key. Cross-engine note: Tampermonkey honors `anonymous`; some Violentmonkey
+  // builds do not — the allowlist below, not the flag, is the real guarantee.
+  const GM_HEADER_ALLOWLIST = ['content-type', 'accept', 'x-api-key', 'title', 'priority', 'tags', 'click'];
+
   function gmRequest({ method, url, headers, data }) {
+    const safe = {};
+    for (const [k, v] of Object.entries(headers || {})) {
+      if (v == null) continue;
+      if (GM_HEADER_ALLOWLIST.includes(String(k).toLowerCase())) {
+        safe[k] = v;
+      }
+    }
     return new Promise((resolve, reject) => {
       GM_xmlhttpRequest({
         method: method || 'GET',
         url,
-        headers: headers || {},
+        headers: safe,
         data,
+        anonymous: true,            // strip ambient game-session cookies
         timeout: 15000,
         onload: (res) => resolve({ status: res.status, text: res.responseText, responseHeaders: res.responseHeaders || '' }),
         onerror: () => reject(new Error('network error: ' + url)),
