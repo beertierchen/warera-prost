@@ -2438,6 +2438,101 @@ try {
       testContainer.remove();
       console.log('findMuHealButton tests passed successfully.');
 
+      console.log('--- Testing Security Compliance (Phase 4) ---');
+      
+      // 1. Static source assertions
+      function stripComments(s) {
+        return s.replace(/\/\*[\s\S]*?\*\/|([^:]|^)\/\/.*$/gm, '$1');
+      }
+      const cleanCode = stripComments(code);
+
+      // (a) Contains anonymous: true
+      assert.ok(cleanCode.includes('anonymous: true'), 'Source must configure GM_xmlhttpRequest with anonymous: true');
+
+      // (b) No match for Bearer (except in comments, which are stripped)
+      assert.strictEqual(/\bBearer\b/i.test(cleanCode), false, 'Source must not contain the Bearer auth keyword');
+
+      // (c) No match for Authorization header key
+      assert.strictEqual(/[Aa]uthorization\s*:/i.test(cleanCode), false, 'Source must not construct or send Authorization headers');
+
+      // (d) No authHeaderMode, OBF_KEY, or xor function
+      assert.strictEqual(cleanCode.includes('authHeaderMode'), false, 'Source must not reference authHeaderMode');
+      assert.strictEqual(cleanCode.includes('OBF_KEY'), false, 'Source must not define or use OBF_KEY');
+      assert.strictEqual(cleanCode.includes('function xor'), false, 'Source must not define or use an xor obfuscator');
+
+      // (e) No document.cookie, and sessionStorage is absent
+      assert.strictEqual(cleanCode.includes('document.cookie'), false, 'Source must not read or write document.cookie');
+      assert.strictEqual(cleanCode.includes('sessionStorage'), false, 'Source must not reference sessionStorage');
+
+      // (f) localStorage is only accessed via POPUP_TRIGGER_KEY
+      // Let's verify that every occurrence of localStorage matches POPUP_TRIGGER_KEY access.
+      const localStorageOccurrences = (cleanCode.match(/localStorage/g) || []).length;
+      const triggerKeyOccurrences = (cleanCode.match(/POPUP_TRIGGER_KEY/g) || []).length;
+      // We expect localStorage to only appear when triggerKey is nearby or in specific methods.
+      // A simple check is that the number of localStorage uses is strictly <= number of POPUP_TRIGGER_KEY uses.
+      assert.ok(localStorageOccurrences <= triggerKeyOccurrences, 'localStorage should only be accessed via POPUP_TRIGGER_KEY');
+
+      // (g) @connect set == exactly {api2.warera.io, gateway.warerastats.io, ntfy.sh}
+      const headerConnects = [];
+      const lines = code.split('\n');
+      for (const line of lines) {
+        if (line.includes('==/UserScript==')) break;
+        const m = line.match(/\/\/\s*@connect\s+(\S+)/);
+        if (m) {
+          headerConnects.push(m[1]);
+        }
+      }
+      assert.deepStrictEqual(headerConnects.sort(), ['api2.warera.io', 'gateway.warerastats.io', 'ntfy.sh'].sort(), '@connect metadata must specify exactly api2.warera.io, gateway.warerastats.io, and ntfy.sh');
+      console.log('Static compliance assertions passed.');
+
+      // 2. Runtime tripwire
+      const oldXmlhttp = global.GM_xmlhttpRequest;
+      let requestInterceptedCount = 0;
+      global.GM_xmlhttpRequest = (opts) => {
+        requestInterceptedCount++;
+        assert.strictEqual(opts.anonymous, true, 'GM_xmlhttpRequest must be invoked with anonymous: true');
+        if (opts.headers) {
+          for (const k of Object.keys(opts.headers)) {
+            const lower = k.toLowerCase();
+            assert.notStrictEqual(lower, 'cookie', 'Outgoing headers must not contain Cookie');
+            assert.notStrictEqual(lower, 'authorization', 'Outgoing headers must not contain Authorization');
+            assert.notStrictEqual(lower, 'x-api-token', 'Outgoing headers must not contain x-api-token');
+          }
+        }
+        if (opts.onload) {
+          opts.onload({ status: 200, responseText: '{"result":{"data":{"json":{}}}}', responseHeaders: '' });
+        }
+      };
+
+      // Reset gated procedures and rate limit state
+      globalThis.GM_setValue('wia.gatedProcedures', []);
+      globalThis.GM_setValue('wia.rateLimitedUntil', 0);
+
+      // (a) Anonymous fetch
+      globalThis.setToken('');
+      await globalThis.WIA_resolve('itemTrading.getPrices', {});
+      assert.strictEqual(requestInterceptedCount, 1, 'One request should be intercepted');
+
+      // (b) Keyed fetch
+      globalThis.setToken('test-compliance-api-key');
+      await globalThis.WIA_resolve('itemTrading.getPrices', {});
+      assert.strictEqual(requestInterceptedCount, 2, 'Two requests should be intercepted');
+
+      global.GM_xmlhttpRequest = oldXmlhttp;
+      console.log('Runtime compliance tripwire passed.');
+
+      // 3. Unit tests for setToken and getToken (plaintext check)
+      globalThis.setToken('test-token-123');
+      assert.strictEqual(globalThis.getToken(), 'test-token-123', 'getToken must retrieve the saved token');
+      const valInStorage = global.GM_getValue('wia.token');
+      assert.strictEqual(valInStorage, 'test-token-123', 'Token storage must be raw plaintext (no XOR or base64)');
+      
+      globalThis.setToken('');
+      assert.strictEqual(globalThis.getToken(), '', 'getToken must be empty after setToken("")');
+      
+      console.log('Token storage unit tests passed.');
+      console.log('Compliance tests passed successfully.');
+
       console.log('Success! The script loaded and initialized without throwing any runtime errors.');
       process.exit(0);
     } catch (err) {

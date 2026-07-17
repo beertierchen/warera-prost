@@ -2067,6 +2067,8 @@
     globalThis.isMarketDetailPage = isMarketDetailPage;
     globalThis.CONFIG = CONFIG;
     // Export internal functions for unit tests
+    globalThis.setToken = setToken;
+    globalThis.getToken = getToken;
     globalThis.parseStats = parseStats;
     globalThis.getItemState = getItemState;
     globalThis.isInsideProfileEquipment = isInsideProfileEquipment;
