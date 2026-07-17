@@ -318,6 +318,7 @@
         // UNVERIFIED: steps to create an API key in-game
         settingsTokenHelpText: 'No API key set — the script runs anonymously (lower rate limit). To get a key: 1. Go to Settings > API Keys in the game. 2. Create a read-only key. 3. Paste it above. (The key only raises your rate limit and never touches your game session. Detail guide: https://github.com/beertierchen/warera-prost/wiki/Settings)',
         tokenStorageUpgraded: 'API key storage was upgraded — please re-enter your API key in Settings.',
+        tokenStorageUpgradedTitle: 'API key upgraded',
         hintToggleLabel: 'Explanation',
         settingsFeatPillCheckbox: 'Pill Reminder (configurable pill-timing overlay) 💊',
         settingsFeatPillHint: 'Shows a top-bar status and countdown timer for the pill cycle, highlights ready pills, and checks health/hunger levels.',
@@ -541,6 +542,7 @@
         // UNVERIFIED: steps to create an API key in-game
         settingsTokenHelpText: 'Kein API-Key gesetzt — das Skript läuft anonym (niedrigeres Rate-Limit). Um einen Key zu erstellen: 1. Gehe im Spiel auf Einstellungen > API-Keys. 2. Erstelle einen Key mit Lese-Rechten. 3. Oben einfügen. (Der Key erhöht nur dein Rate-Limit und nutzt niemals deine Spiel-Session. Anleitung: https://github.com/beertierchen/warera-prost/wiki/Settings.de)',
         tokenStorageUpgraded: 'Der Speicherort für den API-Key wurde aktualisiert — bitte trage deinen API-Key in den Einstellungen neu ein.',
+        tokenStorageUpgradedTitle: 'API-Key aktualisiert',
         hintToggleLabel: 'Erklärung',
         settingsFeatPillCheckbox: 'Pill-Reminder (konfigurierbares Pillen-Timing Overlay)',
         settingsFeatPillHint: 'Zeigt einen Status und Countdown in der Menüleiste, markiert nimmbereite Pillen und prüft HP/Hunger-Werte.',
@@ -713,6 +715,7 @@
   const NS = 'wia.';
   const KEYS = {
     token: NS + 'token',
+    tokenFormat: NS + 'tokenFormat',
     locale: NS + 'locale',
     priceCache: NS + 'priceCache',     // { data, fetchedAt }-materials map
     scrapCache: NS + 'scrapCache',     // { price, fetchedAt }-legacy, unused
@@ -841,27 +844,27 @@
     // Plaintext storage makes stored values auditable.
     // TM/GM storage is sandboxed and not accessible by page scripts.
     GM_setValue(KEYS.token, t || '');
-    GM_setValue('wia.tokenFormat', 'plain');
+    GM_setValue(KEYS.tokenFormat, 'plain');
     if (old !== t) {
       GM_setValue(KEYS.gatedProcedures, []);
     }
   }
   function getToken() {
     const token = GM_getValue(KEYS.token, '');
-    const format = GM_getValue('wia.tokenFormat', '');
+    const format = GM_getValue(KEYS.tokenFormat, '');
     if (token && format !== 'plain') {
       // One-time upgrade: clear legacy key and set marker
       GM_setValue(KEYS.token, '');
-      GM_setValue('wia.tokenFormat', 'plain');
+      GM_setValue(KEYS.tokenFormat, 'plain');
       const msg = t('tokenStorageUpgraded') || 'API key storage was upgraded — please re-enter your API key in Settings.';
       setHealth('api', 'warn', msg);
       if (typeof showLocalPersonalPopup === 'function') {
-        showLocalPersonalPopup('api', 'API Key Upgraded', msg, '⚠️');
+        showLocalPersonalPopup('api', t('tokenStorageUpgradedTitle') || 'API Key Upgraded', msg, '⚠️');
       }
       return '';
     }
     if (!token && format !== 'plain') {
-      GM_setValue('wia.tokenFormat', 'plain');
+      GM_setValue(KEYS.tokenFormat, 'plain');
     }
     return token;
   }
@@ -1344,10 +1347,9 @@
     return k ? { 'x-api-key': k } : {};
   }
   function headersForBase(base) {
-    if (typeof base === 'string' && base.includes('api2.warera.io')) {
-      return keyedHeaders();
-    }
-    return publicHeaders();
+    let h = '';
+    try { h = new URL(base).hostname; } catch (e) {}
+    return h === 'api2.warera.io' ? keyedHeaders() : publicHeaders();
   }
 
   function isRateLimited() {
@@ -2079,6 +2081,7 @@
     globalThis.isMarketGridPage = isMarketGridPage;
     globalThis.isMarketDetailPage = isMarketDetailPage;
     globalThis.CONFIG = CONFIG;
+    globalThis.KEYS = KEYS;
     // Export internal functions for unit tests
     globalThis.setToken = setToken;
     globalThis.getToken = getToken;
