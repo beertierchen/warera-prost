@@ -12,6 +12,7 @@ A suite of client-side [userscripts](https://en.wikipedia.org/wiki/Userscript) f
 ![No automation](https://img.shields.io/badge/automation-none-green.svg)
 [![Install from Greasy Fork](https://img.shields.io/badge/Greasy%20Fork-Install-red?logo=tampermonkey)](https://greasyfork.org/de/scripts/583766-prost)
 [![Wiki](https://img.shields.io/badge/docs-Wiki-blue?logo=github)](https://github.com/beertierchen/warera-prost/wiki)
+[![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-biertierchen-FFDD00?logo=buymeacoffee&logoColor=black)](https://www.buymeacoffee.com/biertierchen)
 
 📖 **Full docs with screenshots:** [Wiki](https://github.com/beertierchen/warera-prost/wiki) · [Deutsch](https://github.com/beertierchen/warera-prost/wiki/Home.de)
 

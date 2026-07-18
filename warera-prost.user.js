@@ -1,11 +1,13 @@
 // ==UserScript==
-// @name         PROST
+// @name         TEST PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.9.2
+// @version      0.9.2-unstable
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
 // @supportURL   https://github.com/beertierchen/warera-prost/issues
+// @updateURL    https://update.greasyfork.org/scripts/583766/PROST.meta.js
+// @downloadURL  https://update.greasyfork.org/scripts/583766/PROST.user.js
 // @match        https://app.warera.io/*
 // @run-at       document-idle
 // @grant        GM_addStyle
@@ -17,6 +19,7 @@
 // @connect      api2.warera.io
 // @connect      gateway.warerastats.io
 // @connect      ntfy.sh
+// @connect      greasyfork.org
 // @license MIT
 // ==/UserScript==
 
@@ -67,6 +70,7 @@
     scrapItemCode: 'scraps',
     featNotes: false,                    // experimental: user notes on /user/ links (off by default)
     featBattleAdvisor: false,            // experimental: highlight ally button on /battle/<id> pages
+    featAdminAlerts: true,               // receive signed admin alerts
     alliedCountryCodes: ['de','pt','es','gm','ir','na','sr','th','at','fi','ie','no','se','uk','va','bf','cd','ye','ne','au','br','id'],
     featMarketGraph: false,
     featPnlTracker: false,
@@ -359,6 +363,7 @@
         settingsPersonalTopic: 'Personal Topic',
         settingsPersonalTopicSecret: 'Personal Secret (optional)',
         settingsPersonalTopicLinkText: 'Subscribe / Open',
+        settingsFeatAdminAlerts: 'Receive critical plugin update & safety alerts (read-only admin channel)',
         settingsBellTitle: 'Toggle push notifications',
         settingsBountyScope: 'Notification scope',
         bountyScopeAll: 'All battles (no filter)',
@@ -460,6 +465,9 @@
         settingsPriceFormat: 'Price format: [Scrap Value]/[Market Price]',
         menuSettings: 'Inventory Advisor-Settings',
         menuClearRescan: 'Clear Cache + Rescan',
+        menuCheckUpdates: 'Check for updates',
+        updateAvailableTitle: '⚠ Update available (v{ver})',
+        updateAvailableBody: 'A newer PROST version (v{ver}) is available. Update now — outdated versions may contain code that violates game rules.',
         gearTooltipTitle: 'Inventory Advisor-Settings',
         gearTooltipScrapPrice: 'Scrap price: {price}/u ({age})',
         gearTooltipItemPrices: 'Item prices: {count} cached ({age})',
@@ -585,6 +593,7 @@
         settingsPersonalTopic: 'Persönliches Topic',
         settingsPersonalTopicSecret: 'Persönliches Secret (optional)',
         settingsPersonalTopicLinkText: 'Abonnieren / Öffnen',
+        settingsFeatAdminAlerts: 'Kritische Plugin-Update- & Sicherheitswarnungen empfangen (schreibgeschützter Admin-Kanal)',
         settingsBellTitle: 'Push-Benachrichtigungen an-/ausschalten',
         settingsBountyScope: 'Benachrichtigungs-Umfang',
         bountyScopeAll: 'Alle Schlachten (kein Filter)',
@@ -686,6 +695,9 @@
         settingsPriceFormat: 'Preisformat: [Schrottwert]/[Marktpreis]',
         menuSettings: 'Inventory Advisor-Einstellungen',
         menuClearRescan: 'Cache leeren + neu scannen',
+        menuCheckUpdates: 'Nach Updates suchen',
+        updateAvailableTitle: '⚠ Update verfügbar (v{ver})',
+        updateAvailableBody: 'Eine neuere PROST-Version (v{ver}) is verfügbar. Aktualisiere jetzt — veraltete Versionen können Code enthalten, der gegen Spielregeln verstößt.',
         gearTooltipTitle: 'Inventory Advisor-Einstellungen',
         gearTooltipScrapPrice: 'Schrottpreis: {price}/Einh. ({age})',
         gearTooltipItemPrices: 'Item-Preise: {count} im Cache ({age})',
@@ -802,6 +814,12 @@
     bountyIdentityCache: NS + 'bountyIdentityCache',
     bountyMuteDebuff: NS + 'bountyMuteDebuff',
     featMuHealDim: NS + 'featMuHealDim',
+    lastVersionCheckAt: NS + 'lastVersionCheckAt',
+    latestKnownVersion: NS + 'latestKnownVersion',
+    featAdminAlerts: NS + 'featAdminAlerts',
+    adminLastPollAt: NS + 'adminLastPollAt',
+    adminPollLock: NS + 'adminPollLock',
+    adminSeenSeq: NS + 'adminSeenSeq',
   };
 
   const gatewayBases = CONFIG.apiBases.filter((b) => {
@@ -863,6 +881,7 @@
 
   let menuSettingsId = null;
   let menuClearId = null;
+  let menuUpdateId = null;
   let menuDebugId = null;
   let menuPickId = null;
   function setToken(t) {
@@ -945,12 +964,14 @@
       if (menuClearId != null) GM_unregisterMenuCommand(menuClearId);
       if (menuDebugId != null) GM_unregisterMenuCommand(menuDebugId);
       if (menuPickId != null) GM_unregisterMenuCommand(menuPickId);
+      if (menuUpdateId != null) GM_unregisterMenuCommand(menuUpdateId);
     }
     menuSettingsId = GM_registerMenuCommand(t('menuSettings'), openSettings);
     menuClearId = GM_registerMenuCommand(t('menuClearRescan'), () => {
       clearCache();
       if (isInventoryPage()) scanInventory(true);
     });
+    menuUpdateId = GM_registerMenuCommand(t('menuCheckUpdates'), () => checkForUpdates(true));
     menuDebugId = GM_registerMenuCommand(
       CONFIG.debug ? '🐞 Debug: AN (klick = aus)' : '🐞 Debug: AUS (klick = an)',
       () => setDebug(!CONFIG.debug)
@@ -968,6 +989,60 @@
   // ───────────────────────────────────────────────────────────────────────────
   // Utils
   // ───────────────────────────────────────────────────────────────────────────
+  function isNewer(remote, local) {
+    if (!remote || !local) return false;
+    const cleanRemote = String(remote).split('-')[0];
+    const cleanLocal = String(local).split('-')[0];
+    const rParts = cleanRemote.split('.').map((x) => parseInt(x, 10) || 0);
+    const lParts = cleanLocal.split('.').map((x) => parseInt(x, 10) || 0);
+    const len = Math.max(rParts.length, lParts.length);
+    for (let i = 0; i < len; i++) {
+      const r = rParts[i] || 0;
+      const l = lParts[i] || 0;
+      if (r > l) return true;
+      if (r < l) return false;
+    }
+    return false;
+  }
+
+  function checkForUpdates(manual = false) {
+    const nowMs = Date.now();
+    const lastCheck = GM_getValue(KEYS.lastVersionCheckAt, 0);
+    if (!manual && nowMs - lastCheck < 24 * 60 * 60 * 1000) {
+      return Promise.resolve();
+    }
+    return gmRequest({
+      method: 'GET',
+      url: 'https://api.greasyfork.org/en/scripts/583766.json'
+    }).then((res) => {
+      if (res.status !== 200) {
+        throw new Error('HTTP ' + res.status);
+      }
+      const data = JSON.parse(res.text);
+      if (data && typeof data.version === 'string') {
+        GM_setValue(KEYS.lastVersionCheckAt, nowMs);
+        GM_setValue(KEYS.latestKnownVersion, data.version);
+        const current = SCRIPT_VERSION;
+        const newer = isNewer(data.version, current);
+        if (manual) {
+          if (newer) {
+            alert(`A newer version of PROST (v${data.version}) is available!\n\nCurrent version: v${current}\n\nPlease update from GreasyFork.`);
+          } else {
+            alert(`PROST is up to date (v${current}).`);
+          }
+        }
+        if (newer && settingsModalBg && document.body.contains(settingsModalBg)) {
+          renderSettingsModal(settingsModalBg);
+        }
+      }
+    }).catch((err) => {
+      console.warn('[PROST:update] check failed:', err.message);
+      if (manual) {
+        alert('Check for updates failed: ' + err.message);
+      }
+    });
+  }
+
   // ───────────────────────────────────────────────────────────────────────────
   // DEBUG / HEALTH layer (see DEBUG_PLAN.md)
   // Toggle via GM menu, URL hash #wia-debug, or WIA.debug(true). All gated on
@@ -4142,7 +4217,16 @@ async function scanInventory(force) {
       warnBanner.style.display = 'block';
       warnBanner.textContent = t('rateLimitBanner', { sec: sec });
     } else {
-      warnBanner.style.display = 'none';
+      const remote = GM_getValue(KEYS.latestKnownVersion, '');
+      const current = SCRIPT_VERSION;
+      if (remote && isNewer(remote, current)) {
+        const cleanRemote = String(remote).replace(/[^\w.-]/g, '');
+        warnBanner.style.display = 'block';
+        warnBanner.innerHTML = `<strong>${t('updateAvailableTitle', { ver: cleanRemote })}</strong><br/><span style="font-size: 11px;">${t('updateAvailableBody', { ver: cleanRemote })} <a href="https://greasyfork.org/de/scripts/583766-prost" target="_blank" style="color: #58a6ff; text-decoration: underline; font-weight: bold;">GreasyFork</a></span>`;
+      } else {
+        warnBanner.style.display = 'none';
+        warnBanner.innerHTML = '';
+      }
     }
   }
 
@@ -4172,6 +4256,7 @@ async function scanInventory(force) {
     const prevBountyOwn = !hasKey ? '' : (bg.querySelector('.wia-bounty-own')?.value ?? CONFIG.bountyOwnCountryOverride);
     const prevBountyScope = !hasKey ? 'all' : (bg.querySelector('.wia-bounty-scope')?.value ?? CONFIG.bountyScope);
     const prevBountyMuteDebuff = bg.querySelector('.wia-bounty-mute-debuff')?.checked ?? CONFIG.bountyMuteDebuff;
+    const prevFeatAdminAlerts = bg.querySelector('.wia-feat-admin-alerts')?.checked ?? CONFIG.featAdminAlerts;
 
     const prevPersonalTopic = bg.querySelector('.wia-personal-topic')?.value ?? CONFIG.personalTopic;
     const prevPersonalSecret = bg.querySelector('.wia-personal-secret')?.value ?? CONFIG.personalTopicSecret;
@@ -4355,6 +4440,10 @@ async function scanInventory(force) {
             <a class="wia-personal-topic-link" href="${personalTopicUrl}" target="_blank" style="font-size: 10px; color: #58a6ff; text-decoration: none; font-weight: bold; display: inline-block;">
               🔗 ${t('settingsPersonalTopicLinkText')}: ${personalTopicUrl}
             </a>
+          </div>
+          <div style="margin-top: 6px; display: flex; align-items: center; gap: 8px; border-top: 1px dashed rgba(148,163,184,0.15); padding-top: 6px;">
+            <input type="checkbox" class="wia-feat-admin-alerts" style="width: auto;" ${prevFeatAdminAlerts ? 'checked' : ''} />
+            <label style="font-size: 11px; color: #8b949e; margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatAdminAlerts')}</label>
           </div>
         </details>
         <button type="button" class="wia-help-toggle" aria-expanded="false">${t('settingsHelpSummary')}</button>
@@ -4711,6 +4800,7 @@ async function scanInventory(force) {
       const bountyMuteDebuff = bg.querySelector('.wia-bounty-mute-debuff').checked;
       const personalTopic = bg.querySelector('.wia-personal-topic').value.trim();
       const personalSecret = bg.querySelector('.wia-personal-secret').value.trim();
+      const featAdminAlerts = bg.querySelector('.wia-feat-admin-alerts').checked;
 
       GM_setValue(KEYS.featBountyNotify, featBounty);
       GM_setValue(KEYS.featBountyNotif, featBountyNotif);
@@ -4719,6 +4809,7 @@ async function scanInventory(force) {
       GM_setValue(KEYS.bountyMuteDebuff, bountyMuteDebuff);
       GM_setValue(KEYS.personalTopic, personalTopic);
       GM_setValue(KEYS.personalTopicSecret, personalSecret);
+      GM_setValue(KEYS.featAdminAlerts, featAdminAlerts);
 
       CONFIG.featBountyNotify = featBounty;
       CONFIG.featBountyNotif = featBountyNotif;
@@ -4727,9 +4818,11 @@ async function scanInventory(force) {
       CONFIG.bountyMuteDebuff = bountyMuteDebuff;
       CONFIG.personalTopic = personalTopic;
       CONFIG.personalTopicSecret = personalSecret;
+      CONFIG.featAdminAlerts = featAdminAlerts;
 
       bountyResetAllyCache();
       if (featBounty) { guard('bountyNotify', initBountyNotify); } else { teardownBountyNotify(); }
+      if (featAdminAlerts) { initAdminAlerts(); } else { teardownAdminAlerts(); }
 
       if (tokenChanged) {
         clearCache();
@@ -5578,7 +5671,7 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
     return s ? `${t}-${s}` : t;
   }
 
-  function showLocalPersonalPopup(type, title, body, icon = '🔔') {
+  function showLocalPersonalPopup(type, title, body, icon = '🔔', sticky = false) {
     try {
       ensureBountyPopupStyle();
       const doc = document;
@@ -5598,6 +5691,7 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
       if (type === 'HnH') borderLeftColor = '#10b981';
       else if (type === 'Window') borderLeftColor = '#fbbf24';
       else if (type === 'Debuff') borderLeftColor = '#8b5cf6';
+      else if (type === 'admin') borderLeftColor = '#ef4444';
 
       toast.className = compact ? 'wia-bounty-toast compact' : 'wia-bounty-toast';
       toast.style.borderLeftColor = borderLeftColor;
@@ -5631,7 +5725,9 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
       toast.onclick = () => { dismiss(); };
 
       box.appendChild(toast);
-      setTimeout(dismiss, BOUNTY_POPUP_MS);
+      if (!sticky) {
+        setTimeout(dismiss, BOUNTY_POPUP_MS);
+      }
       dbg('pillReminder', 'debug', 'local personal popup shown', type);
     } catch (e) {
       dbg('pillReminder', 'error', 'local personal popup failed', e.message);
@@ -10833,6 +10929,133 @@ function checkInventoryDeltaWear() {
     setHealth('bountyNotify', 'idle', 'disabled in settings');
   }
 
+  // ───────────────────────────────────────────────────────────────────────────
+  // Admin Safety Channel (Phase 8)
+  // ───────────────────────────────────────────────────────────────────────────
+  const ADMIN_PUBKEYS = [
+    { kid: 'beertierchen', raw: Uint8Array.from([130, 239, 19, 17, 133, 184, 47, 43, 163, 116, 51, 240, 240, 97, 231, 240, 172, 141, 119, 233, 233, 75, 7, 110, 65, 42, 222, 213, 13, 98, 254, 126]) }
+  ];
+
+  function base64ToBytes(str) {
+    const binary = atob(str);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+  }
+
+  async function verifyAdminMsg(env) {
+    if (!env || typeof env.payload !== 'string' || !env.sig) return false;
+    if (typeof env.ts !== 'number' || Date.now() - env.ts > 48 * 3600 * 1000) return false;
+    const seen = GM_getValue(KEYS.adminSeenSeq, 0);
+    if (typeof env.seq !== 'number' || env.seq <= seen) return false;
+    if (typeof crypto === 'undefined' || !crypto.subtle) return false;
+    try {
+      const data = new TextEncoder().encode(`${env.payload}|${env.ts}|${env.seq}`);
+      const sigBytes = base64ToBytes(env.sig);
+      const candidates = env.kid ? ADMIN_PUBKEYS.filter(k => k.kid === env.kid).concat(ADMIN_PUBKEYS) : ADMIN_PUBKEYS;
+      for (const k of candidates) {
+        try {
+          const key = await crypto.subtle.importKey(
+            'raw',
+            k.raw,
+            { name: 'Ed25519' },
+            false,
+            ['verify']
+          );
+          const valid = await crypto.subtle.verify('Ed25519', key, sigBytes, data);
+          if (valid) {
+            GM_setValue(KEYS.adminSeenSeq, env.seq);
+            return true;
+          }
+        } catch (e) {}
+      }
+    } catch (e) {}
+    return false;
+  }
+
+  let activeAdminLockVal = null;
+  const ADMIN_ALERT_POLL_MS = 60000;
+  const ADMIN_ALERT_LOCK_TTL_MS = 1500;
+
+  async function acquireAdminPollSlot() {
+    const nowMs = now();
+    const isBackground = typeof document !== 'undefined' && document.hidden === true;
+    const pollInterval = isBackground ? 10 * 60 * 1000 : ADMIN_ALERT_POLL_MS;
+    if (nowMs - GM_getValue(KEYS.adminLastPollAt, 0) < pollInterval) return false;
+    const lock = GM_getValue(KEYS.adminPollLock, 0);
+    if (lock && (nowMs - lock < ADMIN_ALERT_LOCK_TTL_MS)) return false;
+
+    const myLockVal = nowMs + Math.random();
+    GM_setValue(KEYS.adminPollLock, myLockVal);
+    await new Promise((r) => setTimeout(r, 30 + Math.floor(Math.random() * 50)));
+    if (GM_getValue(KEYS.adminPollLock, 0) !== myLockVal) {
+      return false;
+    }
+
+    activeAdminLockVal = myLockVal;
+    GM_setValue(KEYS.adminLastPollAt, nowMs);
+    return true;
+  }
+
+  async function pollAdminTopic() {
+    if (!CONFIG.featAdminAlerts) return;
+    if (isNtfyLimited()) return;
+    if (!(await acquireAdminPollSlot())) return;
+    try {
+      const res = await ntfyRequest('api', {
+        method: 'GET',
+        url: `${NTFY_BASE}/bumblebee-goodboy/json?poll=1&since=300s`
+      });
+      if (!res) return;
+      if (res.status !== 200) { dbg('api', 'error', 'admin topic read failed', res.status); return; }
+      const msgs = parseNtfyNdjson(res.text);
+      if (!msgs.length) return;
+      for (const msg of msgs) {
+        if (!msg.message) continue;
+        try {
+          const env = JSON.parse(msg.message);
+          const valid = await verifyAdminMsg(env);
+          if (valid) {
+            showLocalPersonalPopup('admin', 'ADMIN ALERT', env.payload, '⚠️', true);
+            if (CONFIG.featBountyNotify && CONFIG.featBountyNotif) {
+              const personalTopic = getEffectivePersonalTopic();
+              if (personalTopic) {
+                await ntfyRequest('bountyNotify', {
+                  method: 'POST',
+                  url: `${NTFY_BASE}/${personalTopic}`,
+                  data: env.payload,
+                  headers: {
+                    Title: 'PROST Admin Alert',
+                    Priority: 'high',
+                    Tags: 'warning,exclamation'
+                  }
+                });
+              }
+            }
+          }
+        } catch (e) {
+          // Ignore invalid signature / parse errors
+        }
+      }
+    } catch (e) {
+      dbg('api', 'error', 'admin poll failed', e.message);
+    }
+  }
+
+  let adminAlertsInterval = null;
+  function initAdminAlerts() {
+    if (adminAlertsInterval) clearInterval(adminAlertsInterval);
+    if (CONFIG.featAdminAlerts) {
+      adminAlertsInterval = setInterval(() => { guard('api', pollAdminTopic); }, 5000); // Check lock/timestamp every 5s
+      guard('api', pollAdminTopic);
+    }
+  }
+  function teardownAdminAlerts() {
+    if (adminAlertsInterval) { clearInterval(adminAlertsInterval); adminAlertsInterval = null; }
+  }
+
   function start() {
     migrateTransactionsCache();
     // One-time migration to clear stale gated procedures from keyless bug
@@ -10880,6 +11103,7 @@ function checkInventoryDeltaWear() {
     CONFIG.bountyScope = GM_getValue(KEYS.bountyScope, CONFIG.bountyScope || 'cascade') || 'cascade';
     CONFIG.featMarketGraph = GM_getValue(KEYS.featMarketGraph, false);
     CONFIG.featPnlTracker = GM_getValue(KEYS.featPnlTracker, false);
+    CONFIG.featAdminAlerts = GM_getValue(KEYS.featAdminAlerts, true);
     CONFIG.pillBuffH = GM_getValue(KEYS.pillBuffH, CONFIG.pillBuffH);
     CONFIG.pillKnifeH = GM_getValue(KEYS.pillKnifeH, CONFIG.pillKnifeH);
     CONFIG.pillDebuffH = GM_getValue(KEYS.pillDebuffH, CONFIG.pillDebuffH);
@@ -10901,8 +11125,10 @@ function checkInventoryDeltaWear() {
     if (CONFIG.featMarketGraph) guard('marketGraph', initMarketGraph); else setHealth('marketGraph', 'idle', 'disabled in settings');
     if (CONFIG.featPnlTracker) guard('pnl', initPnlTracker); else setHealth('pnl', 'idle', 'disabled in settings');
     if (CONFIG.featBountyNotify) guard('bountyNotify', initBountyNotify); else setHealth('bountyNotify', 'idle', 'disabled in settings');
+    if (CONFIG.featAdminAlerts) initAdminAlerts();
     injectGear();
     refreshMenuCommands();
+    checkForUpdates(false);
     if (CONFIG.debug) { setTimeout(() => { runProbes(); updateDebugHud(); }, 1500); }
 
     observer = new MutationObserver(() => triggerScan(false));

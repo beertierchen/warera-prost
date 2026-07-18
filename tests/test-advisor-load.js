@@ -452,7 +452,7 @@ for (const line of lines) {
     headerConnects.push(m[1]);
   }
 }
-assert.deepStrictEqual(headerConnects.sort(), ['api2.warera.io', 'gateway.warerastats.io', 'ntfy.sh'].sort(), '@connect metadata must specify exactly api2.warera.io, gateway.warerastats.io, and ntfy.sh');
+assert.deepStrictEqual(headerConnects.sort(), ['api2.warera.io', 'gateway.warerastats.io', 'ntfy.sh', 'greasyfork.org'].sort(), '@connect metadata must specify exactly api2.warera.io, gateway.warerastats.io, ntfy.sh, and greasyfork.org');
 console.log('Static compliance assertions passed.');
 
 try {
