@@ -1,5 +1,21 @@
 # CHANGELOG
 
+## 2026-07-18 | Bugfix: Rescan-Schleife, Log-Spam & Code-Bereinigung (v0.9.2)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `package.json`, `CHANGELOG.md`, `tests/test-advisor-load.js`
+
+**Änderungen (Deutsch):**
+- **Rescan-Schleife im Inventar behoben**: Ein Fehler, bei dem das Inventar unter bestimmten Bedingungen kontinuierlich neu geladen wurde (Endlosschleife), wurde durch den Wechsel auf stabile Element-Fingerprints behoben.
+- **Konsolen-Log-Spam reduziert**: Unnötiger Log-Spam bei Hintergrund-Preisanfragen und wiederholte Mute-in-Debuff Warnungen bei ausgeschaltetem Pill-Reminder wurden unterbunden.
+- **Leistungsoptimierung**: Hintergrundtransaktionen werden nun gebündelt und ratenbegrenzt geladen.
+- **Code-Bereinigung (SonarLint)**: Unbenutzter Code, veraltete Variablen und riskante reguläre Ausdrücke wurden entfernt oder modernisiert.
+
+**Changes (English):**
+- **Fixed Inventory Rescan Loop**: Resolved a bug causing continuous reloading of the inventory view by adopting stable DOM element fingerprinting.
+- **Reduced Console Log Spam**: Suppressed verbose console noise during background price fetches and deduplicated repeated mute-in-debuff warnings.
+- **Performance Optimizations**: Background transaction fetches are now bundled and rate-limited.
+- **Code Cleanup (SonarLint)**: Removed dead code/variables and modernized regular expressions to ensure maximum compliance and runtime safety.
+
 ## 2026-07-18 | Bugfix: Preise im keylosen Modus reaktiviert (v0.9.1)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/test-advisor-load.js`

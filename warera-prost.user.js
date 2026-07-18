@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.9.1
+// @version      0.9.2
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -254,6 +254,7 @@
     muHealButtonTextFallbackDE: 'Hilfe anfordern',
 
     debug: false,
+    verboseDebug: false,
 
     locale: 'de', // default locale; can be changed in settings
 
@@ -1072,13 +1073,7 @@
       return undefined;
     }
   }
-  // Selector lookup that auto-reports a miss to the registry. Use at critical
-  // DOM reads so game CSS-class drift surfaces as a red ampel + reason.
-  function pick(id, sel, root) {
-    const els = (root || document).querySelectorAll(sel);
-    if (!els.length) { setHealth(id, 'fail', `selector miss: ${sel}`); dbg(id, 'debug', 'selector miss', sel); }
-    return els;
-  }
+
 
   function setDebug(on) {
     CONFIG.debug = !!on;
@@ -1366,7 +1361,6 @@
     });
   }
 
-  function publicHeaders() { return {}; }                 // anonymous public calls
   function keyedHeaders() {                               // key only upgrades rate limit
     const k = getToken();
     return k ? { 'x-api-key': k } : {};
@@ -1429,7 +1423,7 @@
   }
   function parseRetryAfterSec(rawHeaders) {
     const m = /^retry-after:\s*(\d+)\s*$/im.exec(rawHeaders || '');
-    return m ? parseInt(m[1], 10) : 0;
+    return m ? Number.parseInt(m[1], 10) : 0;
   }
   function tripNtfyLimit(scope, url, retryAfterSec) {
     const streak = (GM_getValue(KEYS.ntfy429Streak, 0) || 0) + 1;
@@ -1641,7 +1635,7 @@
         if (typeof v === 'number') map[normKey] = v;
         else if (v && typeof v === 'object') {
           const p = v.price ?? v.avgPrice ?? v.value;
-          if (p != null && !isNaN(Number(p))) map[normKey] = Number(p); // keep legit 0, drop NaN
+          if (p != null && !Number.isNaN(Number(p))) map[normKey] = Number(p); // keep legit 0, drop NaN
         }
       }
     }
@@ -1717,6 +1711,7 @@
 
     transactionsInFlight[code] = (async () => {
       try {
+        await throttle();
         const url = 'https://gateway.warerastats.io/trpc/transaction.getPaginatedTransactions';
         const body = JSON.stringify({
           limit: 100,
@@ -1842,21 +1837,21 @@
     if (!card) return null;
     // 1. Check card element itself
     if (card.id && !card.id.startsWith('wia-')) return card.id;
-    for (const attr of ['data-id', 'data-item-id', 'data-uid']) {
-      const val = card.getAttribute(attr);
+    if (card.dataset) {
+      const val = card.dataset.id || card.dataset.itemId || card.dataset.uid;
       if (val) return val;
     }
     // 2. Check all descendants for typical ID attributes
     const elWithId = card.querySelector('[data-id], [data-item-id], [data-uid], a[href*="/item/"], button[id]');
     if (elWithId) {
-      for (const attr of ['data-id', 'data-item-id', 'data-uid']) {
-        const val = elWithId.getAttribute(attr);
+      if (elWithId.dataset) {
+        const val = elWithId.dataset.id || elWithId.dataset.itemId || elWithId.dataset.uid;
         if (val) return val;
       }
       if (elWithId.id && !elWithId.id.startsWith('wia-')) return elWithId.id;
       const href = elWithId.getAttribute('href');
       if (href) {
-        const m = href.match(/\/item[s]?\/([^/?#]+)/);
+        const m = /\/item[s]?\/([^/?#]+)/.exec(href);
         if (m) return m[1];
       }
     }
@@ -2071,7 +2066,7 @@
     }
 
     // Extract the main numeric block (digits, signs, dots, commas)
-    const numMatch = s.match(/-?\d+(?:[.,\s]\d+)*/);
+    const numMatch = /-?\d+(?:[.,\s]\d+){0,10}/.exec(s);
     if (!numMatch) return null;
     let numStr = numMatch[0].replace(/\s+/g, '');
 
@@ -2100,15 +2095,15 @@
       }
     }
 
-    const parsed = parseFloat(numStr);
-    return isNaN(parsed) ? null : parsed * multiplier;
+    const parsed = Number.parseFloat(numStr);
+    return Number.isNaN(parsed) ? null : parsed * multiplier;
   }
 
   function tierForCode(itemCode) {
     if (!itemCode) return null;
     const code = String(itemCode).trim().toLowerCase();
     const digitMatch = code.match(/(\d+)$/);
-    if (digitMatch) return parseInt(digitMatch[1], 10);
+    if (digitMatch) return Number.parseInt(digitMatch[1], 10);
     return CONFIG.weaponCodeToTier[code] ?? null;
   }
 
@@ -2356,7 +2351,7 @@
     const code = alt || srcBase || null;
     // tier 1-6 from the trailing digit of the code (armor); weapons have none.
     const tm = (code || '').match(/(\d+)\s*$/);
-    let tier = tm ? parseInt(tm[1], 10) : null;
+    let tier = tm ? Number.parseInt(tm[1], 10) : null;
 
     let type = 'unknown';
     const cleanCode = code ? code.replace(/\d+$/, '').trim() : '';
@@ -2478,7 +2473,7 @@
           const style = scaleXEl.getAttribute('style') || '';
           const m = style.match(/scaleX\(([\d.]+)\)/);
           if (m) {
-            const val = parseFloat(m[1]);
+            const val = Number.parseFloat(m[1]);
             stats.durability = val <= 1.0 ? Math.round(val * 100) : Math.round(val);
           }
         }
@@ -2526,7 +2521,7 @@
       el = el.parentElement;
       if (!el) break;
       const text = getCleanTextContent(el).replace(/\s+/g, ' ').trim();
-      const nums = text.match(/\d+(?:[.,\s]\d+)*/g) || [];
+      const nums = text.match(/\d+(?:[.,\s]\d+){0,10}/g) || [];
       if (nums.length === 1) {
         return parseNum(nums[0]);
       } else if (nums.length > 1) {
@@ -2549,7 +2544,7 @@
       }
     }
     const text = getCleanTextContent(card).replace(/\s+/g, ' ').trim();
-    const m = (text || '').match(/(\d+(?:[.,\s]\d+)*)\s*(?:scraps?|schrott)/i);
+    const m = /(\d+(?:[.,\s]\d+){0,10})\s*(?:scraps?|schrott)/i.exec(text || '');
     return m ? parseNum(m[1]) : null;
   }
 
@@ -2568,7 +2563,7 @@
       if (!attack && !crit) return null;
       return crit * CONFIG.weaponCritWeight + attack;
     }
-    const vals = Object.values(skills).map(Number).filter((n) => !isNaN(n));
+    const vals = Object.values(skills).map(Number).filter((n) => !Number.isNaN(n));
     return vals.length ? vals[0] : null; // single skill per armor piece
   }
 
@@ -2814,13 +2809,11 @@
     const pc = readCache(KEYS.priceCache);
     const tc = readCache(KEYS.transactionsCache) || {};
     const priceStale = pc ? now() - pc.fetchedAt > CONFIG.priceCacheTtlMs : true;
-    const txTimes = Object.values(tc).map((t) => t.fetchedAt).filter(Boolean);
-    const newestTx = txTimes.length ? Math.max(...txTimes) : null;
     return {
-      scrapPrice: pc && pc.data ? pc.data[CONFIG.scrapItemCode] ?? null : null,
-      scrapFetchedAt: pc ? pc.fetchedAt : null,
-      priceFetchedAt: pc ? pc.fetchedAt : null,
-      priceCount: pc && pc.data ? Object.keys(pc.data).length : 0,
+      scrapPrice: pc?.data?.[CONFIG.scrapItemCode] ?? null,
+      scrapFetchedAt: pc?.fetchedAt ?? null,
+      priceFetchedAt: pc?.fetchedAt ?? null,
+      priceCount: pc?.data ? Object.keys(pc.data).length : 0,
       txCodes: Object.keys(tc).length,
       // "stale" = materials cache past TTL / missing, or actively rate-limited
       stale: isRateLimited() || priceStale,
@@ -3069,70 +3062,7 @@
   }
 
 
-  // ───────────────────────────────────────────────────────────────────────────
-  // Market scraping & Scan orchestration
-  // ───────────────────────────────────────────────────────────────────────────
-  let lastNotificationTime = 0;
-  function showScrapeNotification(count) {
-    if (now() - lastNotificationTime < 3000) return; // debounce toast
-    lastNotificationTime = now();
 
-    const toast = document.createElement('div');
-    toast.style.cssText = `
-      position: fixed; bottom: 20px; left: 20px; z-index: 100000;
-      background: #238636; color: #fff; padding: 12px 18px; border-radius: 6px;
-      font: 600 13px system-ui, sans-serif; box-shadow: 0 4px 12px rgba(0,0,0,.5);
-      border: 1px solid #2ea043; transition: opacity 0.5s ease;
-    `;
-    toast.textContent = t('scrapeSuccess', { count: count });
-    document.body.appendChild(toast);
-    setTimeout(() => {
-      toast.style.opacity = '0';
-      setTimeout(() => toast.remove(), 500);
-    }, 2500);
-  }
-
-  function scrapeMarketPrices() {
-    const selectorElements = document.querySelectorAll("[id^='item-code-selector-']");
-    if (!selectorElements.length) return;
-
-    const store = { ...readCache(KEYS.scrapedPrices) };
-    let updatedCount = 0;
-
-    selectorElements.forEach(el => {
-      const itemCode = el.id.replace('item-code-selector-', '').trim();
-      if (!itemCode) return;
-
-      const icon = el.querySelector('.a6izou0');
-      let price = null;
-      if (icon) {
-        price = numberNearClean(icon);
-      } else {
-        const text = el.textContent || '';
-        const match = text.match(/(\d+(?:[.,\s]\d+)*)/);
-        if (match) {
-          price = parseNum(match[1]);
-        }
-      }
-
-      if (price != null && !isNaN(price)) {
-        const old = store[itemCode];
-        if (!old || old.price !== price || now() - old.fetchedAt > 10 * 60 * 1000) {
-          store[itemCode] = { price, fetchedAt: now() };
-          updatedCount++;
-        }
-      }
-    });
-
-    if (updatedCount > 0) {
-      writeCache(KEYS.scrapedPrices, store);
-      log(`Scraped ${updatedCount} updated prices`);
-      showScrapeNotification(updatedCount);
-    }
-    if (isMarketPage()) {
-      renderScrapFlip().catch((e) => log('renderScrapFlip error:', e));
-    }
-  }
 
   function calculateInventoryRankings(items) {
     // Group items by category/tier
@@ -3204,8 +3134,7 @@
   let observer = null;
   let observerSuspendCount = 0;
   let scanning = false;
-  let lastInventoryCards = null;
-  const lastInventoryCardTexts = new Map();
+  let lastInventoryFingerprints = [];
 
   function getCardBaseText(card) {
     const cell = getItemCell(card);
@@ -3286,30 +3215,65 @@
     }
   }
 
+  let lastHicReason = '';
   function hasInventoryChanged(cards) {
-    if (!lastInventoryCards || lastInventoryCards.size !== cards.size) return true;
+    if (!lastInventoryFingerprints || lastInventoryFingerprints.length !== cards.size) {
+      lastHicReason = `size ${lastInventoryFingerprints ? lastInventoryFingerprints.length : 'null'}->${cards.size}`;
+      return true;
+    }
 
-    const lastKeys = lastInventoryCards.keys();
+    let idx = 0;
     for (const [card, img] of cards.entries()) {
-      const lastCard = lastKeys.next().value;
-      if (card !== lastCard) return true;
-
-      const lastImg = lastInventoryCards.get(card);
-      if (img !== lastImg) return true;
-      if (img.getAttribute('src') !== lastImg.getAttribute('src')) return true;
-      if (img.getAttribute('alt') !== lastImg.getAttribute('alt')) return true;
-
+      const last = lastInventoryFingerprints[idx];
+      if (!last) {
+        lastHicReason = `index-missing @${idx}`;
+        return true;
+      }
       const itemId = findItemUniqueId(card);
-      const lastItemId = findItemUniqueId(lastCard);
-      if (itemId !== lastItemId) return true;
+      if (itemId !== last.itemId) {
+        lastHicReason = `itemId @${idx} ${last.itemId}->${itemId}`;
+        return true;
+      }
 
-      if (!card.querySelector('.wia-badge') && !card.dataset.wiaSuppressed) return true;
+      const src = img.getAttribute('src') || '';
+      if (src !== last.src) {
+        lastHicReason = `img-src @${idx} [${last.src}]->[${src}]`;
+        return true;
+      }
 
-      const currentText = getCardBaseText(card);
-      const lastText = lastInventoryCardTexts.get(card);
-      if (currentText !== lastText) return true;
+      const alt = img.getAttribute('alt') || '';
+      if (alt !== last.alt) {
+        lastHicReason = `img-alt @${idx} [${last.alt}]->[${alt}]`;
+        return true;
+      }
+
+      const hasBadgeOrSuppressed = !!card.querySelector('.wia-badge') || !!card.dataset.wiaSuppressed;
+      if (!hasBadgeOrSuppressed && last.hasBadgeOrSuppressed) {
+        lastHicReason = `no-badge @${idx}`;
+        return true;
+      }
+
+      const baseText = getCardBaseText(card);
+      if (baseText !== last.baseText) {
+        lastHicReason = `text @${idx}: [${last.baseText}]->[${baseText}]`;
+        return true;
+      }
+      idx++;
     }
     return false;
+  }
+
+  function recordInventoryFingerprint(cards) {
+    lastInventoryFingerprints = [];
+    cards.forEach((img, card) => {
+      lastInventoryFingerprints.push({
+        itemId: findItemUniqueId(card),
+        src: img.getAttribute('src') || '',
+        alt: img.getAttribute('alt') || '',
+        hasBadgeOrSuppressed: !!card.querySelector('.wia-badge') || !!card.dataset.wiaSuppressed,
+        baseText: getCardBaseText(card)
+      });
+    });
   }
 
   const pendingFetches = new Set();
@@ -3321,85 +3285,7 @@
     return true;
   }
 
-  async function fetchAndRenderItemCodeInBackground(code, force) {
-    if (pendingFetches.has(code)) return;
-    pendingFetches.add(code);
 
-    try {
-      log(`Background load started for ${code}`);
-      // fetch live equipment transactions
-      await fetchItemTransactions(code, force);
-
-      const cards = findItemCards(false);
-      if (!cards.size) return;
-
-      const allItems = [];
-      cards.forEach((img, card) => {
-        const { type, alt, code: cCode, tier } = detectItem(img, card);
-        if (type === 'scrap' || type === 'unknown') return;
-        const stats = parseStats(card, type);
-        if (shouldSuppressItem(card, stats)) return;
-        const item = { card, img, type, alt, code: cCode, tier, stats };
-        item.myStat = itemStat(item);
-        if (type === 'weapon') item.weaponScore = item.myStat;
-        allItems.push(item);
-      });
-
-      if (!allItems.length) return;
-
-      calculateInventoryRankings(allItems);
-
-      const pc = readCache(KEYS.priceCache);
-      const currentPriceFetchedAt = pc ? pc.fetchedAt : 0;
-      const prices = pc ? pc.data : {};
-      const scrapPrice = prices ? prices[CONFIG.scrapItemCode] ?? null : null;
-
-      const tc = readCache(KEYS.transactionsCache);
-
-      const txs = {};
-      const uniqueCodes = [...new Set(allItems.map((i) => i.code).filter(Boolean))];
-
-      uniqueCodes.forEach((c) => {
-        if (tc[c]) {
-          txs[c] = tc[c].data;
-        }
-      });
-
-      const ctx = { prices, scrapPrice, txs, stale: cacheStatus().stale };
-
-      suspendObserver();
-      try {
-        allItems.forEach((item) => {
-          if (item.code === code) {
-            const card = reResolveCard(item.card);
-            if (!card) return;
-            item.card = card;
-
-            const itemId = findItemUniqueId(card);
-            const statsHash = JSON.stringify(item.stats);
-            const fresh = hasFreshCachedData(item.code);
-
-            let result = evaluate(item, ctx);
-            if (!fresh) {
-              result = { ...result };
-              result.provisional = true;
-            } else {
-              setPersistedAdvice(itemId, result, statsHash, currentPriceFetchedAt);
-            }
-            renderItem(card, item, result);
-          }
-        });
-      } finally {
-        resumeObserver();
-      }
-      updateStatusIndicator();
-      log(`Background update finished for ${code}`);
-    } catch (e) {
-      log(`Background load failed for ${code}:`, e);
-    } finally {
-      pendingFetches.delete(code);
-    }
-  }
 
 async function scanInventory(force) {
     if (force) {
@@ -3422,11 +3308,6 @@ async function scanInventory(force) {
 
     log(`scanInventory started (force=${force})`);
     scanning = true;
-    lastInventoryCards = cards;
-    lastInventoryCardTexts.clear();
-    cards.forEach((img, card) => {
-      lastInventoryCardTexts.set(card, getCardBaseText(card));
-    });
 
     try {
       const items = [];
@@ -3546,6 +3427,7 @@ async function scanInventory(force) {
       }
       updateStatusIndicator();
       log(`scanned ${items.length} items (immediate render done)`);
+      recordInventoryFingerprint(cards);
 
       // Background Async Loads
       const isGlobalPriceStale = !pc || now() - pc.fetchedAt >= CONFIG.priceCacheTtlMs;
@@ -3557,8 +3439,88 @@ async function scanInventory(force) {
             }
 
             if (codesToFetch.length > 0) {
-              log(`Triggering background loads for: ${codesToFetch.join(', ')}`);
-              await Promise.all(codesToFetch.map((c) => fetchAndRenderItemCodeInBackground(c, force)));
+              const N = codesToFetch.length;
+              const startTime = now();
+              let n = 0;
+
+              const allUniqueCodes = [...new Set(items.map((i) => i.code).filter(Boolean))];
+              const fromCache = allUniqueCodes.length - N;
+
+              if (CONFIG.debug) {
+                dbg('core', 'debug', `Triggering background loads for: ${codesToFetch.join(', ')}`);
+              }
+
+              await Promise.all(codesToFetch.map(async (c) => {
+                if (pendingFetches.has(c)) return;
+                pendingFetches.add(c);
+                try {
+                  if (CONFIG.debug && CONFIG.verboseDebug) {
+                    dbg('core', 'debug', `Background load started for ${c}`);
+                  }
+                  await fetchItemTransactions(c, force);
+                  n++;
+                  if (CONFIG.debug && CONFIG.verboseDebug) {
+                    dbg('core', 'debug', `Background load finished for ${c}`);
+                  }
+                } catch (e) {
+                  log(`Background load failed for ${c}:`, e);
+                } finally {
+                  pendingFetches.delete(c);
+                }
+              }));
+
+              const ms = now() - startTime;
+              log(`background: fetched ${n}/${N} codes in ${ms}ms (${fromCache} cached)`);
+
+              // ONE re-render pass over the items!
+              const nextPc = readCache(KEYS.priceCache);
+              const nextPriceFetchedAt = nextPc ? nextPc.fetchedAt : 0;
+              const nextPrices = nextPc ? nextPc.data : {};
+              const nextScrapPrice = nextPrices ? nextPrices[CONFIG.scrapItemCode] ?? null : null;
+              const nextTc = readCache(KEYS.transactionsCache) || {};
+
+              const nextTxs = {};
+              items.forEach((item) => {
+                const c = item.code;
+                if (c && nextTc[c]) {
+                  nextTxs[c] = nextTc[c].data;
+                }
+              });
+
+              const nextCtx = {
+                prices: nextPrices,
+                scrapPrice: nextScrapPrice,
+                txs: nextTxs,
+                stale: cacheStatus().stale
+              };
+
+              suspendObserver();
+              try {
+                items.forEach((item) => {
+                  const card = reResolveCard(item.card);
+                  if (!card) return;
+                  item.card = card;
+
+                  const itemId = findItemUniqueId(card);
+                  const statsHash = JSON.stringify(item.stats);
+                  const fresh = hasFreshCachedData(item.code);
+
+                  let result = getPersistedAdvice(itemId, statsHash, nextPriceFetchedAt);
+                  if (!result) {
+                    result = evaluate(item, nextCtx);
+                    if (!fresh) {
+                      result = { ...result };
+                      result.provisional = true;
+                    } else {
+                      setPersistedAdvice(itemId, result, statsHash, nextPriceFetchedAt);
+                    }
+                  }
+                  renderItem(card, item, result);
+                });
+              } finally {
+                resumeObserver();
+              }
+              updateStatusIndicator();
             } else if (isGlobalPriceStale || force) {
               log('Re-evaluating items after global price update...');
               const nextPc = readCache(KEYS.priceCache);
@@ -3604,6 +3566,7 @@ async function scanInventory(force) {
             if (CONFIG.featPillReminder) {
               highlightCocaineItems();
             }
+            recordInventoryFingerprint(cards);
           } catch (err) {
             log('Background update failed:', err);
           }
@@ -4206,8 +4169,6 @@ async function scanInventory(force) {
     const prevStockKeepCount = bg.querySelector('.wia-stock-keep-count')?.value ?? CONFIG.stockKeepCount;
     const prevFeatBounty = bg.querySelector('.wia-feat-bounty')?.checked ?? CONFIG.featBountyNotify;
     const prevFeatBountyNotif = CONFIG.featBountyNotif;
-    const prevNtfyTopic = bg.querySelector('.wia-ntfy-topic')?.value ?? CONFIG.ntfyTopic;
-    const prevNtfySecret = bg.querySelector('.wia-ntfy-secret')?.value ?? CONFIG.ntfyTopicSecret;
     const prevBountyOwn = !hasKey ? '' : (bg.querySelector('.wia-bounty-own')?.value ?? CONFIG.bountyOwnCountryOverride);
     const prevBountyScope = !hasKey ? 'all' : (bg.querySelector('.wia-bounty-scope')?.value ?? CONFIG.bountyScope);
     const prevBountyMuteDebuff = bg.querySelector('.wia-bounty-mute-debuff')?.checked ?? CONFIG.bountyMuteDebuff;
@@ -4679,7 +4640,7 @@ async function scanInventory(force) {
       setToken(newToken);
 
 
-      const stockKeepCount = parseInt(bg.querySelector('.wia-stock-keep-count').value, 10) || 3;
+      const stockKeepCount = Number.parseInt(bg.querySelector('.wia-stock-keep-count').value, 10) || 3;
       GM_setValue(KEYS.stockKeepCount, stockKeepCount);
       CONFIG.stockKeepCount = stockKeepCount;
 
@@ -4697,15 +4658,15 @@ async function scanInventory(force) {
       GM_setValue(KEYS.featPillReminder, featPill);
       CONFIG.featPillReminder = featPill;
 
-      const buffVal = parseFloat(bg.querySelector('.wia-pill-buff').value) || 8;
+      const buffVal = Number.parseFloat(bg.querySelector('.wia-pill-buff').value) || 8;
       GM_setValue(KEYS.pillBuffH, buffVal);
       CONFIG.pillBuffH = buffVal;
 
-      const knifeVal = parseFloat(bg.querySelector('.wia-pill-knife').value) || 6;
+      const knifeVal = Number.parseFloat(bg.querySelector('.wia-pill-knife').value) || 6;
       GM_setValue(KEYS.pillKnifeH, knifeVal);
       CONFIG.pillKnifeH = knifeVal;
 
-      const debuffVal = parseFloat(bg.querySelector('.wia-pill-debuff').value) || 15.5;
+      const debuffVal = Number.parseFloat(bg.querySelector('.wia-pill-debuff').value) || 15.5;
       GM_setValue(KEYS.pillDebuffH, debuffVal);
       CONFIG.pillDebuffH = debuffVal;
 
@@ -5041,7 +5002,7 @@ function updateObserverTarget() {
 
     const strip = document.createElement('span');
     strip.className = 'wia-compact-orders';
-    strip.setAttribute('data-wia-injected', 'true');
+    strip.dataset.wiaInjected = 'true';
 
     rows.forEach(anchor => {
       const rowContainer = anchor.closest('div._1dnmndyl3l, div[class]') || anchor.parentElement?.parentElement;
@@ -5216,7 +5177,7 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
     if (notesModal) { notesModal.backdrop.remove(); notesModal = null; }
     // Remove all injected icons and reset attached markers
     document.querySelectorAll('.warera-note-icon').forEach(el => el.remove());
-    document.querySelectorAll('[' + NOTES_ATTR + ']').forEach(el => el.removeAttribute(NOTES_ATTR));
+    document.querySelectorAll('[' + NOTES_ATTR + ']').forEach(el => delete el.dataset.wareraNoteAttached);
     clearTimeout(notesScanTimer);
     notesScanTimer = null;
     teardownSharedBodyObserver();
@@ -5230,7 +5191,7 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
   function scanNoteLinks() {
     document.querySelectorAll(NOTES_LINK_SEL).forEach(link => {
       if (!(link instanceof HTMLAnchorElement)) return;
-      if (link.getAttribute(NOTES_ATTR) === 'true') return; // already attached (by us or standalone script)
+      if (link.dataset.wareraNoteAttached === 'true') return; // already attached (by us or standalone script)
       const userId = extractNoteUserId(link);
       if (!userId) return;
       attachNoteIcon(link, userId);
@@ -5242,7 +5203,7 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
     if (!href) return null;
     try {
       const url = new URL(href, window.location.origin);
-      const m = url.pathname.match(/^\/user\/([^/]+)\/?$/);
+      const m = /^\/user\/([^/]+)\/?$/.exec(url.pathname);
       return m ? decodeURIComponent(m[1]) : null;
     } catch (_) { return null; }
   }
@@ -5267,7 +5228,7 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
       openNoteEditor(userId, link.textContent.trim() || t('noteUserLabel'));
     });
     link.insertAdjacentElement('afterend', icon);
-    link.setAttribute(NOTES_ATTR, 'true');
+    link.dataset.wareraNoteAttached = 'true';
   }
 
   function buildNotesModal() {
@@ -5452,11 +5413,11 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
       const btn = findMuHealButton();
       if (btn && btn.classList.contains('wia-mu-heal-muted')) {
         btn.classList.remove('wia-mu-heal-muted');
-        if (btn.hasAttribute('data-wia-orig-title')) {
-          const orig = btn.getAttribute('data-wia-orig-title');
+        if (btn.dataset.wiaOrigTitle !== undefined) {
+          const orig = btn.dataset.wiaOrigTitle;
           if (orig) btn.setAttribute('title', orig);
           else btn.removeAttribute('title');
-          btn.removeAttribute('data-wia-orig-title');
+          delete btn.dataset.wiaOrigTitle;
         }
       }
       return;
@@ -5481,8 +5442,8 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
 
     if (shouldDim) {
       if (!btn.classList.contains('wia-mu-heal-muted')) {
-        if (!btn.hasAttribute('data-wia-orig-title')) {
-          btn.setAttribute('data-wia-orig-title', btn.getAttribute('title') || '');
+        if (btn.dataset.wiaOrigTitle === undefined) {
+          btn.dataset.wiaOrigTitle = btn.getAttribute('title') || '';
         }
         btn.classList.add('wia-mu-heal-muted');
       }
@@ -5496,11 +5457,11 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
     } else {
       if (btn.classList.contains('wia-mu-heal-muted')) {
         btn.classList.remove('wia-mu-heal-muted');
-        if (btn.hasAttribute('data-wia-orig-title')) {
-          const orig = btn.getAttribute('data-wia-orig-title');
+        if (btn.dataset.wiaOrigTitle !== undefined) {
+          const orig = btn.dataset.wiaOrigTitle;
           if (orig) btn.setAttribute('title', orig);
           else btn.removeAttribute('title');
-          btn.removeAttribute('data-wia-orig-title');
+          delete btn.dataset.wiaOrigTitle;
         }
       }
     }
@@ -5812,8 +5773,8 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
     if (!CONFIG.pillPrefWindowFrom) return true;
     const partsFrom = CONFIG.pillPrefWindowFrom.split(':');
     if (partsFrom.length !== 2) return true;
-    const fromHrs = parseInt(partsFrom[0], 10);
-    const fromMins = parseInt(partsFrom[1], 10);
+    const fromHrs = Number.parseInt(partsFrom[0], 10);
+    const fromMins = Number.parseInt(partsFrom[1], 10);
 
     let dFrom = new Date(now);
     dFrom.setHours(fromHrs, fromMins, 0, 0);
@@ -5822,8 +5783,8 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
     if (CONFIG.pillPrefWindowTo) {
       const partsTo = CONFIG.pillPrefWindowTo.split(':');
       if (partsTo.length === 2) {
-        const toHrs = parseInt(partsTo[0], 10);
-        const toMins = parseInt(partsTo[1], 10);
+        const toHrs = Number.parseInt(partsTo[0], 10);
+        const toMins = Number.parseInt(partsTo[1], 10);
         dTo = new Date(now);
         dTo.setHours(toHrs, toMins, 0, 0);
         if (dTo.getTime() < dFrom.getTime()) {
@@ -5849,8 +5810,8 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
     if (!CONFIG.pillPrefWindowFrom) return 0;
     const partsFrom = CONFIG.pillPrefWindowFrom.split(':');
     if (partsFrom.length !== 2) return 0;
-    const fromHrs = parseInt(partsFrom[0], 10);
-    const fromMins = parseInt(partsFrom[1], 10);
+    const fromHrs = Number.parseInt(partsFrom[0], 10);
+    const fromMins = Number.parseInt(partsFrom[1], 10);
 
     let dFrom = new Date(nowVal);
     dFrom.setHours(fromHrs, fromMins, 0, 0);
@@ -5858,8 +5819,8 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
     if (CONFIG.pillPrefWindowTo) {
       const partsTo = CONFIG.pillPrefWindowTo.split(':');
       if (partsTo.length === 2) {
-        const toHrs = parseInt(partsTo[0], 10);
-        const toMins = parseInt(partsTo[1], 10);
+        const toHrs = Number.parseInt(partsTo[0], 10);
+        const toMins = Number.parseInt(partsTo[1], 10);
         let dTo = new Date(nowVal);
         dTo.setHours(toHrs, toMins, 0, 0);
         if (dTo.getTime() < dFrom.getTime()) {
@@ -5879,8 +5840,8 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
 
     const parts = CONFIG.pillPrefWindowFrom.split(':');
     if (parts.length !== 2) return now;
-    const hrs = parseInt(parts[0], 10);
-    const mins = parseInt(parts[1], 10);
+    const hrs = Number.parseInt(parts[0], 10);
+    const mins = Number.parseInt(parts[1], 10);
 
     let d = new Date(now);
     d.setHours(hrs, mins, 0, 0);
@@ -5891,32 +5852,7 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
     return d.getTime();
   }
 
-  function getNextPillMoment() {
-    const pillTakenAt = GM_getValue(KEYS.pillTakenAt, 0);
-    if (!pillTakenAt) return 0;
-    const totalMs = (CONFIG.pillBuffH + CONFIG.pillDebuffH) * 3600000;
-    const rawTarget = pillTakenAt + totalMs;
 
-    const now = Date.now();
-    let target = Math.max(now, rawTarget);
-
-    if (CONFIG.pillPrefWindowFrom) {
-      const parts = CONFIG.pillPrefWindowFrom.split(':');
-      if (parts.length === 2) {
-        const hrs = parseInt(parts[0], 10);
-        const mins = parseInt(parts[1], 10);
-
-        let d = new Date(target);
-        d.setHours(hrs, mins, 0, 0);
-        if (d.getTime() < target) {
-          d.setDate(d.getDate() + 1);
-          d.setHours(hrs, mins, 0, 0);
-        }
-        target = d.getTime();
-      }
-    }
-    return target;
-  }
 
   function getBarElements(el) {
     if (!el) return null;
@@ -6169,19 +6105,19 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
       // Format A: "130/130"
       const mSingle = text.match(/^(\d+(?:\.\d+)?)\s*\/\s*(\d+)$/);
       if (mSingle) {
-        current = parseFloat(mSingle[1]);
-        max = parseFloat(mSingle[2]);
+        current = Number.parseFloat(mSingle[1]);
+        max = Number.parseFloat(mSingle[2]);
       } else {
         // Format B: "/130" (split spans)
         const mSplit = text.match(/^\/\s*(\d+)$/);
         if (mSplit) {
-          max = parseFloat(mSplit[1]);
+          max = Number.parseFloat(mSplit[1]);
           const prev = el.previousElementSibling;
           if (prev) {
             const prevText = prev.textContent.trim();
             const mPrev = prevText.match(/^(\d+(?:\.\d+)?)$/);
             if (mPrev) {
-              current = parseFloat(mPrev[1]);
+              current = Number.parseFloat(mPrev[1]);
             }
           }
         }
@@ -6221,7 +6157,7 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
                   const regenText = parentSpan.textContent.trim();
                   const mRegen = regenText.match(/(\d+(?:\.\d+)?)/);
                   if (mRegen) {
-                    detectedRegen = parseFloat(mRegen[1]);
+                    detectedRegen = Number.parseFloat(mRegen[1]);
                   }
                 }
               }
@@ -6338,20 +6274,20 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
             let matchedUnit = false;
 
             if (m) {
-              hrs = parseInt(m[1] || '0', 10);
-              mins = parseInt(m[2] || '0', 10);
-              secs = parseInt(m[3] || '0', 10);
+              hrs = Number.parseInt(m[1] || '0', 10);
+              mins = Number.parseInt(m[2] || '0', 10);
+              secs = Number.parseInt(m[3] || '0', 10);
               matchedUnit = true;
             } else {
               m = text.match(/\b(?:(\d+)h\s*)?(\d+)m\b/i);
               if (m) {
-                hrs = parseInt(m[1] || '0', 10);
-                mins = parseInt(m[2] || '0', 10);
+                hrs = Number.parseInt(m[1] || '0', 10);
+                mins = Number.parseInt(m[2] || '0', 10);
                 matchedUnit = true;
               } else {
                 m = text.match(/\b(\d+)h\b/i);
                 if (m) {
-                  hrs = parseInt(m[1] || '0', 10);
+                  hrs = Number.parseInt(m[1] || '0', 10);
                   matchedUnit = true;
                 }
               }
@@ -6502,7 +6438,6 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
     const elapsed = now - pillTakenAt;
 
     const buffMs = CONFIG.pillBuffH * 3600000;
-    const knifeMs = CONFIG.pillKnifeH * 3600000;
     const debuffMs = CONFIG.pillDebuffH * 3600000;
     const totalMs = buffMs + debuffMs;
 
@@ -6842,7 +6777,6 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
   let renderGen = 0;
   const EXCLUDED_ALTS = new Set(['gold', 'money', 'coins', 'xp', 'avatar', 'logo']);
   const resourceTxsInFlight = {}; // code -> promise
-  let marketTooltip = null;
   let samplerInterval = null;
 
   function getOrCreateTooltip() {
@@ -6871,7 +6805,7 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
 
         let updated = false;
         for (const [itemCode, price] of Object.entries(prices)) {
-          if (price == null || isNaN(price)) continue;
+          if (price == null || Number.isNaN(price)) continue;
           if (!store[itemCode]) store[itemCode] = [];
 
           store[itemCode].push({ t: nowMs, price: price });
@@ -6974,7 +6908,7 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
         }
 
         const price = Number(item.money) / Number(item.quantity);
-        if (!isNaN(price) && !seenTimes.has(itemTime)) {
+        if (!Number.isNaN(price) && !seenTimes.has(itemTime)) {
           seenTimes.add(itemTime);
           allPoints.push({ t: itemTime, price: price });
         }
@@ -7450,7 +7384,7 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
           btn.onclick = (e) => {
             e.preventDefault();
             e.stopPropagation();
-            const newRange = btn.getAttribute('data-range');
+            const newRange = btn.dataset.range;
             GM_setValue(KEYS.marketGraphRange, newRange);
             renderGen++;
             lastMktState = null;
@@ -7564,8 +7498,8 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
     if (!targetSvg) {
       for (const s of allSvgs) {
         const box = typeof s.getBoundingClientRect === 'function' ? s.getBoundingClientRect() : { width: 0, height: 0 };
-        const wAttr = parseInt(s.getAttribute('width') || '0', 10);
-        const hAttr = parseInt(s.getAttribute('height') || '0', 10);
+        const wAttr = Number.parseInt(s.getAttribute('width') || '0', 10);
+        const hAttr = Number.parseInt(s.getAttribute('height') || '0', 10);
         const hasSize = box.width > 100 || box.height > 50 || wAttr > 100 || hAttr > 50;
         if (hasSize && s.querySelector('path')) {
           targetSvg = s;
@@ -7740,7 +7674,7 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
     const tc = readCache(KEYS.transactionsCache) || {};
     const itemTxs = tc[itemCode];
     if (itemTxs && Array.isArray(itemTxs.data) && itemTxs.data.length > 0) {
-      const prices = itemTxs.data.map(t => getTxPrice(t)).filter(p => p != null && !isNaN(p));
+      const prices = itemTxs.data.map(t => getTxPrice(t)).filter(p => p != null && !Number.isNaN(p));
       if (prices.length > 0) {
         minPrice = Math.min(...prices);
         maxPrice = Math.max(...prices);
@@ -8112,8 +8046,8 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
     }
     const txt = moneyEl.textContent.trim();
     if (!txt) return null;
-    const match = txt.replace(/,/g, '.').match(/\d+(?:\.\d+)?/);
-    return match ? parseFloat(match[0]) : null;
+    const match = /\d+(?:\.\d+)?/.exec(txt.replaceAll(',', '.'));
+    return match ? Number.parseFloat(match[0]) : null;
   }
 
   function todayResetTime() {
@@ -8145,7 +8079,7 @@ function processTransactionsList(items, userId) {
     function resolveTierFromCode(code) {
       if (!code) return null;
       const match = code.match(/(\d+)\s*$/);
-      if (match) return parseInt(match[1], 10);
+      if (match) return Number.parseInt(match[1], 10);
       const clean = code.replace(/\d+$/, '').trim().toLowerCase();
       return CONFIG.weaponCodeToTier[clean] || null;
     }
@@ -8190,8 +8124,8 @@ function processTransactionsList(items, userId) {
         const txTime = new Date(tx.createdAt).getTime();
         const isToday = txTime >= todayStart;
 
-        const money = tx.money != null ? parseFloat(tx.money) : 0;
-        const quantity = tx.quantity != null ? parseInt(tx.quantity, 10) : 1;
+        const money = tx.money != null ? Number.parseFloat(tx.money) : 0;
+        const quantity = tx.quantity != null ? Number.parseInt(tx.quantity, 10) : 1;
         const type = tx.transactionType;
 
         const isSellerMe = normalizeDbId(tx.sellerId) === normalizeDbId(userId);
@@ -8238,7 +8172,7 @@ function processTransactionsList(items, userId) {
             if (isToday && estValue > 0) {
               ledger.income.Loot = (ledger.income.Loot || 0) + estValue;
               addPnlLog(ledger, 'income', 'Loot', lootCode, 1, estValue, 'Beute erhalten');
-              booked = true;
+              ledgerChanged = true;
               dbg('pnl', 'debug', `Loot erhalten [${lootCode}]: +${estValue.toFixed(2)} Gold (Loot-Erhalt).`);
             }
           }
@@ -8344,8 +8278,7 @@ function processTransactionsList(items, userId) {
         }
         else if (type === 'dismantleItem') {
           const realItemCode = tx.item?.code || itemCode;
-          const scrapCount = tx.quantity != null ? parseInt(tx.quantity, 10) : 0;
-          const itemState = tx.item?.state != null ? parseInt(tx.item.state, 10) : 100;
+          const scrapCount = tx.quantity != null ? Number.parseInt(tx.quantity, 10) : 0;
 
           // 1. Schrott-Wert in Gold umrechnen
           const scrapUnitPrice = getScrapUnitPrice();
@@ -8549,7 +8482,7 @@ function processTransactionsList(items, userId) {
         const val = String(node.nodeValue || node.textContent || '').trim();
         const m = val.match(/^x\s*(\d+)$/i) || val.match(/^(\d+)$/);
         if (m) {
-          qty = parseInt(m[1], 10);
+          qty = Number.parseInt(m[1], 10);
         }
       } else {
         const cl = node.classList;
@@ -8557,7 +8490,7 @@ function processTransactionsList(items, userId) {
         const text = String(node.textContent || '').trim();
         const m = text.match(/^x\s*(\d+)$/i);
         if (m) {
-          qty = parseInt(m[1], 10);
+          qty = Number.parseInt(m[1], 10);
           return;
         }
         if (node.childNodes && node.childNodes.length > 0) {
@@ -8604,7 +8537,7 @@ function processTransactionsList(items, userId) {
       foundAnyTab = true;
 
       const isActive = el.getAttribute('aria-selected') === 'true' ||
-                       el.getAttribute('data-state') === 'active' ||
+                       el.dataset.state === 'active' ||
                        el.classList.contains('active') ||
                        el.classList.contains('selected') ||
                        el.classList.contains('_1dnmndy85w') ||
@@ -9649,7 +9582,7 @@ function checkInventoryDeltaWear() {
   const PNL_SCHEMA_VERSION = 8;
 
   function migratePnlSchema() {
-    const stored = parseInt(GM_getValue(KEYS.pnlSchemaVersion, 0), 10) || 0;
+    const stored = Number.parseInt(GM_getValue(KEYS.pnlSchemaVersion, 0), 10) || 0;
     if (stored === PNL_SCHEMA_VERSION) return;
     // v7: cost-basis qtyKnown was inflated by the missing-dedup bug → wipe everything
     // and let the persistent-dedup + paginated fetch rebuild it clean from history.
@@ -9800,10 +9733,10 @@ function checkInventoryDeltaWear() {
   function cleanHeaderValue(str) {
     if (!str) return '';
     return str
-      .replace(/Ä/g, 'Ae').replace(/ä/g, 'ae')
-      .replace(/Ö/g, 'Oe').replace(/ö/g, 'oe')
-      .replace(/Ü/g, 'Ue').replace(/ü/g, 'ue')
-      .replace(/ß/g, 'ss')
+      .replaceAll('Ä', 'Ae').replaceAll('ä', 'ae')
+      .replaceAll('Ö', 'Oe').replaceAll('ö', 'oe')
+      .replaceAll('Ü', 'Ue').replaceAll('ü', 'ue')
+      .replaceAll('ß', 'ss')
       .replace(/[^\x20-\x7E]/g, '') // Keep only printable US-ASCII characters
       .trim();
   }
@@ -10717,6 +10650,7 @@ function checkInventoryDeltaWear() {
   }
 
   let activeMirrorLockVal = null;
+  let hasLoggedMuteDebuffWarning = false;
   // ntfy.sh free-tier budget: ~60-request burst, then ~1 request per 5s refill
   // per IP (plus 250 published msgs/day). A 3s GET poll alone (20/min) outruns
   // the refill (12/min) → guaranteed 429s within minutes → IP ban when ignored.
@@ -10749,12 +10683,18 @@ function checkInventoryDeltaWear() {
     // surface that misconfig on the ampel instead of failing silently.
     if (CONFIG.bountyMuteDebuff) {
       if (!CONFIG.featPillReminder) {
-        dbg('bountyNotify', 'warn', 'mute-in-debuff on but Pill Reminder off — pill state undetectable, mute inactive');
+        if (!hasLoggedMuteDebuffWarning) {
+          dbg('bountyNotify', 'warn', 'mute-in-debuff on but Pill Reminder off — pill state undetectable, mute inactive');
+          hasLoggedMuteDebuffWarning = true;
+        }
         setHealth('bountyNotify', 'warn', 'mute needs Pill Reminder on');
-      } else if (GM_getValue(KEYS.pillState, 'none') === 'DEBUFF') {
-        dbg('bountyNotify', 'debug', 'mirror muted — debuff active');
-        setHealth('bountyNotify', 'ok', 'mirror muted (debuff)');
-        return;
+      } else {
+        hasLoggedMuteDebuffWarning = false;
+        if (GM_getValue(KEYS.pillState, 'none') === 'DEBUFF') {
+          dbg('bountyNotify', 'debug', 'mirror muted — debuff active');
+          setHealth('bountyNotify', 'ok', 'mirror muted (debuff)');
+          return;
+        }
       }
     }
     const bountyTopic = getEffectiveTopic();
@@ -10920,7 +10860,7 @@ function checkInventoryDeltaWear() {
     if (typeof window !== 'undefined') {
       window.__WIA_LOCALE__ = CONFIG.locale;
     }
-    CONFIG.stockKeepCount = parseInt(GM_getValue(KEYS.stockKeepCount, 3), 10) || 3;
+    CONFIG.stockKeepCount = Number.parseInt(GM_getValue(KEYS.stockKeepCount, 3), 10) || 3;
     CONFIG.featNotes = GM_getValue(KEYS.featNotes, false);
     CONFIG.featBattleAdvisor = GM_getValue(KEYS.featBattleAdvisor, false);
     CONFIG.alliedCountryCodes = GM_getValue(KEYS.alliedCountryCodes, CONFIG.alliedCountryCodes);
@@ -11001,11 +10941,11 @@ function checkInventoryDeltaWear() {
       if (loopGuard('advisor-heartbeat', 25, 15000)) return;
       const cards = findItemCards();
       if (cards.size > 0 && hasInventoryChanged(cards)) {
-        log('Advisor heartbeat: grid changed without rescan → re-attach + rescan');
+        log('Advisor heartbeat: grid changed without rescan → re-attach + rescan [reason: ' + lastHicReason + ']');
         updateObserverTarget();      // revive observer in case its root went stale
         guard('advisor', () => triggerScan(false));
       }
-    }, 1500);
+    }, 4000);
 
     // Trigger crafting advisor check once on startup if the modal is open
     triggerCraftingAdvisorCheck();

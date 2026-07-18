@@ -201,20 +201,28 @@ class MockElement {
       this.className = value;
       this.classList.classes = new Set(value.split(' ').filter(Boolean));
     }
+    if (name.startsWith('data-')) {
+      const propName = name.slice(5).replace(/-([a-z])/g, (g) => g[1].toUpperCase());
+      this.dataset[propName] = value;
+    }
   }
 
   removeAttribute(name) {
     this.attributes.delete(name);
+    if (name.startsWith('data-')) {
+      const propName = name.slice(5).replace(/-([a-z])/g, (g) => g[1].toUpperCase());
+      delete this.dataset[propName];
+    }
   }
 
   toggleAttribute(name, force) {
     const has = this.attributes.has(name);
     const shouldHave = force !== undefined ? !!force : !has;
     if (shouldHave) {
-      this.attributes.set(name, 'true');
+      this.setAttribute(name, 'true');
       return true;
     } else {
-      this.attributes.delete(name);
+      this.removeAttribute(name);
       return false;
     }
   }
