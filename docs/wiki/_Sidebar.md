@@ -2,6 +2,7 @@
 
 - [Home](Home)
 - [Installation](Installation)
+- [Disclaimer](Disclaimer)
 
 **Features**
 - [Inventory Advisor](Inventory-Advisor)
@@ -18,6 +19,7 @@
 **🇩🇪 Deutsch**
 - [Startseite](Home.de)
 - [Installation](Installation.de)
+- [Disclaimer](Disclaimer.de)
 - [Inventory Advisor](Inventory-Advisor.de)
 - [Täglicher P&L Tracker](Daily-PnL-Tracker.de)
 - [Ressourcen-Markt-Graph](Market-Graph.de)

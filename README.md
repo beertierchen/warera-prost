@@ -21,7 +21,28 @@ A suite of client-side [userscripts](https://en.wikipedia.org/wiki/Userscript) f
 
 ## ⚠️ No automation
 
-PROST is a **client-side visual assistant only**. It runs session-less (never reads or forwards your game session cookies) and reads the page. Official-API features require your personal API key; without it, only the community gateway is used. It never clicks, trades, or plays for you. Use at your own risk and within WareEra's terms.
+PROST is a **client-side visual assistant only**. It runs session-less (never reads or forwards your game session cookies) and reads the page. Official-API features require your personal API key; without it, only the community gateway is used. It never clicks, trades, or plays for you.
+
+## ⚖️ Disclaimer & Open Source
+
+> **Use at your own risk.** PROST is provided free of charge, **"as is"**, without any warranty of any kind (see [LICENSE](LICENSE)). You alone are responsible for how you use it. Running a userscript on WareEra may conflict with the game's terms of service and could put your account at risk. The author accepts **no liability whatsoever** for any consequence of your use — account action, data loss, or anything else. If in doubt, don't run it.
+
+**Not claimed as intellectual property.** This project is deliberately open source under the [MIT license](LICENSE). I do not treat it as private property. Copy it, fork it, modify it, redistribute it.
+
+**Cooperation is welcome.** This is a community project. Contributions, issues, and forks are actively encouraged — see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+📄 Full text: [DISCLAIMER.md](DISCLAIMER.md).
+
+<details>
+<summary><b>🇩🇪 Haftungsausschluss (Deutsch)</b></summary>
+
+> **Nutzung auf eigene Gefahr.** PROST wird kostenlos und **„wie besehen"** ohne jede Gewährleistung bereitgestellt (siehe [LICENSE](LICENSE)). Für die Nutzung bist allein du verantwortlich. Der Einsatz eines Userscripts kann gegen die Nutzungsbedingungen von WareEra verstoßen und dein Spielkonto gefährden. Der Autor übernimmt **keinerlei Haftung** für Folgen der Nutzung (Konto-Sperren, Datenverlust o. Ä.). Im Zweifel: nicht nutzen.
+
+**Kein Anspruch auf geistiges Eigentum.** Dieses Projekt ist bewusst Open Source unter der [MIT-Lizenz](LICENSE). Ich betrachte es nicht als mein Eigentum. Kopieren, Forken, Verändern und Weiterverteilen sind ausdrücklich erlaubt.
+
+**Zusammenarbeit erwünscht.** Ein Community-Projekt. Beiträge, Issues und Forks sind ausdrücklich willkommen — siehe [CONTRIBUTING.md](CONTRIBUTING.md).
+
+</details>
 
 ## Scripts
 

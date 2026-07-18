@@ -21,6 +21,19 @@
 // ==/UserScript==
 
 /*
+ * DISCLAIMER — USE AT YOUR OWN RISK
+ * ---------------------------------
+ * PROST is free, open-source software provided "AS IS", without warranty of any
+ * kind (MIT license). You alone are responsible for how you use it. Running a
+ * userscript on WareEra may conflict with the game's terms of service and could
+ * put your account at risk. The author accepts NO liability for any consequence
+ * of your use (account action, data loss, or otherwise). If in doubt, don't run it.
+ *
+ * This project is deliberately open source and NOT claimed as private intellectual
+ * property — copy, fork, modify, and redistribute freely under the MIT license.
+ * Cooperation is welcome: https://github.com/beertierchen/warera-prost
+ * Full text: DISCLAIMER.md
+ *
  * SECURITY / PRIVACY NOTE
  * ----------------------
  * The API token is YOUR personal credential. A userscript sandbox has no real

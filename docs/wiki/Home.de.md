@@ -7,7 +7,7 @@ clientseitiger [Userscripts](https://de.wikipedia.org/wiki/Userscript) für das
 Browserspiel [**WareEra**](https://app.warera.io).
 
 > **Prost! 🍺 Es hilft dir beim Spielen, es spielt nicht für dich.** Keine
-> Automatisierung - jedes Overlay ist rein lesende Entscheidungshilfe.
+> Automatisierung - jedes Overlay ist rein lesende Entscheidungshilfe. Bitte lies den [Haftungsausschluss](Disclaimer.de).
 
 > ⚠️ **Open Beta.** PROST ist in aktiver Entwicklung - es kann langsam, ungenau
 > oder gelegentlich fehlerhaft sein; Empfehlungen sind Entscheidungshilfe,
