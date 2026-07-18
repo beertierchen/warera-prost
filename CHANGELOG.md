@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## 2026-07-18 | Bugfix: Preise im keylosen Modus reaktiviert (v0.9.1)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/test-advisor-load.js`
+
+**Änderungen (Deutsch):**
+- **Preisanzeige korrigiert**: Ein Fehler, bei dem die Materialpreise im keylosen Modus nicht geladen wurden (Anzeige "?"), wurde behoben. Der Gateway-Zugriff sendet nun wieder die korrekte App-Identifikation.
+- **Einmaliges Zurücksetzen**: Fehlerhafte oder veraltete Blockierungen von API-Prozeduren werden beim Update automatisch zurückgesetzt, damit die Preisanzeige sofort wieder funktioniert.
+- **Konsolen-Logs und Benennungen**: Interne Log-Ausgaben wurden einheitlich von `[WIA]` auf `[PROST]` umbenannt. Zudem werden zukünftige API-Fehler deutlicher in der Konsole und im in-game Diagnose-Panel (Ampel) angezeigt.
+
+**Changes (English):**
+- **Fixed Price Display**: Resolved an issue where material prices did not load in keyless mode (showing "?"). The gateway request now correctly transmits the required app identifier.
+- **One-time Reset**: Any stale blocked/gated API procedures are automatically cleared upon upgrading to ensure immediate restoration of price data.
+- **Console Log & Prefix Cleanup**: Internal console log prefixes have been standardized from `[WIA]` to `[PROST]`. Gating failures are now logged clearly in the console and the in-game diagnosis panel.
+
 ## 2026-07-17 | API-Härtung: session-lose Requests, nur x-api-key (v0.9.0)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `package.json`, `README.md`, `CHANGELOG.md`, `tests/test-advisor-load.js`, `docs/wiki/Settings.md`, `docs/wiki/Settings.de.md`

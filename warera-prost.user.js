@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.9.0
+// @version      0.9.1
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -780,6 +780,7 @@
     pnlProcessedTxs: NS + 'pnl.processedTxs',  // persistent (history-spanning) tx-id dedup for cost-basis + booking
     pnlBadTx: NS + 'pnl.badTx',                // quarantine retry attempts mapping for bad transactions
     gatedProcedures: NS + 'gatedProcedures',
+    gatedResetV090: NS + 'gatedResetV090',
     bountyScope: NS + 'bountyScope',
     bountyAllianceNameCache: NS + 'bountyAllianceNameCache',
     apiBaseGatewayMigrated: NS + 'apiBaseGatewayMigrated',
@@ -973,7 +974,7 @@
       if (!r.warned) {            // surface ONCE per window
         r.warned = true;
         setHealth(feat, 'warn', `possible loop: "${String(msg).slice(0,60)}" ×${r.count} in ${W}ms`);
-        console.warn(`[WIA:${feat}] possible loop — "${String(msg).slice(0,60)}" repeated; suppressing`);
+        console.warn(`[PROST:${feat}] possible loop — "${String(msg).slice(0,60)}" repeated; suppressing`);
       }
       return true; // caller: suppress further console output for this key this window
     }
@@ -994,7 +995,7 @@
     if (isRepeated) return;
 
     if (isError || CONFIG.debug) {
-      (level === 'error' ? console.error : console.log)(`[WIA:${feat}]`, ...msg);
+      (level === 'error' ? console.error : console.log)(`[PROST:${feat}]`, ...msg);
     }
   }
 
@@ -1009,7 +1010,7 @@
     setHealth(feat, status, fullMsg);
 
     if (!isRepeated) {
-      console.error(`[WIA:${feat}]${ctx ? ' ' + ctx : ''}`, e);
+      console.error(`[PROST:${feat}]${ctx ? ' ' + ctx : ''}`, e);
     }
     return msg;
   }
@@ -1072,7 +1073,7 @@
     if (typeof refreshMenuCommands === 'function') refreshMenuCommands();
     if (CONFIG.debug && typeof runProbes === 'function') runProbes();
     if (typeof updateDebugHud === 'function') updateDebugHud();
-    console.log(`[WIA] debug = ${CONFIG.debug}`);
+    console.log(`[PROST] debug = ${CONFIG.debug}`);
   }
 
   // Console API. Open DevTools and use WIA.health() / WIA.logs() / WIA.debug(true).
@@ -1358,9 +1359,16 @@
     return k ? { 'x-api-key': k } : {};
   }
   function headersForBase(base) {
-    let h = '';
-    try { h = new URL(base).hostname; } catch (e) {}
-    return h === 'api2.warera.io' ? keyedHeaders() : publicHeaders();
+    try {
+      const h = new URL(base).hostname;
+      if (h === 'api2.warera.io') {
+        return keyedHeaders();
+      }
+      if (h === 'gateway.warerastats.io') {
+        return { 'X-API-Key': 'prost-userscript' };
+      }
+    } catch (e) {}
+    return {};
   }
 
   function isRateLimited() {
@@ -1378,14 +1386,13 @@
     return Array.isArray(gated) && gated.includes(procedure);
   }
   function gateProcedure(procedure) {
-    const gated = GM_getValue(KEYS.gatedProcedures, []);
-    if (Array.isArray(gated)) {
-      if (!gated.includes(procedure)) {
-        gated.push(procedure);
-        GM_setValue(KEYS.gatedProcedures, gated);
-      }
-    } else {
-      GM_setValue(KEYS.gatedProcedures, [procedure]);
+    let gated = GM_getValue(KEYS.gatedProcedures, []);
+    if (!Array.isArray(gated)) gated = [];
+    if (!gated.includes(procedure)) {
+      gated.push(procedure);
+      GM_setValue(KEYS.gatedProcedures, gated);
+      console.warn(`[PROST:api] procedure gated: ${procedure} (auth/permission failure)`);
+      setHealth('api', 'warn', `procedure gated: ${procedure} (auth/permission failure)`);
     }
   }
 
@@ -1707,7 +1714,7 @@
           url,
           headers: {
             'Content-Type': 'application/json',
-            'X-API-Key': 'wia-userscript'
+            'X-API-Key': 'prost-userscript'
           },
           data: body
         });
@@ -1784,7 +1791,7 @@
   function runFirstCardScopingLog() {
     const img = document.querySelector(CONFIG.itemImageSelector);
     if (!img) {
-      console.log('[WIA:debug] No card image found on page matching selector:', CONFIG.itemImageSelector);
+      console.log('[PROST:debug] No card image found on page matching selector:', CONFIG.itemImageSelector);
       return;
     }
     const isModal = isMarketPage() ? false : isInsideModalOrSidebar(img);
@@ -1792,7 +1799,7 @@
     const isShop = isShopPage();
     const card = climbToCard(img);
     const itemInfo = detectItem(img, card);
-    console.log('[WIA:debug] Scoping Debug for first image:', {
+    console.log('[PROST:debug] Scoping Debug for first image:', {
       img,
       isInsideModalOrSidebar: isModal,
       isInsideProfileEquipment: isProfile,
@@ -2118,6 +2125,8 @@
     // Export internal functions for unit tests
     globalThis.setToken = setToken;
     globalThis.getToken = getToken;
+    globalThis.gateProcedure = gateProcedure;
+    globalThis.Health = Health;
     globalThis.parseStats = parseStats;
     globalThis.getItemState = getItemState;
     globalThis.isInsideProfileEquipment = isInsideProfileEquipment;
@@ -6897,7 +6906,7 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
           url,
           headers: {
             'Content-Type': 'application/json',
-            'X-API-Key': 'wia-userscript'
+            'X-API-Key': 'prost-userscript'
           },
           data: body
         });
@@ -8491,7 +8500,7 @@ function processTransactionsList(items, userId) {
           const body = JSON.stringify(cursor ? { limit: 100, userId, cursor } : { limit: 100, userId });
           const res = await gmRequest({
             method: 'POST', url,
-            headers: { 'Content-Type': 'application/json', 'X-API-Key': 'wia-userscript' },
+            headers: { 'Content-Type': 'application/json', 'X-API-Key': 'prost-userscript' },
             data: body
           });
           if (res.status < 200 || res.status >= 300) break;
@@ -8954,7 +8963,7 @@ function checkInventoryDeltaWear() {
         const { unitPaid, isEstimated } = resolveUnitBasis(code);
         const cost = unitPaid * (totalDurLost / 100);
         if (cost > 0) {
-          log(`[WIA:pnl] Verschleiß [${code}]: -${totalDurLost.toFixed(1)}%. Verlust: -${cost.toFixed(2)} Gold${isEstimated ? ' (Schätzwert)' : ''}.`);
+          log(`[PROST:pnl] Verschleiß [${code}]: -${totalDurLost.toFixed(1)}%. Verlust: -${cost.toFixed(2)} Gold${isEstimated ? ' (Schätzwert)' : ''}.`);
           ledger.expense.Repairs = (ledger.expense.Repairs || 0) + cost;
           if (isEstimated) ledger.hasEstimatedRepairs = true;
           addPnlLog(ledger, 'repair', 'Repairs', code, totalDurLost, cost, isEstimated ? 'Schätzwert' : 'Einkaufswert');
@@ -9773,7 +9782,7 @@ function checkInventoryDeltaWear() {
     return id;
   }
 
-  const SCRIPT_VERSION = (typeof GM_info !== 'undefined' && GM_info && GM_info.script && GM_info.script.version) || '0.9.0';
+  const SCRIPT_VERSION = (typeof GM_info !== 'undefined' && GM_info && GM_info.script && GM_info.script.version) || '0.9.1';
 
   function cleanHeaderValue(str) {
     if (!str) return '';
@@ -10873,6 +10882,11 @@ function checkInventoryDeltaWear() {
 
   function start() {
     migrateTransactionsCache();
+    // One-time migration to clear stale gated procedures from keyless bug
+    if (!GM_getValue(KEYS.gatedResetV090, false)) {
+      GM_setValue(KEYS.gatedProcedures, []);
+      GM_setValue(KEYS.gatedResetV090, true);
+    }
     if (!GM_getValue(KEYS.apiBaseGatewayMigrated, false)) {
       GM_setValue(KEYS.apiBase, null);
       GM_setValue(KEYS.apiBaseGatewayMigrated, true);

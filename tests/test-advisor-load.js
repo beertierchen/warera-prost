@@ -9,7 +9,10 @@ let code = fs.readFileSync(scriptPath, 'utf8');
 
 // Mock Tampermonkey / Browser environment
 global.GM_addStyle = () => {};
-const mockStorage = { 'wia.locale': 'en' };
+const mockStorage = {
+  'wia.locale': 'en',
+  'wia.gatedProcedures': JSON.stringify(['itemTrading.getPrices'])
+};
 global.GM_setValue = (key, val) => {
   if (val != null && (typeof val === 'object' || Array.isArray(val))) {
     mockStorage[key] = JSON.stringify(val);
@@ -2486,27 +2489,41 @@ try {
         let h = '';
         try { h = new URL(opts.url).hostname; } catch (e) {}
         const isApi2Host = h === 'api2.warera.io';
+        const isGatewayHost = h === 'gateway.warerastats.io';
         
         if (opts.headers) {
-          for (const k of Object.keys(opts.headers)) {
+          const keys = Object.keys(opts.headers);
+          const lowerKeys = keys.map(k => k.toLowerCase());
+          
+          for (const k of keys) {
             const lower = k.toLowerCase();
             assert.notStrictEqual(lower, 'cookie', 'Outgoing headers must not contain Cookie');
             assert.notStrictEqual(lower, 'authorization', 'Outgoing headers must not contain Authorization');
             assert.notStrictEqual(lower, 'x-api-token', 'Outgoing headers must not contain x-api-token');
             if (lower === 'x-api-key') {
-              assert.ok(isApi2Host, 'x-api-key header must only be sent to api2.warera.io');
               const keyVal = global.GM_getValue(globalThis.KEYS.token);
-              if (keyVal) {
-                assert.strictEqual(opts.headers[k], keyVal, 'x-api-key must match the stored API key value');
+              if (isApi2Host) {
+                if (keyVal) {
+                  assert.strictEqual(opts.headers[k], keyVal, 'x-api-key must match the stored API key value');
+                }
+              } else {
+                if (keyVal) {
+                  assert.notStrictEqual(opts.headers[k], keyVal, 'non-api2 host must not carry the user API key');
+                }
+                if (isGatewayHost) {
+                  assert.strictEqual(opts.headers[k], 'prost-userscript', 'gateway host request must carry prost-userscript app key');
+                }
               }
             }
           }
           if (isApi2Host) {
-            const keys = Object.keys(opts.headers).map(k => k.toLowerCase());
-            assert.ok(keys.includes('x-api-key'), 'Request to api2.warera.io must include x-api-key header');
+            assert.ok(lowerKeys.includes('x-api-key'), 'Request to api2.warera.io must include x-api-key header');
+          } else if (isGatewayHost) {
+            assert.ok(lowerKeys.includes('x-api-key'), 'Request to gateway.warerastats.io must include X-API-Key header');
+            const keyName = keys.find(k => k.toLowerCase() === 'x-api-key');
+            assert.strictEqual(opts.headers[keyName], 'prost-userscript', 'Request to gateway.warerastats.io must have X-API-Key equal to prost-userscript');
           } else {
-            const keys = Object.keys(opts.headers).map(k => k.toLowerCase());
-            assert.ok(!keys.includes('x-api-key'), 'Request to non-api2 host must not include x-api-key header');
+            assert.ok(!lowerKeys.includes('x-api-key'), 'Request to other non-api2 host must not include x-api-key header');
           }
         }
         if (opts.onload) {
@@ -2606,8 +2623,31 @@ try {
       assert.strictEqual(migratedToken, '', 'getToken must return empty string for legacy stored keys');
       assert.strictEqual(global.GM_getValue(globalThis.KEYS.token), '', 'legacy stored token must be cleared from storage');
       assert.strictEqual(global.GM_getValue(globalThis.KEYS.tokenFormat), 'plain', 'wia.tokenFormat marker must be set to "plain" after migration');
-      
       console.log('Token storage unit tests passed.');
+
+      // (c) Gated procedures reset migration
+      const gatedAfterStartup = global.GM_getValue(globalThis.KEYS.gatedProcedures);
+      assert.deepStrictEqual(gatedAfterStartup, [], 'gatedProcedures must be cleared after migration at startup');
+      assert.strictEqual(global.GM_getValue(globalThis.KEYS.gatedResetV090), true, 'wia.gatedResetV090 marker must be set to true after startup');
+
+      // (d) gateProcedure warning and health check
+      const originalConsoleWarn = console.warn;
+      let consoleWarned = false;
+      console.warn = (msg) => {
+        if (msg && msg.includes('[PROST:api] procedure gated: test.procedure (auth/permission failure)')) {
+          consoleWarned = true;
+        }
+      };
+      
+      globalThis.GM_setValue(globalThis.KEYS.gatedProcedures, []);
+      globalThis.gateProcedure('test.procedure');
+      
+      console.warn = originalConsoleWarn;
+      assert.ok(consoleWarned, 'gateProcedure must console.warn on newly gated procedure');
+      
+      const healthReason = globalThis.Health?.api?.reason || '';
+      assert.ok(healthReason.includes('procedure gated: test.procedure'), 'gateProcedure must setHealth on api feature');
+
       console.log('Compliance tests passed successfully.');
 
       console.log('Success! The script loaded and initialized without throwing any runtime errors.');
