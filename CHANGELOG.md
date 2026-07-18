@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## 2026-07-18 | Feature: Version-Selfcheck & Signierter Admin-Sicherheitskanal (v0.9.3)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/test-advisor-load.js`, `.gitignore`, `README.md`, `tools/admin-sign/sign.js`
+
+**Änderungen (Deutsch):**
+- **Automatischer Versions-Selfcheck**: Prüft einmal täglich beim Start oder manuell über das Tampermonkey-Menü auf neuere Versionen auf GreasyFork und zeigt einen auffälligen, sicheren Update-Hinweis in den Einstellungen an.
+- **Verschlüsselter Admin-Sicherheitskanal**: Empfängt kritische Update- und Sicherheitswarnungen über einen öffentlichen Kanal. Alle Meldungen sind kryptografisch mit Ed25519 signiert und gegen Replay-Angriffe geschützt.
+- **Hintergrund-Optimierungen**: Alle automatischen Netzwerkprüfungen werden gedrosselt oder pausiert, wenn der Browser-Tab im Hintergrund liegt.
+
+**Changes (English):**
+- **Automatic Version Selfcheck**: Checks once a day on startup or manually via the Tampermonkey menu for newer versions on GreasyFork, displaying a prominent, secure update banner in the settings.
+- **Cryptographic Admin Safety Channel**: Receives critical update and safety alerts via a public feed. All announcements are cryptographically verified using Ed25519 and protected against replay attacks.
+- **Background Optimizations**: Automatically throttles or pauses network checks when the browser tab is hidden.
+
 ## 2026-07-18 | Bugfix: Rescan-Schleife, Log-Spam & Code-Bereinigung (v0.9.2)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `package.json`, `CHANGELOG.md`, `tests/test-advisor-load.js`

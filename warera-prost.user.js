@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         TEST PROST
+// @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.9.2-unstable
+// @version      0.9.3
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -9826,7 +9826,7 @@ function checkInventoryDeltaWear() {
     return id;
   }
 
-  const SCRIPT_VERSION = (typeof GM_info !== 'undefined' && GM_info && GM_info.script && GM_info.script.version) || '0.9.1';
+  const SCRIPT_VERSION = (typeof GM_info !== 'undefined' && GM_info && GM_info.script && GM_info.script.version) || '0.9.3';
 
   function cleanHeaderValue(str) {
     if (!str) return '';
