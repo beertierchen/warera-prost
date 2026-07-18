@@ -453,6 +453,34 @@ for (const line of lines) {
   }
 }
 assert.deepStrictEqual(headerConnects.sort(), ['api2.warera.io', 'gateway.warerastats.io', 'ntfy.sh', 'greasyfork.org'].sort(), '@connect metadata must specify exactly api2.warera.io, gateway.warerastats.io, ntfy.sh, and greasyfork.org');
+
+let scriptName = '';
+let scriptVersion = '';
+for (const line of lines) {
+  if (line.includes('==/UserScript==')) break;
+  const nameMatch = line.match(/\/\/\s*@name\s+(.+)/);
+  if (nameMatch) scriptName = nameMatch[1].trim();
+  const verMatch = line.match(/\/\/\s*@version\s+(\S+)/);
+  if (verMatch) scriptVersion = verMatch[1].trim();
+}
+
+const isTestName = scriptName.startsWith('TEST ');
+const isUnstableVersion = scriptVersion.includes('-unstable');
+if (isTestName !== isUnstableVersion) {
+  throw new Error(`Header coupling mismatch: @name "${scriptName}" and @version "${scriptVersion}" must both be WIP (starts with "TEST " and ends with "-unstable") or both be stable.`);
+}
+
+let currentBranch = '';
+try {
+  currentBranch = require('child_process').execSync('git rev-parse --abbrev-ref HEAD').toString().trim();
+} catch (e) {}
+
+if (currentBranch === 'main') {
+  if (isTestName || isUnstableVersion) {
+    throw new Error(`Release gate failed: WIP headers found on main branch! @name="${scriptName}", @version="${scriptVersion}". Release builds must be cleanly versioned.`);
+  }
+}
+
 console.log('Static compliance assertions passed.');
 
 try {

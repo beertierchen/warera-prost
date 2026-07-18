@@ -1037,6 +1037,8 @@
       }
     }).catch((err) => {
       console.warn('[PROST:update] check failed:', err.message);
+      // Backoff: set last version check to 23 hours ago so we retry in ~1 hour instead of instantly hammering on failure
+      GM_setValue(KEYS.lastVersionCheckAt, nowMs - 23 * 60 * 60 * 1000);
       if (manual) {
         alert('Check for updates failed: ' + err.message);
       }
@@ -10945,14 +10947,36 @@ function checkInventoryDeltaWear() {
     return bytes;
   }
 
+  let isCryptoWarnLogged = false;
+
   async function verifyAdminMsg(env) {
     if (!env || typeof env.payload !== 'string' || !env.sig) return false;
-    if (typeof env.ts !== 'number' || Date.now() - env.ts > 48 * 3600 * 1000) return false;
-    const seen = GM_getValue(KEYS.adminSeenSeq, 0);
+    // Check freshness (<48h) and clock skew/future bounds (>60s)
+    if (typeof env.ts !== 'number' || Date.now() - env.ts > 48 * 3600 * 1000 || Date.now() - env.ts < -60000) return false;
+    
+    // Per-kid monotonic sequence verification and migration
+    let seenDict = GM_getValue(KEYS.adminSeenSeq, {});
+    if (typeof seenDict === 'number') {
+      seenDict = { beertierchen: seenDict };
+      GM_setValue(KEYS.adminSeenSeq, seenDict);
+    } else if (typeof seenDict !== 'object' || seenDict === null) {
+      seenDict = {};
+    }
+    
+    const kid = env.kid || 'beertierchen';
+    const seen = seenDict[kid] || 0;
     if (typeof env.seq !== 'number' || env.seq <= seen) return false;
-    if (typeof crypto === 'undefined' || !crypto.subtle) return false;
+    
+    if (typeof crypto === 'undefined' || !crypto.subtle) {
+      if (!isCryptoWarnLogged) {
+        dbg('api', 'warn', 'Ed25519 signatures not supported (subtle crypto missing)');
+        isCryptoWarnLogged = true;
+      }
+      return false;
+    }
+    
     try {
-      const data = new TextEncoder().encode(`${env.payload}|${env.ts}|${env.seq}`);
+      const data = new TextEncoder().encode(`${env.payload}|${env.ts}|${env.seq}|${kid}`);
       const sigBytes = base64ToBytes(env.sig);
       const candidates = env.kid ? ADMIN_PUBKEYS.filter(k => k.kid === env.kid).concat(ADMIN_PUBKEYS) : ADMIN_PUBKEYS;
       for (const k of candidates) {
@@ -10966,10 +10990,16 @@ function checkInventoryDeltaWear() {
           );
           const valid = await crypto.subtle.verify('Ed25519', key, sigBytes, data);
           if (valid) {
-            GM_setValue(KEYS.adminSeenSeq, env.seq);
+            seenDict[kid] = env.seq;
+            GM_setValue(KEYS.adminSeenSeq, seenDict);
             return true;
           }
-        } catch (e) {}
+        } catch (e) {
+          if (!isCryptoWarnLogged) {
+            dbg('api', 'warn', 'Ed25519 signature verification not supported in this browser: ' + e.message);
+            isCryptoWarnLogged = true;
+          }
+        }
       }
     } catch (e) {}
     return false;
@@ -11006,7 +11036,7 @@ function checkInventoryDeltaWear() {
     try {
       const res = await ntfyRequest('api', {
         method: 'GET',
-        url: `${NTFY_BASE}/bumblebee-goodboy/json?poll=1&since=300s`
+        url: `${NTFY_BASE}/bumblebee-goodboy/json?poll=1&since=48h`
       });
       if (!res) return;
       if (res.status !== 200) { dbg('api', 'error', 'admin topic read failed', res.status); return; }

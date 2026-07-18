@@ -62,7 +62,7 @@ async function sign(payload, kid = 'beertierchen') {
   }
 
   const ts = Date.now();
-  const msgText = `${payload}|${ts}|${seq}`;
+  const msgText = `${payload}|${ts}|${seq}|${kid}`;
   const data = new TextEncoder().encode(msgText);
 
   // Sign message
