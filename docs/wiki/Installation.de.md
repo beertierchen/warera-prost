@@ -26,7 +26,7 @@ liefert künftige Updates automatisch.
 ## 3. Loslegen
 
 1. [WareEra](https://app.warera.io) öffnen.
-2. Dein Inventar oder den Equipment-Markt aufrufen.
+2. Dein Inventar aufrufen.
 3. Unten rechts auf das ⚙-Zahnrad klicken, um Funktionen zu konfigurieren - siehe
    [Einstellungen](Settings.de). Der Punkt am Zahnrad zeigt die Datenfrische
    (grün = aktuell, orange = veraltet, rot = Rate-Limit).
@@ -69,13 +69,10 @@ Details in der [Tampermonkey-FAQ](https://www.tampermonkey.net/faq.php#Q209).
 aktualisiert. Die jeweils aktuelle Version steht im
 [CHANGELOG](https://github.com/beertierchen/warera-prost/blob/main/CHANGELOG.md).
 
-## Optional: API-Token
+## Optional: API-Key
 
-Die meisten Funktionen laufen ohne Einrichtung. Für frische Markt- und Schrottpreise
-trägst du deinen eigenen WareEra-API-Token in den [Einstellungen](Settings.de#api-token)
-ein. Er bleibt auf deinem Rechner.
+Die meisten Funktionen (inklusive Preisen, Transaktionen und einfachen Schlacht-Overlays) laufen ohne Einrichtung über das Community-Gateway. Um offizielle API-Funktionen (wie allianzbasierte Schlacht-Highlights und fortgeschrittene Kopfgeld-Filter) freizuschalten, trägst du deinen eigenen WareEra-API-Key in den [Einstellungen](Settings.de#api-token) ein. Er bleibt auf deinem Rechner.
 
-> ⚠️ Behandle den Token wie ein Passwort. Bei Verdacht auf Kompromittierung in WareEra
-> widerrufen/erneuern.
+> ⚠️ Achte darauf, einen **lesenden (read-only)** API-Key in den WareEra-Einstellungen zu erstellen. Gib ihn nicht an Dritte weiter und widerrufe/erneuere ihn bei Verdacht auf Kompromittierung.
 
 Siehe auch: [Home](Home.de) · [Einstellungen](Settings.de)

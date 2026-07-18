@@ -28,24 +28,22 @@ browser game [**WareEra**](https://app.warera.io).
 | [Bounty Notifications](Bounty-Notify) | *Experimental.* Background poller sending allied bounty alerts to your phone or desktop via ntfy.sh. |
 | [Player Notes](Player-Notes) | *Experimental.* A private note icon next to player links, stored locally. |
 | [Diagnostics](Diagnostics) | Feature-health panel, scan-performance traffic-light, and a debug dump. |
-| [Settings & Cheat Sheet](Settings) | Gear menu: feature toggles, optional API token, locale (DE/EN), and an in-app cheat sheet. |
+| [Settings & Cheat Sheet](Settings) | Gear menu: feature toggles, optional API key, locale (DE/EN), and an in-app cheat sheet. |
 
 ## Quick start
 
 1. Install a userscript manager (Tampermonkey / Violentmonkey).
 2. Install PROST — see **[Installation](Installation)**.
-3. Open [WareEra](https://app.warera.io), visit your inventory or the equipment
-   market, and click the ⚙ gear (bottom-right) to configure.
+3. Open [WareEra](https://app.warera.io), visit your inventory, and click the ⚙ gear (bottom-right) to configure.
 
 Trouble installing or seeing nothing? See **[Installation → Troubleshooting](Installation#troubleshooting)**.
 
 ## Privacy & safety
 
 - **No automation.** Overlays only read and annotate the page.
-- The optional API token is **your** credential, stored locally via `GM_setValue`
-  (lightly obfuscated — not encryption). See [Settings](Settings#api-token).
-- No data leaves your browser except calls **you** trigger to the official game
-  API and the public stats gateway.
+- The optional API key is **your** credential, stored locally via `GM_setValue`
+  (stored locally as plain text to allow auditing). See [Settings](Settings#api-token).
+- No data leaves your browser except calls to the official game API, the public stats gateway, and the optional push notification service (ntfy.sh).
 
 ---
 

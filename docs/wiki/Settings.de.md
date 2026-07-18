@@ -65,7 +65,7 @@ dem Dialog, auf schmalen klappt er darunter auf.
 
 ## Weitere Schaltflächen
 
-- **Speichern** — übernimmt Token und Feature-Schalter (Token-Änderung leert den Cache).
+- **Speichern** — übernimmt Key und Feature-Schalter (Key-Änderung leert den Cache).
 - **Cache leeren** — verwirft zwischengespeicherte Preise/Status.
 - **Schließen** — schließt den Dialog ohne Speichern.
 

@@ -84,7 +84,7 @@ Updates werden automatisch über deinen Userscript-Manager eingespielt (`@update
 
 ## Privacy & API key
 
-The script is strictly **session-less** — it never accesses or transmits your game session cookies. Outbound requests are anonymous (to the community gateway) or authenticated solely with your official **API key** (required for official-API features). The script never contacts `api2.warera.io` without your API key. The API key is stored locally in GM storage as plain text to allow auditing.
+The script is strictly **session-less** — it never accesses or transmits your game session cookies. Outbound requests are anonymous (to the community gateway), authenticated solely with your official **API key** (required for official-API features), or sent to `ntfy.sh` (if you configure push notifications). The script never contacts `api2.warera.io` without your API key. The API key is stored locally in GM storage as plain text to allow auditing.
 
 ## Roadmap
 

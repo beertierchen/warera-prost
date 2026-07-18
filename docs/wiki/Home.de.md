@@ -29,24 +29,22 @@ Browserspiel [**WareEra**](https://app.warera.io).
 | [Bounty-Push-Meldungen](Bounty-Notify.de) | *Experimentell.* Hintergrunddienst sendet Kopfgeld-Benachrichtigungen aufs Handy oder den Desktop via ntfy.sh. |
 | [Spieler-Notizen](Player-Notes.de) | *Experimentell.* Privates Notiz-Icon neben Spieler-Links, lokal gespeichert. |
 | [Diagnose](Diagnostics.de) | Feature-Health-Panel, Scan-Performance-Ampel und Debug-Dump. |
-| [Einstellungen & Spickzettel](Settings.de) | Zahnrad-Menü: Feature-Schalter, optionaler API-Token, Sprache (DE/EN) und ein In-App-Spickzettel. |
+| [Einstellungen & Spickzettel](Settings.de) | Zahnrad-Menü: Feature-Schalter, optionaler API-Key, Sprache (DE/EN) und ein In-App-Spickzettel. |
 
 ## Schnellstart
 
 1. Userscript-Manager installieren (Tampermonkey / Violentmonkey).
 2. PROST installieren - siehe **[Installation](Installation.de)**.
-3. [WareEra](https://app.warera.io) öffnen, Inventar oder Equipment-Markt
-   aufrufen und unten rechts auf das ⚙-Zahnrad klicken, um zu konfigurieren.
+3. [WareEra](https://app.warera.io) öffnen, das Inventar aufrufen und unten rechts auf das ⚙-Zahnrad klicken, um zu konfigurieren.
 
 Probleme bei Installation oder nichts zu sehen? Siehe **[Installation → Fehlerbehebung](Installation.de#fehlerbehebung)**.
 
 ## Datenschutz & Sicherheit
 
 - **Keine Automatisierung.** Overlays lesen und annotieren die Seite nur.
-- Der optionale API-Token ist **dein** Zugang, lokal via `GM_setValue` gespeichert
-  (leicht verschleiert - keine Verschlüsselung). Siehe [Einstellungen](Settings.de#api-token).
-- Keine Daten verlassen deinen Browser, außer Aufrufen, die **du** an die
-  offizielle Spiel-API und das öffentliche Stats-Gateway auslöst.
+- Der optionale API-Key ist **dein** Zugang, lokal via `GM_setValue` gespeichert
+  (im Klartext gespeichert, um Audits zu ermöglichen). Siehe [Einstellungen](Settings.de#api-token).
+- Keine Daten verlassen deinen Browser, außer Aufrufen an die offizielle Spiel-API, das öffentliche Stats-Gateway und den optionalen Push-Dienst (ntfy.sh).
 
 ---
 

@@ -33,7 +33,7 @@ account, no server, no build step.
 1. Open [WareEra](https://app.warera.io) and log in.
 2. A ⚙ gear button appears at the **bottom-right**. The small dot on it shows
    data freshness (green = fresh, orange = stale, red = rate-limited).
-3. Open your **inventory** or the **equipment market** to see overlays.
+3. Open your **inventory** to see overlays.
 
 ## Troubleshooting
 
@@ -72,11 +72,8 @@ See Tampermonkey's [FAQ](https://www.tampermonkey.net/faq.php#Q209) for details.
 - **Manual install:** re-open the raw script to pull the latest version.
 - Current version & changes: [CHANGELOG](https://github.com/beertierchen/warera-prost/blob/main/CHANGELOG.md).
 
-## Optional: API token
+## Optional: API key
 
-Most features work without any setup. To fetch fresh market and scrap prices,
-add your own WareEra API token in [Settings](Settings#api-token). It stays on
-your machine.
+Most features (including prices, transactions, and basic battle overlays) work without any setup via the community gateway. To enable official-API features (like alliance-based battle highlights and advanced bounty filters), add your own WareEra API key in [Settings](Settings#api-token). It stays on your machine.
 
-> ⚠️ Treat the token like a password. It grants access to your account's API.
-> Revoke/rotate it in WareEra if you suspect exposure.
+> ⚠️ Ensure you create a **read-only** API key in WareEra settings. Do not share it, and revoke/rotate it if you suspect exposure.
