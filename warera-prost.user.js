@@ -70,7 +70,7 @@
     scrapItemCode: 'scraps',
     featNotes: false,                    // experimental: user notes on /user/ links (off by default)
     featBattleAdvisor: false,            // experimental: highlight ally button on /battle/<id> pages
-    featAdminAlerts: true,               // receive signed admin alerts
+    featSystemAlerts: true,               // receive signed system alerts
     alliedCountryCodes: ['de','pt','es','gm','ir','na','sr','th','at','fi','ie','no','se','uk','va','bf','cd','ye','ne','au','br','id'],
     featMarketGraph: false,
     featPnlTracker: false,
@@ -363,7 +363,7 @@
         settingsPersonalTopic: 'Personal Topic',
         settingsPersonalTopicSecret: 'Personal Secret (optional)',
         settingsPersonalTopicLinkText: 'Subscribe / Open',
-        settingsFeatAdminAlerts: 'Receive critical plugin update & safety alerts (read-only admin channel)',
+        settingsFeatSystemAlerts: 'Receive critical plugin update & safety alerts (read-only system channel)',
         settingsBellTitle: 'Toggle push notifications',
         settingsBountyScope: 'Notification scope',
         bountyScopeAll: 'All battles (no filter)',
@@ -593,7 +593,7 @@
         settingsPersonalTopic: 'Persönliches Topic',
         settingsPersonalTopicSecret: 'Persönliches Secret (optional)',
         settingsPersonalTopicLinkText: 'Abonnieren / Öffnen',
-        settingsFeatAdminAlerts: 'Kritische Plugin-Update- & Sicherheitswarnungen empfangen (schreibgeschützter Admin-Kanal)',
+        settingsFeatSystemAlerts: 'Kritische Plugin-Update- & Sicherheitswarnungen empfangen (schreibgeschützter System-Kanal)',
         settingsBellTitle: 'Push-Benachrichtigungen an-/ausschalten',
         settingsBountyScope: 'Benachrichtigungs-Umfang',
         bountyScopeAll: 'Alle Schlachten (kein Filter)',
@@ -816,10 +816,10 @@
     featMuHealDim: NS + 'featMuHealDim',
     lastVersionCheckAt: NS + 'lastVersionCheckAt',
     latestKnownVersion: NS + 'latestKnownVersion',
-    featAdminAlerts: NS + 'featAdminAlerts',
-    adminLastPollAt: NS + 'adminLastPollAt',
-    adminPollLock: NS + 'adminPollLock',
-    adminSeenSeq: NS + 'adminSeenSeq',
+    featSystemAlerts: NS + 'featSystemAlerts',
+    systemAlertLastPollAt: NS + 'systemAlertLastPollAt',
+    systemAlertPollLock: NS + 'systemAlertPollLock',
+    systemAlertSeenSeq: NS + 'systemAlertSeenSeq',
   };
 
   const gatewayBases = CONFIG.apiBases.filter((b) => {
@@ -4258,7 +4258,7 @@ async function scanInventory(force) {
     const prevBountyOwn = !hasKey ? '' : (bg.querySelector('.wia-bounty-own')?.value ?? CONFIG.bountyOwnCountryOverride);
     const prevBountyScope = !hasKey ? 'all' : (bg.querySelector('.wia-bounty-scope')?.value ?? CONFIG.bountyScope);
     const prevBountyMuteDebuff = bg.querySelector('.wia-bounty-mute-debuff')?.checked ?? CONFIG.bountyMuteDebuff;
-    const prevFeatAdminAlerts = bg.querySelector('.wia-feat-admin-alerts')?.checked ?? CONFIG.featAdminAlerts;
+    const prevFeatSystemAlerts = bg.querySelector('.wia-feat-system-alerts')?.checked ?? CONFIG.featSystemAlerts;
 
     const prevPersonalTopic = bg.querySelector('.wia-personal-topic')?.value ?? CONFIG.personalTopic;
     const prevPersonalSecret = bg.querySelector('.wia-personal-secret')?.value ?? CONFIG.personalTopicSecret;
@@ -4444,8 +4444,8 @@ async function scanInventory(force) {
             </a>
           </div>
           <div style="margin-top: 6px; display: flex; align-items: center; gap: 8px; border-top: 1px dashed rgba(148,163,184,0.15); padding-top: 6px;">
-            <input type="checkbox" class="wia-feat-admin-alerts" style="width: auto;" ${prevFeatAdminAlerts ? 'checked' : ''} />
-            <label style="font-size: 11px; color: #8b949e; margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatAdminAlerts')}</label>
+            <input type="checkbox" class="wia-feat-system-alerts" style="width: auto;" ${prevFeatSystemAlerts ? 'checked' : ''} />
+            <label style="font-size: 11px; color: #8b949e; margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatSystemAlerts')}</label>
           </div>
         </details>
         <button type="button" class="wia-help-toggle" aria-expanded="false">${t('settingsHelpSummary')}</button>
@@ -4802,7 +4802,7 @@ async function scanInventory(force) {
       const bountyMuteDebuff = bg.querySelector('.wia-bounty-mute-debuff').checked;
       const personalTopic = bg.querySelector('.wia-personal-topic').value.trim();
       const personalSecret = bg.querySelector('.wia-personal-secret').value.trim();
-      const featAdminAlerts = bg.querySelector('.wia-feat-admin-alerts').checked;
+      const featSystemAlerts = bg.querySelector('.wia-feat-system-alerts').checked;
 
       GM_setValue(KEYS.featBountyNotify, featBounty);
       GM_setValue(KEYS.featBountyNotif, featBountyNotif);
@@ -4811,7 +4811,7 @@ async function scanInventory(force) {
       GM_setValue(KEYS.bountyMuteDebuff, bountyMuteDebuff);
       GM_setValue(KEYS.personalTopic, personalTopic);
       GM_setValue(KEYS.personalTopicSecret, personalSecret);
-      GM_setValue(KEYS.featAdminAlerts, featAdminAlerts);
+      GM_setValue(KEYS.featSystemAlerts, featSystemAlerts);
 
       CONFIG.featBountyNotify = featBounty;
       CONFIG.featBountyNotif = featBountyNotif;
@@ -4820,11 +4820,11 @@ async function scanInventory(force) {
       CONFIG.bountyMuteDebuff = bountyMuteDebuff;
       CONFIG.personalTopic = personalTopic;
       CONFIG.personalTopicSecret = personalSecret;
-      CONFIG.featAdminAlerts = featAdminAlerts;
+      CONFIG.featSystemAlerts = featSystemAlerts;
 
       bountyResetAllyCache();
       if (featBounty) { guard('bountyNotify', initBountyNotify); } else { teardownBountyNotify(); }
-      if (featAdminAlerts) { initAdminAlerts(); } else { teardownAdminAlerts(); }
+      if (featSystemAlerts) { initSystemAlerts(); } else { teardownSystemAlerts(); }
 
       if (tokenChanged) {
         clearCache();
@@ -5693,7 +5693,7 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
       if (type === 'HnH') borderLeftColor = '#10b981';
       else if (type === 'Window') borderLeftColor = '#fbbf24';
       else if (type === 'Debuff') borderLeftColor = '#8b5cf6';
-      else if (type === 'admin') borderLeftColor = '#ef4444';
+      else if (type === 'system') borderLeftColor = '#ef4444';
 
       toast.className = compact ? 'wia-bounty-toast compact' : 'wia-bounty-toast';
       toast.style.borderLeftColor = borderLeftColor;
@@ -10932,9 +10932,9 @@ function checkInventoryDeltaWear() {
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // Admin Safety Channel (Phase 8)
+  // System Alert Channel (Phase 8)
   // ───────────────────────────────────────────────────────────────────────────
-  const ADMIN_PUBKEYS = [
+  const SYSTEM_ALERT_PUBKEYS = [
     { kid: 'beertierchen', raw: Uint8Array.from([130, 239, 19, 17, 133, 184, 47, 43, 163, 116, 51, 240, 240, 97, 231, 240, 172, 141, 119, 233, 233, 75, 7, 110, 65, 42, 222, 213, 13, 98, 254, 126]) }
   ];
 
@@ -10949,16 +10949,16 @@ function checkInventoryDeltaWear() {
 
   let isCryptoWarnLogged = false;
 
-  async function verifyAdminMsg(env) {
+  async function verifySystemAlertMsg(env) {
     if (!env || typeof env.payload !== 'string' || !env.sig) return false;
     // Check freshness (<48h) and clock skew/future bounds (>60s)
     if (typeof env.ts !== 'number' || Date.now() - env.ts > 48 * 3600 * 1000 || Date.now() - env.ts < -60000) return false;
     
     // Per-kid monotonic sequence verification and migration
-    let seenDict = GM_getValue(KEYS.adminSeenSeq, {});
+    let seenDict = GM_getValue(KEYS.systemAlertSeenSeq, {});
     if (typeof seenDict === 'number') {
       seenDict = { beertierchen: seenDict };
-      GM_setValue(KEYS.adminSeenSeq, seenDict);
+      GM_setValue(KEYS.systemAlertSeenSeq, seenDict);
     } else if (typeof seenDict !== 'object' || seenDict === null) {
       seenDict = {};
     }
@@ -10978,7 +10978,7 @@ function checkInventoryDeltaWear() {
     try {
       const data = new TextEncoder().encode(`${env.payload}|${env.ts}|${env.seq}|${kid}`);
       const sigBytes = base64ToBytes(env.sig);
-      const candidates = env.kid ? ADMIN_PUBKEYS.filter(k => k.kid === env.kid).concat(ADMIN_PUBKEYS) : ADMIN_PUBKEYS;
+      const candidates = env.kid ? SYSTEM_ALERT_PUBKEYS.filter(k => k.kid === env.kid).concat(SYSTEM_ALERT_PUBKEYS) : SYSTEM_ALERT_PUBKEYS;
       for (const k of candidates) {
         try {
           const key = await crypto.subtle.importKey(
@@ -10991,7 +10991,7 @@ function checkInventoryDeltaWear() {
           const valid = await crypto.subtle.verify('Ed25519', key, sigBytes, data);
           if (valid) {
             seenDict[kid] = env.seq;
-            GM_setValue(KEYS.adminSeenSeq, seenDict);
+            GM_setValue(KEYS.systemAlertSeenSeq, seenDict);
             return true;
           }
         } catch (e) {
@@ -11005,50 +11005,50 @@ function checkInventoryDeltaWear() {
     return false;
   }
 
-  let activeAdminLockVal = null;
-  const ADMIN_ALERT_POLL_MS = 60000;
-  const ADMIN_ALERT_LOCK_TTL_MS = 1500;
+  let activeSystemAlertLockVal = null;
+  const SYSTEM_ALERT_POLL_MS = 60000;
+  const SYSTEM_ALERT_LOCK_TTL_MS = 1500;
 
-  async function acquireAdminPollSlot() {
+  async function acquireSystemAlertPollSlot() {
     const nowMs = now();
     const isBackground = typeof document !== 'undefined' && document.hidden === true;
-    const pollInterval = isBackground ? 10 * 60 * 1000 : ADMIN_ALERT_POLL_MS;
-    if (nowMs - GM_getValue(KEYS.adminLastPollAt, 0) < pollInterval) return false;
-    const lock = GM_getValue(KEYS.adminPollLock, 0);
-    if (lock && (nowMs - lock < ADMIN_ALERT_LOCK_TTL_MS)) return false;
+    const pollInterval = isBackground ? 10 * 60 * 1000 : SYSTEM_ALERT_POLL_MS;
+    if (nowMs - GM_getValue(KEYS.systemAlertLastPollAt, 0) < pollInterval) return false;
+    const lock = GM_getValue(KEYS.systemAlertPollLock, 0);
+    if (lock && (nowMs - lock < SYSTEM_ALERT_LOCK_TTL_MS)) return false;
 
     const myLockVal = nowMs + Math.random();
-    GM_setValue(KEYS.adminPollLock, myLockVal);
+    GM_setValue(KEYS.systemAlertPollLock, myLockVal);
     await new Promise((r) => setTimeout(r, 30 + Math.floor(Math.random() * 50)));
-    if (GM_getValue(KEYS.adminPollLock, 0) !== myLockVal) {
+    if (GM_getValue(KEYS.systemAlertPollLock, 0) !== myLockVal) {
       return false;
     }
 
-    activeAdminLockVal = myLockVal;
-    GM_setValue(KEYS.adminLastPollAt, nowMs);
+    activeSystemAlertLockVal = myLockVal;
+    GM_setValue(KEYS.systemAlertLastPollAt, nowMs);
     return true;
   }
 
-  async function pollAdminTopic() {
-    if (!CONFIG.featAdminAlerts) return;
+  async function pollSystemAlertTopic() {
+    if (!CONFIG.featSystemAlerts) return;
     if (isNtfyLimited()) return;
-    if (!(await acquireAdminPollSlot())) return;
+    if (!(await acquireSystemAlertPollSlot())) return;
     try {
       const res = await ntfyRequest('api', {
         method: 'GET',
         url: `${NTFY_BASE}/bumblebee-goodboy/json?poll=1&since=48h`
       });
       if (!res) return;
-      if (res.status !== 200) { dbg('api', 'error', 'admin topic read failed', res.status); return; }
+      if (res.status !== 200) { dbg('api', 'error', 'system alert topic read failed', res.status); return; }
       const msgs = parseNtfyNdjson(res.text);
       if (!msgs.length) return;
       for (const msg of msgs) {
         if (!msg.message) continue;
         try {
           const env = JSON.parse(msg.message);
-          const valid = await verifyAdminMsg(env);
+          const valid = await verifySystemAlertMsg(env);
           if (valid) {
-            showLocalPersonalPopup('admin', 'ADMIN ALERT', env.payload, '⚠️', true);
+            showLocalPersonalPopup('system', 'SYSTEM ALERT', env.payload, '⚠️', true);
             if (CONFIG.featBountyNotify && CONFIG.featBountyNotif) {
               const personalTopic = getEffectivePersonalTopic();
               if (personalTopic) {
@@ -11057,7 +11057,7 @@ function checkInventoryDeltaWear() {
                   url: `${NTFY_BASE}/${personalTopic}`,
                   data: env.payload,
                   headers: {
-                    Title: 'PROST Admin Alert',
+                    Title: 'PROST System Alert',
                     Priority: 'high',
                     Tags: 'warning,exclamation'
                   }
@@ -11070,20 +11070,20 @@ function checkInventoryDeltaWear() {
         }
       }
     } catch (e) {
-      dbg('api', 'error', 'admin poll failed', e.message);
+      dbg('api', 'error', 'system alert poll failed', e.message);
     }
   }
 
-  let adminAlertsInterval = null;
-  function initAdminAlerts() {
-    if (adminAlertsInterval) clearInterval(adminAlertsInterval);
-    if (CONFIG.featAdminAlerts) {
-      adminAlertsInterval = setInterval(() => { guard('api', pollAdminTopic); }, 5000); // Check lock/timestamp every 5s
-      guard('api', pollAdminTopic);
+  let systemAlertsInterval = null;
+  function initSystemAlerts() {
+    if (systemAlertsInterval) clearInterval(systemAlertsInterval);
+    if (CONFIG.featSystemAlerts) {
+      systemAlertsInterval = setInterval(() => { guard('api', pollSystemAlertTopic); }, 5000); // Check lock/timestamp every 5s
+      guard('api', pollSystemAlertTopic);
     }
   }
-  function teardownAdminAlerts() {
-    if (adminAlertsInterval) { clearInterval(adminAlertsInterval); adminAlertsInterval = null; }
+  function teardownSystemAlerts() {
+    if (systemAlertsInterval) { clearInterval(systemAlertsInterval); systemAlertsInterval = null; }
   }
 
   function start() {
@@ -11133,7 +11133,7 @@ function checkInventoryDeltaWear() {
     CONFIG.bountyScope = GM_getValue(KEYS.bountyScope, CONFIG.bountyScope || 'cascade') || 'cascade';
     CONFIG.featMarketGraph = GM_getValue(KEYS.featMarketGraph, false);
     CONFIG.featPnlTracker = GM_getValue(KEYS.featPnlTracker, false);
-    CONFIG.featAdminAlerts = GM_getValue(KEYS.featAdminAlerts, true);
+    CONFIG.featSystemAlerts = GM_getValue(KEYS.featSystemAlerts, true);
     CONFIG.pillBuffH = GM_getValue(KEYS.pillBuffH, CONFIG.pillBuffH);
     CONFIG.pillKnifeH = GM_getValue(KEYS.pillKnifeH, CONFIG.pillKnifeH);
     CONFIG.pillDebuffH = GM_getValue(KEYS.pillDebuffH, CONFIG.pillDebuffH);
@@ -11155,7 +11155,7 @@ function checkInventoryDeltaWear() {
     if (CONFIG.featMarketGraph) guard('marketGraph', initMarketGraph); else setHealth('marketGraph', 'idle', 'disabled in settings');
     if (CONFIG.featPnlTracker) guard('pnl', initPnlTracker); else setHealth('pnl', 'idle', 'disabled in settings');
     if (CONFIG.featBountyNotify) guard('bountyNotify', initBountyNotify); else setHealth('bountyNotify', 'idle', 'disabled in settings');
-    if (CONFIG.featAdminAlerts) initAdminAlerts();
+    if (CONFIG.featSystemAlerts) initSystemAlerts();
     injectGear();
     refreshMenuCommands();
     checkForUpdates(false);

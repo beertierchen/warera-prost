@@ -31,5 +31,5 @@ scripts/local-bunker-scanner.js
 scripts/local-regions-delta.js
 
 # Private keys / local state of the signing tool
-tools/admin-sign/private-key.json
-tools/admin-sign/seq.json
+tools/system-sign/private-key.json
+tools/system-sign/seq.json

@@ -29,7 +29,7 @@ async function keygen() {
   
   console.log('\nKeypair generated successfully!');
   console.log(`Private key saved to: ${KEY_FILE}`);
-  console.log('\n--- Paste the following into warera-prost.user.js in ADMIN_PUBKEYS ---');
+  console.log('\n--- Paste the following into warera-prost.user.js in SYSTEM_ALERT_PUBKEYS ---');
   console.log(`Uint8Array.from([${bytes.join(', ')}])`);
   console.log('------------------------------------------------------------------------\n');
 }
