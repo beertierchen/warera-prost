@@ -4420,6 +4420,7 @@ async function scanInventory(force) {
         <div class="wia-token-help" style="font-size: 11px; color: #8b949e; border: 1px dashed rgba(148,163,184,0.3); border-radius: 4px; padding: 8px; margin-top: 6px; line-height: 1.4; display: none;">
           ${t('settingsTokenHelpText')}
         </div>
+        <button type="button" class="wia-tour-launch wia-tour-btn wia-tour-btn-secondary" style="margin-top: 8px; width: 100%;">${t('tourSettingsBtn')}</button>
         <div style="display: flex; justify-content: space-between; font-size: 10px; color: #8b949e; border-bottom: 1px solid rgba(148,163,184,.15); padding-bottom: 4px; margin-bottom: 8px; margin-top: 14px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">
           <span>${t('settingsHeaderFeature')}</span>
           <span style="margin-right: 4px;">${t('settingsHeaderNotif')}</span>
@@ -4967,6 +4968,16 @@ async function scanInventory(force) {
     };
     bg.querySelector('.wia-clear').onclick = () => { clearCache(); updateStatusIndicator(); };
     bg.querySelector('.wia-close').onclick = () => { bg.remove(); warnBanner = null; settingsModalBg = null; };
+
+    const tourLaunchBtn = bg.querySelector('.wia-tour-launch');
+    if (tourLaunchBtn) {
+      tourLaunchBtn.onclick = () => {
+        bg.remove();
+        warnBanner = null;
+        settingsModalBg = null;
+        startTour();
+      };
+    }
   }
 
   function openSettings() {
@@ -5200,8 +5211,43 @@ async function scanInventory(force) {
 
   // step 7 paste UI is injected by Task 7; safe no-op default until then
   if (typeof renderStep7Paste !== 'function') { var renderStep7Paste = function () {}; }
-  // removeTourPrompt is injected by Task 6; safe no-op default until then
-  if (typeof removeTourPrompt !== 'function') { var removeTourPrompt = function () {}; }
+  let tourPromptEl = null;
+
+  function removeTourPrompt() {
+    if (tourPromptEl) { tourPromptEl.remove(); tourPromptEl = null; }
+  }
+
+  function showTourPrompt() {
+    if (tourPromptEl || tourState.active) return;
+    const el = document.createElement('div');
+    el.className = 'wia-tour-prompt';
+    el.innerHTML = `
+      <img alt="" src="${TOUR_BEER_RIGHT}">
+      <div>
+        <p class="wia-tour-prompt-title">${t('tourPromptTitle')}</p>
+        <p class="wia-tour-prompt-body">${t('tourPromptBody')}</p>
+        <div class="wia-tour-prompt-actions">
+          <button type="button" class="wia-tour-btn wia-tour-btn-primary wia-tour-p-start">${t('tourPromptStart')}</button>
+          <button type="button" class="wia-tour-btn wia-tour-btn-ghost wia-tour-p-later">${t('tourPromptLater')}</button>
+          <button type="button" class="wia-tour-prompt-never">${t('tourPromptNever')}</button>
+        </div>
+      </div>`;
+    el.querySelector('.wia-tour-p-start').onclick = () => startTour({ fromPrompt: true });
+    el.querySelector('.wia-tour-p-later').onclick = () => removeTourPrompt();
+    el.querySelector('.wia-tour-prompt-never').onclick = () => { GM_setValue(KEYS.tourDismissed, true); removeTourPrompt(); };
+    document.body.appendChild(el);
+    tourPromptEl = el;
+  }
+
+  function maybeShowTourPrompt() {
+    const show = shouldShowTourPrompt({
+      featTour: CONFIG.featTour,
+      hasToken: !!getToken(),
+      dismissed: !!GM_getValue(KEYS.tourDismissed, false),
+      completed: !!GM_getValue(KEYS.tourCompleted, false),
+    });
+    if (show) showTourPrompt();
+  }
 
   function teardownTourUI() {
     if (tourState.cleanupReposition) { tourState.cleanupReposition(); tourState.cleanupReposition = null; }
@@ -11617,6 +11663,16 @@ function checkInventoryDeltaWear() {
     regFeature('notes', 'User Notes');
     regFeature('api', 'API Layer');
     regFeature('bountyNotify', 'Bounty-Push');
+    regFeature('tour', 'Tour of Beers');
+    // one-shot onboarding prompt, once the game shell (avatar) is present
+    (function scheduleTourPrompt() {
+      let tries = 0;
+      const iv = setInterval(() => {
+        tries++;
+        if (document.querySelector('#avatar')) { clearInterval(iv); maybeShowTourPrompt(); }
+        else if (tries > 40) { clearInterval(iv); }   // ~10s give-up
+      }, 250);
+    })();
     CONFIG.locale = GM_getValue(KEYS.locale, CONFIG.locale || 'de') || 'de';
     if (typeof window !== 'undefined') {
       window.__WIA_LOCALE__ = CONFIG.locale;
