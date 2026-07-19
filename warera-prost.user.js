@@ -5082,6 +5082,119 @@ async function scanInventory(force) {
     positionTourUI(rect, { hole, beer, card: c.card });
   }
 
+  // --- locale-proof element finders (game DOM has obfuscated classes; never rely on them) ---
+  function visible(el) {
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return (r.width > 0 && r.height > 0) ? el : null;
+  }
+
+  function findAvatarMenu() {
+    const el = pick('tour', '#avatar')[0]
+      || pick('tour', '[aria-haspopup="dialog"] #avatar')[0]
+      || pick('tour', '[aria-haspopup="dialog"]')[0];
+    // climb to the clickable button/menu trigger if we matched the inner avatar
+    return visible(el && (el.closest('[aria-haspopup="dialog"]') || el));
+  }
+
+  function findSettingsLink() {
+    const uid = (typeof getCurrentUserId === 'function') ? getCurrentUserId() : null;
+    if (uid) {
+      const exact = pick('tour', `a[href$="/user/${uid}/settings"]`)[0];
+      if (visible(exact)) return exact;
+    }
+    // fallback: any settings link inside an open HeadlessUI menu
+    const links = document.querySelectorAll('a[href$="/settings"]');
+    for (const a of links) if (visible(a)) return a;
+    return null;
+  }
+
+  // The API-Tokens section is found via locale-proof markers: the header name
+  // "X-API-Key" (constant across game languages) or a "wae_" token string.
+  function findApiTokenSection() {
+    const nodes = document.querySelectorAll('span, p, div');
+    for (const n of nodes) {
+      if (n.children.length > 3) continue;
+      const txt = n.textContent || '';
+      if (/X-API-Key/i.test(txt) || /\bwae_[a-z0-9]/i.test(txt)) {
+        // climb to a reasonably sized section container
+        let sec = n;
+        for (let i = 0; i < 4 && sec.parentElement; i++) {
+          if (sec.querySelector('button')) break;
+          sec = sec.parentElement;
+        }
+        if (visible(sec)) return sec;
+      }
+    }
+    return null;
+  }
+
+  function findCreateTokenButton() {
+    const sec = findApiTokenSection();
+    // Prefer a button whose text matches de/en, else the first button in the section.
+    const scope = sec || document;
+    const btns = scope.querySelectorAll('button');
+    for (const b of btns) {
+      if (/token erstellen|create token/i.test(b.textContent || '')) return visible(b);
+    }
+    if (sec) {
+      for (const b of btns) { if (visible(b)) return b; }
+    }
+    return null;
+  }
+
+  function findCreateDialog() {
+    const panels = document.querySelectorAll('[id^="headlessui-dialog-panel"]');
+    for (const p of panels) {
+      if (p.querySelector('input') && visible(p)) return p;
+    }
+    return null;
+  }
+
+  // After confirming, the dialog shows the full (long) token + a copy button.
+  function findNewTokenDialog() {
+    const panels = document.querySelectorAll('[id^="headlessui-dialog-panel"]');
+    for (const p of panels) {
+      if (/wae_[a-z0-9]{20,}/i.test(p.textContent || '') && visible(p)) return p;
+    }
+    return null;
+  }
+
+  function findProstTokenInput() {
+    return visible(document.querySelector('.wia-token'));
+  }
+
+  const TOUR_STEPS = [
+    { id: 'avatar',   titleKey: 'tourStep1Title', bodyKey: 'tourStep1Body', find: findAvatarMenu },
+    { id: 'settings', titleKey: 'tourStep2Title', bodyKey: 'tourStep2Body', find: findSettingsLink },
+    { id: 'section',  titleKey: 'tourStep3Title', bodyKey: 'tourStep3Body', find: findApiTokenSection },
+    { id: 'create',   titleKey: 'tourStep4Title', bodyKey: 'tourStep4Body', find: findCreateTokenButton },
+    { id: 'dialog',   titleKey: 'tourStep5Title', bodyKey: 'tourStep5Body', find: findCreateDialog },
+    { id: 'copy',     titleKey: 'tourStep6Title', bodyKey: 'tourStep6Body', find: findNewTokenDialog },
+    { id: 'paste',    titleKey: 'tourStep7Title', bodyKey: 'tourStep7Body', find: findProstTokenInput },
+  ];
+
+  // Wait for a step's anchor to appear (MutationObserver + poll). Resolves null on timeout.
+  function waitForAnchor(step, timeoutMs = 8000) {
+    return new Promise((resolve) => {
+      const immediate = step.find();
+      if (immediate) { resolve(immediate); return; }
+      let done = false;
+      const finish = (el) => {
+        if (done) return; done = true;
+        obs.disconnect(); clearInterval(poll); clearTimeout(timer);
+        resolve(el);
+      };
+      const obs = new MutationObserver(() => { const el = step.find(); if (el) finish(el); });
+      obs.observe(document.body, { childList: true, subtree: true, attributes: true });
+      const poll = setInterval(() => { const el = step.find(); if (el) finish(el); }, 250);
+      const timer = setTimeout(() => {
+        dbg('tour', 'debug', `waitForAnchor timeout for step "${step.id}"`);
+        finish(null);
+      }, timeoutMs);
+    });
+  }
+
   // ───────────────────────────────────────────────────────────────────────────
   // Bootstrap + MutationObserver
   // ───────────────────────────────────────────────────────────────────────────
