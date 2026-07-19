@@ -4293,7 +4293,9 @@ async function scanInventory(force) {
         padding: 14px 16px 12px; font: 13px/1.5 system-ui, sans-serif;
         box-shadow: 0 14px 44px rgba(0,0,0,.7);
         animation: wia-tour-in .22s ease both;
+        pointer-events: none;                 /* clicks pass through to the game… */
       }
+      .wia-tour-card .wia-tour-btn { pointer-events: auto; }   /* …except the tour's own buttons */
       .wia-tour-step { font: 700 10px system-ui, sans-serif; letter-spacing: .6px;
         text-transform: uppercase; color: #facc15; margin: 0 0 4px; }
       .wia-tour-title { font: 700 15px/1.3 system-ui, sans-serif; color: #f9fafb; margin: 0 0 6px; }
@@ -5114,26 +5116,49 @@ async function scanInventory(force) {
   function visible(el) {
     if (!el) return null;
     const r = el.getBoundingClientRect();
-    return (r.width > 0 && r.height > 0) ? el : null;
+    if (r.width <= 0 || r.height <= 0) return null;
+    // reject off-screen / scrolled-out nodes (stale or duplicate menu copies)
+    if (r.bottom <= 0 || r.right <= 0 || r.top >= window.innerHeight || r.left >= window.innerWidth) return null;
+    // reject visually hidden (display/visibility/opacity), including ancestors
+    if (typeof el.checkVisibility === 'function') {
+      if (!el.checkVisibility({ opacityProperty: true, visibilityProperty: true, contentVisibilityAuto: true })) return null;
+    } else {
+      const cs = getComputedStyle(el);
+      if (cs.visibility === 'hidden' || cs.display === 'none' || parseFloat(cs.opacity) === 0) return null;
+    }
+    return el;
   }
 
   function findAvatarMenu() {
-    const el = pick('tour', '#avatar')[0]
-      || pick('tour', '[aria-haspopup="dialog"] #avatar')[0]
-      || pick('tour', '[aria-haspopup="dialog"]')[0];
-    // climb to the clickable button/menu trigger if we matched the inner avatar
-    return visible(el && (el.closest('[aria-haspopup="dialog"]') || el));
+    // Player-menu trigger = the header element with aria-haspopup="dialog" that
+    // holds the avatar. Prefer it over a bare #avatar: profile/region/other pages
+    // render DUPLICATE id="avatar" nodes, so #avatar[0] can resolve to the wrong one.
+    const triggers = [...document.querySelectorAll('[aria-haspopup="dialog"]')]
+      .filter((el) => visible(el) && el.querySelector('img, #avatar'));
+    triggers.sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
+    if (triggers[0]) return triggers[0];                    // topmost visible = header bar
+    for (const a of document.querySelectorAll('#avatar')) {
+      const trig = a.closest('[aria-haspopup="dialog"]');
+      if (visible(trig)) return trig;
+    }
+    dbg('tour', 'debug', 'findAvatarMenu: no header trigger found');
+    return null;
   }
 
   function findSettingsLink() {
     const uid = (typeof getCurrentUserId === 'function') ? getCurrentUserId() : null;
-    if (uid) {
-      const exact = pick('tour', `a[href$="/user/${uid}/settings"]`)[0];
-      if (visible(exact)) return exact;
+    // Prefer the settings link inside the OPEN dropdown (HeadlessUI marks it
+    // data-headlessui-state="open"). Avoids stale/duplicate menu copies still in the DOM.
+    const openMenus = [...document.querySelectorAll('[data-headlessui-state="open"]')].filter(visible);
+    const roots = openMenus.length ? [...openMenus, document] : [document];
+    for (const root of roots) {
+      if (uid) {
+        const exact = [...root.querySelectorAll(`a[href$="/user/${uid}/settings"]`)].find(visible);
+        if (exact) return exact;
+      }
+      const any = [...root.querySelectorAll('a[href$="/settings"]')].find(visible);
+      if (any) return any;
     }
-    // fallback: any settings link inside an open HeadlessUI menu
-    const links = document.querySelectorAll('a[href$="/settings"]');
-    for (const a of links) if (visible(a)) return a;
     return null;
   }
 
@@ -5192,14 +5217,40 @@ async function scanInventory(force) {
     return visible(document.querySelector('.wia-token'));
   }
 
+  // A button/element is "reached" when fully within the viewport.
+  function inViewportMostly(el) {
+    if (!el) return false;
+    const r = el.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return false;
+    return r.top >= 0 && r.bottom <= window.innerHeight && r.left >= 0 && r.right <= window.innerWidth;
+  }
+
+  // In the new-token dialog: the copy button is the icon-only button
+  // (short/empty text + an svg); the dismiss button carries a text label.
+  function findCopyButton() {
+    const dlg = findNewTokenDialog();
+    if (!dlg) return null;
+    const btns = [...dlg.querySelectorAll('button')].filter(visible);
+    const icon = btns.find((b) => (b.textContent || '').trim().length <= 2 && b.querySelector('svg'));
+    return icon || btns[0] || null;
+  }
+
   const TOUR_STEPS = [
-    { id: 'avatar',   titleKey: 'tourStep1Title', bodyKey: 'tourStep1Body', find: findAvatarMenu },
-    { id: 'settings', titleKey: 'tourStep2Title', bodyKey: 'tourStep2Body', find: findSettingsLink },
-    { id: 'section',  titleKey: 'tourStep3Title', bodyKey: 'tourStep3Body', find: findApiTokenSection },
-    { id: 'create',   titleKey: 'tourStep4Title', bodyKey: 'tourStep4Body', find: findCreateTokenButton },
-    { id: 'dialog',   titleKey: 'tourStep5Title', bodyKey: 'tourStep5Body', find: findCreateDialog },
-    { id: 'copy',     titleKey: 'tourStep6Title', bodyKey: 'tourStep6Body', find: findNewTokenDialog },
-    { id: 'paste',    titleKey: 'tourStep7Title', bodyKey: 'tourStep7Body', find: findProstTokenInput },
+    { id: 'avatar',   titleKey: 'tourStep1Title', bodyKey: 'tourStep1Body', find: findAvatarMenu,
+      done: () => !!findSettingsLink() },                       // menu opened
+    { id: 'settings', titleKey: 'tourStep2Title', bodyKey: 'tourStep2Body', find: findSettingsLink,
+      done: () => !!findApiTokenSection() },                    // settings page loaded
+    { id: 'section',  titleKey: 'tourStep3Title', bodyKey: 'tourStep3Body', find: findApiTokenSection,
+      done: () => inViewportMostly(findCreateTokenButton()) },  // scrolled the create button into view
+    { id: 'create',   titleKey: 'tourStep4Title', bodyKey: 'tourStep4Body', find: findCreateTokenButton,
+      done: () => !!findCreateDialog() },                       // create dialog opened
+    { id: 'dialog',   titleKey: 'tourStep5Title', bodyKey: 'tourStep5Body', find: findCreateDialog,
+      done: () => !!findNewTokenDialog() },                     // token created
+    { id: 'copy',     titleKey: 'tourStep6Title', bodyKey: 'tourStep6Body', find: findCopyButton,
+      onAnchor: (el) => el.addEventListener('click', () => { tourState.copyClicked = true; }, { once: true }),
+      done: () => tourState.copyClicked },                      // user clicked copy
+    { id: 'paste',    titleKey: 'tourStep7Title', bodyKey: 'tourStep7Body', find: findProstTokenInput,
+      done: () => !!getToken() },                               // token saved into PROST -> auto-finish
   ];
 
   // Wait for a step's anchor to appear (MutationObserver + poll). Resolves null on timeout.
@@ -5223,7 +5274,37 @@ async function scanInventory(force) {
     });
   }
 
-  let tourState = { active: false, index: 0, ui: null, cleanupReposition: null };
+  // Watch for the step's completion condition and auto-advance. MutationObserver
+  // + interval + scroll (step 3 depends on scrolling). Cleaned up on teardown.
+  function startAdvanceWatch(index) {
+    const step = TOUR_STEPS[index];
+    if (!step.done) return null;
+    const startedAt = performance.now();
+    let stopped = false;
+    const advance = () => {
+      if (stopped || !tourState.active || tourState.index !== index) return;
+      if (performance.now() - startedAt < 500) return;    // grace so the highlight is seen
+      let ok = false;
+      try { ok = !!step.done(); } catch (e) { dbg('tour', 'error', 'done() threw', e); }
+      if (!ok) return;
+      cleanup();
+      const next = index + 1;
+      if (next >= TOUR_STEPS.length) endTour({ completed: true });
+      else tourGoto(next);
+    };
+    const obs = new MutationObserver(advance);
+    obs.observe(document.body, { childList: true, subtree: true, attributes: true });
+    const iv = setInterval(advance, 350);
+    const onScroll = () => advance();
+    window.addEventListener('scroll', onScroll, true);
+    function cleanup() {
+      stopped = true; obs.disconnect(); clearInterval(iv);
+      window.removeEventListener('scroll', onScroll, true);
+    }
+    return cleanup;
+  }
+
+  let tourState = { active: false, index: 0, ui: null, cleanupReposition: null, cleanupAdvance: null, copyClicked: false };
 
   // step 7 paste UI is injected by Task 7; safe no-op default until then
   function renderStep7Paste(pasteEl, cardParts) {
@@ -5302,6 +5383,7 @@ async function scanInventory(force) {
   }
 
   function teardownTourUI() {
+    if (tourState.cleanupAdvance) { tourState.cleanupAdvance(); tourState.cleanupAdvance = null; }
     if (tourState.cleanupReposition) { tourState.cleanupReposition(); tourState.cleanupReposition = null; }
     if (tourState.ui) {
       tourState.ui.hole.remove(); tourState.ui.beer.remove(); tourState.ui.card.remove();
@@ -5336,6 +5418,7 @@ async function scanInventory(force) {
     if (!tourState.active) return;
     index = Math.max(0, Math.min(TOUR_STEPS.length - 1, index));
     tourState.index = index;
+    tourState.copyClicked = false;
     const step = TOUR_STEPS[index];
 
     teardownTourUI();
@@ -5379,12 +5462,15 @@ async function scanInventory(force) {
     if (anchor) {
       c.bodyEl.textContent = t(step.bodyKey);
       tourState.cleanupReposition = attachReposition(step.find, ui);
+      if (typeof step.onAnchor === 'function') { try { step.onAnchor(anchor, index); } catch (e) { dbg('tour', 'error', 'onAnchor threw', e); } }
+      tourState.cleanupAdvance = startAdvanceWatch(index);
     } else {
       // graceful: keep the card, tell the user, Next stays enabled
       hole.style.display = 'none';
       beer.style.display = 'none';
       c.bodyEl.textContent = t('tourNotFound');
       setHealth('tour', 'warn', `anchor not found: ${step.id}`);
+      tourState.cleanupAdvance = startAdvanceWatch(index);
     }
   }
 
