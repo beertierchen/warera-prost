@@ -1223,7 +1223,7 @@
   // Tampermonkey sandbox, so a plain `window.WIA` would be invisible there.
   const PAGE_WINDOW = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : (typeof window !== 'undefined' ? window : null);
   if (PAGE_WINDOW) {
-    PAGE_WINDOW.WIA = {
+    PAGE_WINDOW.PROST = PAGE_WINDOW.WIA = {
       debug: setDebug,
       health() {
         if (typeof runProbes === 'function') runProbes();   // refresh before showing
@@ -1239,6 +1239,13 @@
         return id ? runProbe(id) : runProbes();
       },
       logs(n = 50) { return Debug.buf.slice(-n); },
+      tourDemo(stepIdx) {
+        if (typeof PROST !== 'undefined' && typeof PROST.tourDemo === 'function') {
+          PROST.tourDemo(stepIdx);
+        } else {
+          console.warn('[PROST] tourDemo not registered yet (wait for DOM/onboarding module loading)');
+        }
+      }
     };
   }
 
@@ -4242,6 +4249,72 @@ async function scanInventory(force) {
       .wia-pnl-tracker:hover .wia-pnl-hover {
         display: block;
       }
+      /* ===== Tour of Beers ===== */
+      @keyframes wia-tour-pulse {
+        0%,100% { box-shadow: 0 0 0 3px #facc15, 0 0 14px 3px rgba(250,204,21,.5),  0 0 0 9999px rgba(1,4,9,.72); }
+        50%     { box-shadow: 0 0 0 3px #facc15, 0 0 26px 8px rgba(250,204,21,.85), 0 0 0 9999px rgba(1,4,9,.72); }
+      }
+      @keyframes wia-tour-bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
+      @keyframes wia-tour-in  { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+      .wia-tour-hole {
+        position: fixed; border-radius: 8px; pointer-events: none;
+        z-index: 2147483646; transition: top .18s ease, left .18s ease, width .18s ease, height .18s ease;
+        box-shadow: 0 0 0 3px #facc15, 0 0 18px 4px rgba(250,204,21,.65), 0 0 0 9999px rgba(1,4,9,.72);
+        animation: wia-tour-pulse 1.8s ease-in-out infinite;
+      }
+      .wia-tour-beer {
+        position: fixed; z-index: 2147483647; width: 88px; height: auto;
+        pointer-events: none; user-select: none;
+        filter: drop-shadow(0 6px 10px rgba(0,0,0,.55));
+        animation: wia-tour-bob 2.6s ease-in-out infinite;
+      }
+      .wia-tour-card {
+        position: fixed; z-index: 2147483647; box-sizing: border-box;
+        width: 300px; max-width: calc(100vw - 24px);
+        background: #161b22; color: #c9d1d9;
+        border: 1px solid #30363d; border-top: 3px solid #facc15; border-radius: 12px;
+        padding: 14px 16px 12px; font: 13px/1.5 system-ui, sans-serif;
+        box-shadow: 0 14px 44px rgba(0,0,0,.7);
+        animation: wia-tour-in .22s ease both;
+      }
+      .wia-tour-step { font: 700 10px system-ui, sans-serif; letter-spacing: .6px;
+        text-transform: uppercase; color: #facc15; margin: 0 0 4px; }
+      .wia-tour-title { font: 700 15px/1.3 system-ui, sans-serif; color: #f9fafb; margin: 0 0 6px; }
+      .wia-tour-body  { margin: 0 0 12px; color: #c9d1d9; }
+      .wia-tour-dots  { display: flex; gap: 5px; margin: 0 0 12px; }
+      .wia-tour-dot   { width: 6px; height: 6px; border-radius: 50%; background: #30363d; transition: background .2s; }
+      .wia-tour-dot.done   { background: #8b949e; }
+      .wia-tour-dot.active { background: #facc15; box-shadow: 0 0 6px rgba(250,204,21,.8); }
+      .wia-tour-actions { display: flex; align-items: center; gap: 8px; }
+      .wia-tour-actions .wia-tour-spacer { flex: 1; }
+      .wia-tour-btn {
+        border-radius: 8px; padding: 7px 14px; font: 600 12px system-ui, sans-serif;
+        cursor: pointer; border: 1px solid transparent; line-height: 1; transition: filter .15s, background .15s;
+      }
+      .wia-tour-btn:focus-visible { outline: 2px solid #58a6ff; outline-offset: 2px; }
+      .wia-tour-btn-primary { background: #facc15; color: #161b22; }
+      .wia-tour-btn-primary:hover { filter: brightness(1.08); }
+      .wia-tour-btn-ghost { background: transparent; color: #8b949e; padding: 7px 8px; }
+      .wia-tour-btn-ghost:hover { color: #c9d1d9; }
+      .wia-tour-btn-secondary { background: #21262d; color: #c9d1d9; border-color: #30363d; }
+      .wia-tour-btn-secondary:hover { background: #30363d; }
+      .wia-tour-btn[disabled] { opacity: .4; cursor: default; pointer-events: none; }
+      /* Auto-prompt (bottom-left, below an active tour) */
+      .wia-tour-prompt {
+        position: fixed; left: 16px; bottom: 16px; z-index: 2147483000; box-sizing: border-box;
+        width: 320px; max-width: calc(100vw - 24px);
+        background: #161b22; color: #c9d1d9; border: 1px solid #30363d; border-left: 3px solid #facc15;
+        border-radius: 12px; padding: 12px 14px; box-shadow: 0 12px 34px rgba(0,0,0,.6);
+        display: flex; gap: 12px; align-items: flex-start; font: 13px/1.45 system-ui, sans-serif;
+        animation: wia-tour-in .24s ease both;
+      }
+      .wia-tour-prompt img { width: 46px; height: auto; flex: none; filter: drop-shadow(0 3px 5px rgba(0,0,0,.5)); }
+      .wia-tour-prompt-title { font: 700 14px system-ui, sans-serif; color: #f9fafb; margin: 0 0 3px; }
+      .wia-tour-prompt-body  { margin: 0 0 10px; color: #8b949e; font-size: 12px; }
+      .wia-tour-prompt-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+      .wia-tour-prompt-never { background: none; border: 0; color: #6e7681; font-size: 11px; cursor: pointer; padding: 4px 2px; text-decoration: underline; }
+      .wia-tour-prompt-never:hover { color: #8b949e; }
+      .wia-tour-paste { margin: 0 0 10px; }
     `);
   }
 
@@ -4915,6 +4988,98 @@ async function scanInventory(force) {
     gear.appendChild(dot);
     document.body.appendChild(gear);
     updateStatusIndicator();
+  }
+
+  const TOUR_LAYOUT_OPTS = { cardW: 300, cardH: 156, beerW: 88, beerH: 110, gap: 12, margin: 12 };
+
+  function buildTourHole() {
+    const hole = document.createElement('div');
+    hole.className = 'wia-tour-hole';
+    return hole;
+  }
+
+  function buildTourBeer() {
+    const beer = document.createElement('img');
+    beer.className = 'wia-tour-beer';
+    beer.alt = '';
+    beer.decoding = 'async';
+    return beer;
+  }
+
+  function renderTourDots(dotsEl, index, total) {
+    dotsEl.innerHTML = '';
+    for (let i = 0; i < total; i++) {
+      const d = document.createElement('span');
+      d.className = 'wia-tour-dot' + (i === index ? ' active' : (i < index ? ' done' : ''));
+      dotsEl.appendChild(d);
+    }
+  }
+
+  function buildTourCard() {
+    const card = document.createElement('div');
+    card.className = 'wia-tour-card';
+    card.setAttribute('role', 'dialog');
+    card.setAttribute('aria-live', 'polite');
+    card.innerHTML = `
+      <p class="wia-tour-step"></p>
+      <h3 class="wia-tour-title"></h3>
+      <p class="wia-tour-body"></p>
+      <div class="wia-tour-paste"></div>
+      <div class="wia-tour-dots"></div>
+      <div class="wia-tour-actions">
+        <button type="button" class="wia-tour-btn wia-tour-btn-ghost wia-tour-skip"></button>
+        <span class="wia-tour-spacer"></span>
+        <button type="button" class="wia-tour-btn wia-tour-btn-secondary wia-tour-back"></button>
+        <button type="button" class="wia-tour-btn wia-tour-btn-primary wia-tour-next"></button>
+      </div>`;
+    return {
+      card,
+      stepEl:  card.querySelector('.wia-tour-step'),
+      titleEl: card.querySelector('.wia-tour-title'),
+      bodyEl:  card.querySelector('.wia-tour-body'),
+      pasteEl: card.querySelector('.wia-tour-paste'),
+      dotsEl:  card.querySelector('.wia-tour-dots'),
+      backBtn: card.querySelector('.wia-tour-back'),
+      nextBtn: card.querySelector('.wia-tour-next'),
+      skipBtn: card.querySelector('.wia-tour-skip'),
+    };
+  }
+
+  // Apply computeTourLayout() output to the live DOM nodes.
+  function positionTourUI(targetRect, ui) {
+    const vp = { w: window.innerWidth, h: window.innerHeight };
+    const t = { left: targetRect.left, top: targetRect.top, width: targetRect.width, height: targetRect.height };
+    const L = computeTourLayout(t, vp, TOUR_LAYOUT_OPTS);
+
+    ui.hole.style.left   = (t.left - 6) + 'px';
+    ui.hole.style.top    = (t.top - 6) + 'px';
+    ui.hole.style.width  = (t.width + 12) + 'px';
+    ui.hole.style.height = (t.height + 12) + 'px';
+
+    ui.beer.src = L.beerVariant === 'left' ? TOUR_BEER_LEFT : TOUR_BEER_RIGHT;
+    ui.beer.style.left = L.beer.left + 'px';
+    ui.beer.style.top  = L.beer.top + 'px';
+
+    ui.card.style.left = L.card.left + 'px';
+    ui.card.style.top  = L.card.top + 'px';
+  }
+
+  function tourDemo() {
+    const hole = buildTourHole();
+    const beer = buildTourBeer();
+    const c = buildTourCard();
+    document.body.append(hole, beer, c.card);
+    c.stepEl.textContent = 'Step 2 of 7';
+    c.titleEl.textContent = t('tourStep2Title');
+    c.bodyEl.textContent = t('tourStep2Body');
+    renderTourDots(c.dotsEl, 1, 7);
+    c.skipBtn.textContent = t('tourSkip');
+    c.backBtn.textContent = t('tourBack');
+    c.nextBtn.textContent = t('tourNext');
+    const cleanup = () => { hole.remove(); beer.remove(); c.card.remove(); };
+    c.skipBtn.onclick = cleanup; c.nextBtn.onclick = cleanup;
+    const rect = { left: window.innerWidth / 2 - 20, top: 80, width: 40, height: 40 };
+    positionTourUI(rect, { hole, beer, card: c.card });
   }
 
   // ───────────────────────────────────────────────────────────────────────────
