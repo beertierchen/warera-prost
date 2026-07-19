@@ -1239,6 +1239,7 @@
         return id ? runProbe(id) : runProbes();
       },
       logs(n = 50) { return Debug.buf.slice(-n); },
+      tour() { return (typeof startTour === 'function') ? startTour() : 'tour not loaded'; },
       tourDemo(stepIdx) {
         if (typeof PROST !== 'undefined' && typeof PROST.tourDemo === 'function') {
           PROST.tourDemo(stepIdx);
@@ -5193,6 +5194,122 @@ async function scanInventory(force) {
         finish(null);
       }, timeoutMs);
     });
+  }
+
+  let tourState = { active: false, index: 0, ui: null, cleanupReposition: null };
+
+  // step 7 paste UI is injected by Task 7; safe no-op default until then
+  if (typeof renderStep7Paste !== 'function') { var renderStep7Paste = function () {}; }
+  // removeTourPrompt is injected by Task 6; safe no-op default until then
+  if (typeof removeTourPrompt !== 'function') { var removeTourPrompt = function () {}; }
+
+  function teardownTourUI() {
+    if (tourState.cleanupReposition) { tourState.cleanupReposition(); tourState.cleanupReposition = null; }
+    if (tourState.ui) {
+      tourState.ui.hole.remove(); tourState.ui.beer.remove(); tourState.ui.card.remove();
+      tourState.ui = null;
+    }
+  }
+
+  function attachReposition(getTarget, ui) {
+    let frame = null;
+    const reflow = () => {
+      frame = null;
+      const el = getTarget();
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) positionTourUI(r, ui);
+    };
+    const schedule = () => { if (frame == null) frame = requestAnimationFrame(reflow); };
+    window.addEventListener('scroll', schedule, true);
+    window.addEventListener('resize', schedule);
+    const ro = new ResizeObserver(schedule);
+    ro.observe(document.documentElement);
+    reflow();
+    return () => {
+      window.removeEventListener('scroll', schedule, true);
+      window.removeEventListener('resize', schedule);
+      ro.disconnect();
+      if (frame != null) cancelAnimationFrame(frame);
+    };
+  }
+
+  async function tourGoto(index) {
+    if (!tourState.active) return;
+    index = Math.max(0, Math.min(TOUR_STEPS.length - 1, index));
+    tourState.index = index;
+    const step = TOUR_STEPS[index];
+
+    teardownTourUI();
+    const hole = buildTourHole();
+    const beer = buildTourBeer();
+    const c = buildTourCard();
+    const ui = { hole, beer, card: c.card, parts: c };
+    tourState.ui = ui;
+    document.body.append(hole, beer, c.card);
+
+    // static card content
+    c.stepEl.textContent = getLocale() === 'de'
+      ? `Schritt ${index + 1} von ${TOUR_STEPS.length}`
+      : `Step ${index + 1} of ${TOUR_STEPS.length}`;
+    c.titleEl.textContent = t(step.titleKey);
+    c.bodyEl.textContent = t(step.bodyKey);
+    renderTourDots(c.dotsEl, index, TOUR_STEPS.length);
+    c.skipBtn.textContent = t('tourSkip');
+    c.backBtn.textContent = t('tourBack');
+    c.backBtn.disabled = index === 0;
+    c.nextBtn.textContent = index === TOUR_STEPS.length - 1 ? t('tourFinish') : t('tourNext');
+
+    // step 7 gets the paste helper; other steps hide it
+    c.pasteEl.innerHTML = '';
+    if (step.id === 'paste') renderStep7Paste(c.pasteEl, c);
+
+    // button wiring
+    c.skipBtn.onclick = () => endTour({ dismissed: tourState.fromPrompt });
+    c.backBtn.onclick = () => tourGoto(tourState.index - 1);
+    c.nextBtn.onclick = () => {
+      if (tourState.index === TOUR_STEPS.length - 1) { endTour({ completed: !!getToken() }); return; }
+      tourGoto(tourState.index + 1);
+    };
+
+    // place immediately in a neutral spot while we look for the anchor
+    positionTourUI({ left: window.innerWidth / 2 - 20, top: 80, width: 40, height: 40 }, ui);
+    setHealth('tour', 'ok', `step ${index + 1}: ${step.id}`);
+
+    const anchor = await waitForAnchor(step);
+    if (!tourState.active || tourState.index !== index) return; // moved on while waiting
+    if (anchor) {
+      c.bodyEl.textContent = t(step.bodyKey);
+      tourState.cleanupReposition = attachReposition(step.find, ui);
+    } else {
+      // graceful: keep the card, tell the user, Next stays enabled
+      hole.style.display = 'none';
+      beer.style.display = 'none';
+      c.bodyEl.textContent = t('tourNotFound');
+      setHealth('tour', 'warn', `anchor not found: ${step.id}`);
+    }
+  }
+
+  function startTour(opts = {}) {
+    if (tourState.active) return;
+    tourState.active = true;
+    tourState.fromPrompt = !!opts.fromPrompt;
+    removeTourPrompt();               // hide the auto-prompt if it's showing (Task 6)
+    document.addEventListener('keydown', onTourKey, true);
+    guard('tour', () => tourGoto(0));
+  }
+
+  function endTour(opts = {}) {
+    tourState.active = false;
+    document.removeEventListener('keydown', onTourKey, true);
+    teardownTourUI();
+    if (opts.dismissed) GM_setValue(KEYS.tourDismissed, true);
+    if (opts.completed) GM_setValue(KEYS.tourCompleted, true);
+    setHealth('tour', 'idle', opts.completed ? 'completed' : 'not running');
+  }
+
+  function onTourKey(e) {
+    if (e.key === 'Escape') { e.stopPropagation(); endTour({ dismissed: tourState.fromPrompt }); }
   }
 
   // ───────────────────────────────────────────────────────────────────────────
