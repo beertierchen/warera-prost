@@ -362,7 +362,7 @@
         tourStep6Title: 'Copy your token',
         tourStep6Body: "Copy the token now — the game shows it only once. Then hit Next.",
         tourStep7Title: 'Paste it into PROST',
-        tourStep7Body: 'Paste your token here and click Save. That’s it — Prost! 🍻',
+        tourStep7Body: 'Paste your token here, then click Save. That’s it — Prost! 🍻',
         tokenStorageUpgraded: 'API key storage was upgraded — please re-enter your API key in Settings. API features stay off until you re-enter it.',
         tokenStorageUpgradedTitle: 'API key upgraded',
         apiKeyRequiredMsg: 'This feature needs your API key (Settings).',
@@ -619,7 +619,7 @@
         tourStep6Title: 'Token kopieren',
         tourStep6Body: 'Kopiere den Token jetzt — das Spiel zeigt ihn nur einmal. Dann klicke Weiter.',
         tourStep7Title: 'In PROST einfügen',
-        tourStep7Body: 'Füge deinen Token hier ein und klicke Speichern. Fertig — Prost! 🍻',
+        tourStep7Body: 'Füge deinen Token hier ein und klicke auf Speichern. Fertig — Prost! 🍻',
         tokenStorageUpgraded: 'Der Speicherort für den API-Key wurde aktualisiert — bitte trage deinen API-Key in den Einstellungen neu ein. API-Funktionen bleiben deaktiviert, bis du ihn neu einträgst.',
         tokenStorageUpgradedTitle: 'API-Key aktualisiert',
         apiKeyRequiredMsg: 'Diese Funktion benötigt deinen API-Key (Einstellungen).',
@@ -5154,12 +5154,26 @@ async function scanInventory(force) {
     for (const root of roots) {
       if (uid) {
         const exact = [...root.querySelectorAll(`a[href$="/user/${uid}/settings"]`)].find(visible);
-        if (exact) return exact;
+        if (exact) return tightestRow(exact);
       }
       const any = [...root.querySelectorAll('a[href$="/settings"]')].find(visible);
-      if (any) return any;
+      if (any) return tightestRow(any);
     }
     return null;
+  }
+
+  // If a matched menu anchor is taller than a single row, narrow the highlight to
+  // the smallest full-width descendant (the actual clickable row).
+  function tightestRow(el) {
+    if (!el) return el;
+    const r0 = el.getBoundingClientRect();
+    if (r0.height <= 60) return el;
+    let best = el, bestH = r0.height;
+    for (const c of el.querySelectorAll('*')) {
+      const r = c.getBoundingClientRect();
+      if (r.width >= r0.width * 0.6 && r.height >= 20 && r.height < bestH) { best = c; bestH = r.height; }
+    }
+    return best;
   }
 
   // The API-Tokens section is found via locale-proof markers: the header name
@@ -5204,11 +5218,23 @@ async function scanInventory(force) {
     return null;
   }
 
-  // After confirming, the dialog shows the full (long) token + a copy button.
-  function findNewTokenDialog() {
-    const panels = document.querySelectorAll('[id^="headlessui-dialog-panel"]');
-    for (const p of panels) {
-      if (/wae_[a-z0-9]{20,}/i.test(p.textContent || '') && visible(p)) return p;
+  // The freshly-created token is shown IN FULL inside the settings page (not a
+  // dialog): "Neuer API-Token erstellt" + wae_<64 hex chars> + a copy button.
+  // Existing list entries are TRUNCATED (e.g. wae_3bd5...6636), so a long
+  // unbroken token is the reliable, locale-proof marker for the new-token panel.
+  function findNewTokenPanel() {
+    const nodes = document.querySelectorAll('span, code, div, p');
+    for (const n of nodes) {
+      if (n.children.length > 2) continue;
+      if (!/wae_[a-z0-9]{30,}/i.test(n.textContent || '')) continue;
+      if (!visible(n)) continue;
+      // climb to the enclosing panel that also holds the copy button
+      let panel = n;
+      for (let i = 0; i < 5 && panel.parentElement; i++) {
+        if (panel.querySelector('button')) return panel;
+        panel = panel.parentElement;
+      }
+      return n;
     }
     return null;
   }
@@ -5225,12 +5251,12 @@ async function scanInventory(force) {
     return r.top >= 0 && r.bottom <= window.innerHeight && r.left >= 0 && r.right <= window.innerWidth;
   }
 
-  // In the new-token dialog: the copy button is the icon-only button
-  // (short/empty text + an svg); the dismiss button carries a text label.
   function findCopyButton() {
-    const dlg = findNewTokenDialog();
-    if (!dlg) return null;
-    const btns = [...dlg.querySelectorAll('button')].filter(visible);
+    const panel = findNewTokenPanel();
+    if (!panel) return null;
+    const btns = [...panel.querySelectorAll('button')].filter(visible);
+    // copy = icon-only button (short/empty text + an svg); the dismiss button
+    // ("Entlassen") carries a text label.
     const icon = btns.find((b) => (b.textContent || '').trim().length <= 2 && b.querySelector('svg'));
     return icon || btns[0] || null;
   }
@@ -5245,12 +5271,19 @@ async function scanInventory(force) {
     { id: 'create',   titleKey: 'tourStep4Title', bodyKey: 'tourStep4Body', find: findCreateTokenButton,
       done: () => !!findCreateDialog() },                       // create dialog opened
     { id: 'dialog',   titleKey: 'tourStep5Title', bodyKey: 'tourStep5Body', find: findCreateDialog,
-      done: () => !!findNewTokenDialog() },                     // token created
+      done: () => !!findNewTokenPanel() },                      // token created (shown inline)
     { id: 'copy',     titleKey: 'tourStep6Title', bodyKey: 'tourStep6Body', find: findCopyButton,
       onAnchor: (el) => el.addEventListener('click', () => { tourState.copyClicked = true; }, { once: true }),
       done: () => tourState.copyClicked },                      // user clicked copy
     { id: 'paste',    titleKey: 'tourStep7Title', bodyKey: 'tourStep7Body', find: findProstTokenInput,
-      done: () => !!getToken() },                               // token saved into PROST -> auto-finish
+      onEnter: () => {
+        tourState.tokenAtPaste = getToken() || '';             // remember prior token so we only finish on a NEW save
+        if (!findProstTokenInput()) { try { openSettings(); } catch (e) { dbg('tour', 'error', 'open settings failed', e); } }
+      },
+      done: () => {
+        const tk = getToken() || '';
+        return /^wae_[a-z0-9]+$/i.test(tk) && tk !== tourState.tokenAtPaste;   // finish only after Save persists a new token
+      } },
   ];
 
   // Wait for a step's anchor to appear (MutationObserver + poll). Resolves null on timeout.
@@ -5304,7 +5337,7 @@ async function scanInventory(force) {
     return cleanup;
   }
 
-  let tourState = { active: false, index: 0, ui: null, cleanupReposition: null, cleanupAdvance: null, copyClicked: false };
+  let tourState = { active: false, index: 0, ui: null, cleanupReposition: null, cleanupAdvance: null, copyClicked: false, tokenAtPaste: '' };
 
   // step 7 paste UI is injected by Task 7; safe no-op default until then
   function renderStep7Paste(pasteEl, cardParts) {
@@ -5420,6 +5453,7 @@ async function scanInventory(force) {
     tourState.index = index;
     tourState.copyClicked = false;
     const step = TOUR_STEPS[index];
+    if (typeof step.onEnter === 'function') { try { step.onEnter(index); } catch (e) { dbg('tour', 'error', 'onEnter threw', e); } }
 
     teardownTourUI();
     const hole = buildTourHole();
