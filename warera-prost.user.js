@@ -5210,7 +5210,43 @@ async function scanInventory(force) {
   let tourState = { active: false, index: 0, ui: null, cleanupReposition: null };
 
   // step 7 paste UI is injected by Task 7; safe no-op default until then
-  if (typeof renderStep7Paste !== 'function') { var renderStep7Paste = function () {}; }
+  function renderStep7Paste(pasteEl, cardParts) {
+    // Ensure PROST settings (with the .wia-token input) is open so the input exists.
+    if (!findProstTokenInput()) {
+      try { openSettings(); } catch (e) { dbg('tour', 'error', 'open settings failed', e); }
+    }
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'wia-tour-btn wia-tour-btn-secondary';
+    btn.style.width = '100%';
+    btn.textContent = t('tourPaste');
+    btn.onclick = async () => {
+      const input = findProstTokenInput();
+      let pasted = false;
+      try {
+        if (navigator.clipboard && navigator.clipboard.readText) {
+          const text = (await navigator.clipboard.readText() || '').trim();
+          if (/^wae_[a-z0-9]+$/i.test(text) && input) {
+            input.value = text;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            pasted = true;
+          }
+        }
+      } catch (e) { dbg('tour', 'debug', 'clipboard read blocked'); }
+      if (pasted) {
+        btn.textContent = getLocale() === 'de' ? '✓ Eingefügt — jetzt Speichern' : '✓ Pasted — now Save';
+        btn.disabled = true;
+        if (input) { input.focus(); input.scrollIntoView({ block: 'center' }); }
+      } else {
+        // manual fallback
+        cardParts.bodyEl.textContent = getLocale() === 'de'
+          ? 'Automatisches Einfügen blockiert — füge den Token manuell ein (Cmd/Strg+V) und klicke Speichern.'
+          : 'Auto-paste blocked — paste your token manually (Cmd/Ctrl+V) and click Save.';
+        if (input) { input.focus(); input.scrollIntoView({ block: 'center' }); }
+      }
+    };
+    pasteEl.appendChild(btn);
+  }
   let tourPromptEl = null;
 
   function removeTourPrompt() {
