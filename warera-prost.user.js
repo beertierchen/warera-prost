@@ -346,7 +346,7 @@
         tourBack: 'Back',
         tourSkip: 'Skip',
         tourFinish: 'Finish 🍺',
-        tourPaste: 'Paste from clipboard',
+        tourPaste: 'Paste & Save',
         tourWaiting: 'Waiting for the game… do the highlighted action, then hit Next.',
         tourNotFound: "Can't find this on screen — scroll to it or continue with Next.",
         tourStep1Title: 'Open your player menu',
@@ -603,7 +603,7 @@
         tourBack: 'Zurück',
         tourSkip: 'Überspringen',
         tourFinish: 'Fertig 🍺',
-        tourPaste: 'Aus Zwischenablage einfügen',
+        tourPaste: 'Einfügen & Speichern',
         tourWaiting: 'Warte auf das Spiel… führe die markierte Aktion aus und klicke dann Weiter.',
         tourNotFound: 'Nicht auf dem Bildschirm gefunden — scrolle dorthin oder klicke Weiter.',
         tourStep1Title: 'Spielermenü öffnen',
@@ -4999,6 +4999,10 @@ async function scanInventory(force) {
   }
 
   function openSettings() {
+    // Reuse an already-open modal instead of stacking a second one (the tour opens
+    // settings on its last step; a duplicate would break token save + querying).
+    const existing = document.querySelector('.wia-modal-bg');
+    if (existing) { settingsModalBg = existing; renderSettingsModal(existing); return; }
     const bg = document.createElement('div');
     bg.className = 'wia-modal-bg';
     document.body.appendChild(bg);
@@ -5222,19 +5226,23 @@ async function scanInventory(force) {
   // dialog): "Neuer API-Token erstellt" + wae_<64 hex chars> + a copy button.
   // Existing list entries are TRUNCATED (e.g. wae_3bd5...6636), so a long
   // unbroken token is the reliable, locale-proof marker for the new-token panel.
-  function findNewTokenPanel() {
-    const nodes = document.querySelectorAll('span, code, div, p');
-    for (const n of nodes) {
-      if (n.children.length > 2) continue;
-      if (!/wae_[a-z0-9]{30,}/i.test(n.textContent || '')) continue;
-      if (!visible(n)) continue;
-      // climb to the enclosing panel that also holds the copy button
-      let panel = n;
-      for (let i = 0; i < 5 && panel.parentElement; i++) {
-        if (panel.querySelector('button')) return panel;
-        panel = panel.parentElement;
-      }
-      return n;
+  // Like visible() but tolerates off-screen (scrolled-out) nodes — for detecting
+  // the freshly-created token even before it is scrolled into view.
+  function rendered(el) {
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return null;
+    if (typeof el.checkVisibility === 'function'
+        && !el.checkVisibility({ opacityProperty: true, visibilityProperty: true, contentVisibilityAuto: true })) return null;
+    return el;
+  }
+
+  // The freshly-created token is shown IN FULL (untruncated) in a monospace span;
+  // list entries are truncated (e.g. wae_3bd5...6636). An exact long token string
+  // is the reliable, locale-proof marker for the just-created token.
+  function findFullTokenSpan() {
+    for (const s of document.querySelectorAll('span, code')) {
+      if (/^wae_[a-z0-9]{30,}$/i.test((s.textContent || '').trim()) && rendered(s)) return s;
     }
     return null;
   }
@@ -5251,14 +5259,19 @@ async function scanInventory(force) {
     return r.top >= 0 && r.bottom <= window.innerHeight && r.left >= 0 && r.right <= window.innerWidth;
   }
 
+  // The copy button sits in the SAME row as the full-token span. Bounded climb
+  // (max 4 levels) so we never reach unrelated icon buttons (e.g. top-bar search).
+  //   <div row><div><span monospace>wae_…</span></div><button><svg/></button></div>
   function findCopyButton() {
-    const panel = findNewTokenPanel();
-    if (!panel) return null;
-    const btns = [...panel.querySelectorAll('button')].filter(visible);
-    // copy = icon-only button (short/empty text + an svg); the dismiss button
-    // ("Entlassen") carries a text label.
-    const icon = btns.find((b) => (b.textContent || '').trim().length <= 2 && b.querySelector('svg'));
-    return icon || btns[0] || null;
+    const span = findFullTokenSpan();
+    if (!span) return null;
+    let row = span.parentElement;
+    for (let i = 0; i < 4 && row; i++) {
+      const btn = [...row.querySelectorAll('button')].find(rendered);
+      if (btn) return btn;
+      row = row.parentElement;
+    }
+    return null;
   }
 
   const TOUR_STEPS = [
@@ -5271,7 +5284,7 @@ async function scanInventory(force) {
     { id: 'create',   titleKey: 'tourStep4Title', bodyKey: 'tourStep4Body', find: findCreateTokenButton,
       done: () => !!findCreateDialog() },                       // create dialog opened
     { id: 'dialog',   titleKey: 'tourStep5Title', bodyKey: 'tourStep5Body', find: findCreateDialog,
-      done: () => !!findNewTokenPanel() },                      // token created (shown inline)
+      done: () => !!findFullTokenSpan() },                      // token created (shown inline)
     { id: 'copy',     titleKey: 'tourStep6Title', bodyKey: 'tourStep6Body', find: findCopyButton,
       onAnchor: (el) => el.addEventListener('click', () => { tourState.copyClicked = true; }, { once: true }),
       done: () => tourState.copyClicked },                      // user clicked copy
@@ -5347,32 +5360,46 @@ async function scanInventory(force) {
     }
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'wia-tour-btn wia-tour-btn-secondary';
+    btn.className = 'wia-tour-btn wia-tour-btn-primary';
     btn.style.width = '100%';
     btn.textContent = t('tourPaste');
     btn.onclick = async () => {
       const input = findProstTokenInput();
-      let pasted = false;
-      try {
-        if (navigator.clipboard && navigator.clipboard.readText) {
-          const text = (await navigator.clipboard.readText() || '').trim();
-          if (/^wae_[a-z0-9]+$/i.test(text) && input) {
-            input.value = text;
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-            pasted = true;
+      if (!input) { try { openSettings(); } catch (e) { dbg('tour', 'error', 'open settings failed', e); } return; }
+      let val = input.value.trim();
+      // If the field isn't already a valid token, try to fill it from the clipboard.
+      if (!/^wae_[a-z0-9]+$/i.test(val)) {
+        try {
+          if (navigator.clipboard && navigator.clipboard.readText) {
+            const text = (await navigator.clipboard.readText() || '').trim();
+            if (/^wae_[a-z0-9]+$/i.test(text)) {
+              input.value = text;
+              input.dispatchEvent(new Event('input', { bubbles: true }));
+              val = text;
+            }
           }
-        }
-      } catch (e) { dbg('tour', 'debug', 'clipboard read blocked'); }
-      if (pasted) {
-        btn.textContent = getLocale() === 'de' ? '✓ Eingefügt — jetzt Speichern' : '✓ Pasted — now Save';
-        btn.disabled = true;
-        if (input) { input.focus(); input.scrollIntoView({ block: 'center' }); }
-      } else {
-        // manual fallback
+        } catch (e) { dbg('tour', 'debug', 'clipboard read blocked'); }
+      }
+      if (!/^wae_[a-z0-9]+$/i.test(val)) {
+        // manual fallback: let the user paste by hand, then click this button again to save
         cardParts.bodyEl.textContent = getLocale() === 'de'
-          ? 'Automatisches Einfügen blockiert — füge den Token manuell ein (Cmd/Strg+V) und klicke Speichern.'
-          : 'Auto-paste blocked — paste your token manually (Cmd/Ctrl+V) and click Save.';
-        if (input) { input.focus(); input.scrollIntoView({ block: 'center' }); }
+          ? 'Füge den Token manuell ein (Cmd/Strg+V) und klicke dann erneut hier.'
+          : 'Paste your token manually (Cmd/Ctrl+V), then click here again.';
+        input.focus();
+        input.scrollIntoView({ block: 'center' });
+        return;
+      }
+      // Save via PROST's own Save button (persists token + settings). The step-7
+      // `done` predicate then detects the new token and finishes the tour.
+      const saveBtn = document.querySelector('.wia-modal-bg .wia-save');
+      if (saveBtn) {
+        saveBtn.click();
+        btn.textContent = getLocale() === 'de' ? '✓ Gespeichert — Prost! 🍻' : '✓ Saved — Prost! 🍻';
+        btn.disabled = true;
+      } else {
+        cardParts.bodyEl.textContent = getLocale() === 'de'
+          ? 'Klicke auf „Speichern" in den PROST-Einstellungen.'
+          : 'Click "Save" in the PROST settings.';
       }
     };
     pasteEl.appendChild(btn);
@@ -5494,8 +5521,19 @@ async function scanInventory(force) {
     const anchor = await waitForAnchor(step);
     if (!tourState.active || tourState.index !== index) return; // moved on while waiting
     if (anchor) {
-      c.bodyEl.textContent = t(step.bodyKey);
-      tourState.cleanupReposition = attachReposition(step.find, ui);
+      if (step.id === 'paste') {
+        // Final step targets PROST's OWN modal — don't dim/point at the game.
+        // Pin the card clear of the centered PROST modal so nothing blocks Save.
+        hole.style.display = 'none';
+        beer.style.display = 'none';
+        c.card.style.left = '16px';
+        c.card.style.top = 'auto';
+        c.card.style.bottom = '16px';
+      } else {
+        try { anchor.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) { /* older engines */ }
+        c.bodyEl.textContent = t(step.bodyKey);
+        tourState.cleanupReposition = attachReposition(step.find, ui);
+      }
       if (typeof step.onAnchor === 'function') { try { step.onAnchor(anchor, index); } catch (e) { dbg('tour', 'error', 'onAnchor threw', e); } }
       tourState.cleanupAdvance = startAdvanceWatch(index);
     } else {

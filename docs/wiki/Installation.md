@@ -33,7 +33,8 @@ account, no server, no build step.
 1. Open [WareEra](https://app.warera.io) and log in.
 2. A ⚙ gear button appears at the **bottom-right**. The small dot on it shows
    data freshness (green = fresh, orange = stale, red = rate-limited).
-3. Open your **inventory** to see overlays.
+3. If no API token is configured, PROST will prompt you with the **"Tour of Beers"** interactive guide. Click **"Show me how"** to let the script guide you through the API setup steps, or follow the manual setup under [Optional: API key](#api-key).
+4. Open your **inventory** to see overlays.
 
 ## Troubleshooting
 

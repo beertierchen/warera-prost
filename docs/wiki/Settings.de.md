@@ -52,6 +52,14 @@ Ein eigener Einstellungsbereich konfiguriert das persönliche Empfänger-Topic:
   2. Erstelle einen Key mit Lese-Rechten.
   3. Füge ihn in den PROST-Einstellungen ein.
 
+### Interaktive Einführung („Tour of Beers“)
+
+Wenn du neu bist oder noch kein API-Token konfiguriert ist, bietet PROST beim Start automatisch eine interaktive Anleitung namens **„Tour of Beers“** an.
+- Klicke auf **„Zeig mir wie“**, um die Schritt-für-Schritt-Tour zu starten.
+- Die Anleitung führt dich direkt durch das Spielmenü, die Einstellungen, den API-Token-Bereich, den Token-Ersteller und den Kopieren-Button.
+- Am Ende öffnet sie automatisch die PROST-Einstellungen und hilft dir, den Token einzufügen und zu speichern.
+- Du kannst die Tour jederzeit neu starten, indem du in den PROST-Einstellungen auf **„Tour of Beers“** klickst oder `PROST.tour()` in die Entwicklerkonsole deines Browsers eingibst.
+
 ## Sprache
 
 Über die Flaggen-Schaltfläche oben im Dialog wechselst du zwischen **Deutsch** und
