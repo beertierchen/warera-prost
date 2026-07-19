@@ -1371,6 +1371,22 @@
       const resolved = (allies && allies.ids ? allies.ids.length : 0) + '/' + (casc && casc.ids ? casc.ids.length : 0);
       return ['ok', `topic: ${topic}, resolved: ${resolved}, last poll: ${ageStr}, cid: ${bountyClientId()}`];
     },
+    tour() {
+      if (!CONFIG.featTour) return ['idle', 'disabled in settings'];
+      if (tourState && tourState.active) {
+        const step = TOUR_STEPS[tourState.index];
+        const found = !!(step && step.find());
+        return found
+          ? ['ok', `step ${tourState.index + 1}/${TOUR_STEPS.length}: ${step.id}`]
+          : ['warn', `step ${tourState.index + 1} anchor not found: ${step ? step.id : '?'}`];
+      }
+      if (getToken()) return ['idle', 'token already set'];
+      const dismissed = !!GM_getValue(KEYS.tourDismissed, false);
+      const completed = !!GM_getValue(KEYS.tourCompleted, false);
+      if (completed) return ['idle', 'completed'];
+      if (dismissed) return ['idle', 'dismissed'];
+      return ['idle', 'not running (prompt available)'];
+    },
   };
 
   function runProbe(id) {
