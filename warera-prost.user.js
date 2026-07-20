@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.9.4
+// @version      0.9.5
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -525,6 +525,7 @@
         orderRadarAtt: 'Att',
         settingsFeatOrderRadarCheckbox: 'Order-Radar (Country & MU Header)',
         settingsFeatOrderRadarHint: 'Displays active battle orders directly inside the header banner on Country and MU pages.',
+        settingsBattleSettingsLabel: '⚔️ Battle Advisor Options',
         orderRadarPriorityRed: 'High-priority order',
         orderRadarPriorityYellow: 'Medium-priority order',
         orderRadarPriorityGreen: 'Low-priority order'
@@ -790,6 +791,7 @@
         orderRadarAtt: 'Att',
         settingsFeatOrderRadarCheckbox: 'Order-Radar (Länder- & MU-Header)',
         settingsFeatOrderRadarHint: 'Zeigt aktuell gesetzte Battle-Orders direkt im Header-Banner von Länder- und MU-Seiten an.',
+        settingsBattleSettingsLabel: '⚔️ Battle-Advisor Optionen',
         orderRadarPriorityRed: 'Order mit hoher Priorität',
         orderRadarPriorityYellow: 'Order mit mittlerer Priorität',
         orderRadarPriorityGreen: 'Order mit niedriger Priorität'
@@ -1356,7 +1358,7 @@
       return present ? ['ok', ''] : ['fail', 'advisory not injected on battle page'];
     },
     orderRadar() {
-      if (!CONFIG.featOrderRadar) return ['idle', 'disabled in settings'];
+      if (!CONFIG.featBattleAdvisor || !CONFIG.featOrderRadar) return ['idle', 'disabled in settings'];
       if (!getToken()) return ['idle', 'no API token set'];
       const route = typeof getEntityFromRoute === 'function' ? getEntityFromRoute() : null;
       if (!route) return ['idle', 'not on country or MU page'];
@@ -4504,6 +4506,17 @@ async function scanInventory(force) {
             <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
           </div>
           <div class="wia-hint" hidden>${t('settingsFeatBattleHint')}</div>
+          <details class="wia-battle-settings-row" style="margin-top: 6px; margin-left: 24px;" ${prevFeatBattle ? 'open' : ''}>
+            <summary style="font-size: 11px; color: #8b949e; cursor: pointer; user-select: none; font-weight: bold; outline: none; margin-bottom: 6px;">
+              ${t('settingsBattleSettingsLabel')}
+            </summary>
+            <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+              <input type="checkbox" class="wia-feat-order-radar" style="width: auto;" ${prevFeatOrderRadar ? 'checked' : ''} />
+              <label style="margin: 0; font-weight: normal; cursor: pointer; font-size: 11px;">${t('settingsFeatOrderRadarCheckbox')}</label>
+              <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
+            </div>
+            <div class="wia-hint" hidden>${t('settingsFeatOrderRadarHint')}</div>
+          </details>
         </div>
         <div class="wia-feat-row" style="margin-top: 6px;">
           <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%;">
@@ -4578,14 +4591,6 @@ async function scanInventory(force) {
             <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
           </div>
           <div class="wia-hint" hidden>${t('settingsFeatPnlTrackerHint')}</div>
-        </div>
-        <div class="wia-feat-row" style="margin-top: 6px;">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <input type="checkbox" class="wia-feat-order-radar" style="width: auto;" ${prevFeatOrderRadar ? 'checked' : ''} />
-            <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatOrderRadarCheckbox')}</label>
-            <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
-          </div>
-          <div class="wia-hint" hidden>${t('settingsFeatOrderRadarHint')}</div>
         </div>
         <div class="wia-feat-row" style="margin-top: 6px;">
           <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%;">
@@ -4791,6 +4796,21 @@ async function scanInventory(force) {
       };
     }
 
+    const featBattleCheckbox = modal.querySelector('.wia-feat-battle');
+    const battleSettingsRow = modal.querySelector('.wia-battle-settings-row');
+    const featOrderRadarCheckbox = modal.querySelector('.wia-feat-order-radar');
+
+    if (featBattleCheckbox && battleSettingsRow) {
+      featBattleCheckbox.onchange = () => {
+        if (featBattleCheckbox.checked) {
+          battleSettingsRow.setAttribute('open', '');
+        } else {
+          battleSettingsRow.removeAttribute('open');
+          if (featOrderRadarCheckbox) featOrderRadarCheckbox.checked = false;
+        }
+      };
+    }
+
     const debugCheckbox = modal.querySelector('.wia-debug');
     const healthPanel = modal.querySelector('.wia-health-panel');
     const healthBtn = modal.querySelector('.wia-health-btn');
@@ -4939,10 +4959,10 @@ async function scanInventory(force) {
       CONFIG.featBattleAdvisor = featBattle;
       if (featBattle && isBattlePage()) { applyBattleAdvisory(); } else { teardownBattleAdvisory(); }
 
-      const featOrderRadar = bg.querySelector('.wia-feat-order-radar')?.checked ?? true;
+      const featOrderRadar = featBattle && (bg.querySelector('.wia-feat-order-radar')?.checked ?? true);
       GM_setValue(KEYS.featOrderRadar, featOrderRadar);
       CONFIG.featOrderRadar = featOrderRadar;
-      if (featOrderRadar && (isCountryPage() || isMuPage())) { applyOrderRadar(); } else if (!featOrderRadar) { const el = document.getElementById('wia-order-radar'); if (el) el.remove(); }
+      if (featBattle && featOrderRadar && (isCountryPage() || isMuPage())) { applyOrderRadar(); } else { const el = document.getElementById('wia-order-radar'); if (el) el.remove(); }
 
       const featPill = bg.querySelector('.wia-feat-pill').checked;
       GM_setValue(KEYS.featPillReminder, featPill);
@@ -6811,7 +6831,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
   }
 
   function ensureOrderRadarInjected() {
-    if (!CONFIG.featOrderRadar) return;
+    if (!CONFIG.featBattleAdvisor || !CONFIG.featOrderRadar) return;
     const route = getEntityFromRoute();
     if (!route) {
       const existing = document.getElementById('wia-order-radar');
@@ -6968,7 +6988,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
   }
 
   async function applyOrderRadar() {
-    if (!CONFIG.featOrderRadar) {
+    if (!CONFIG.featBattleAdvisor || !CONFIG.featOrderRadar) {
       setHealth('orderRadar', 'idle', 'disabled in settings');
       const existing = document.getElementById('wia-order-radar');
       if (existing) existing.remove();
@@ -12682,7 +12702,7 @@ function checkInventoryDeltaWear() {
       }
       else setHealth('battleAdvisor', 'idle', 'not on battle page');
     } else setHealth('battleAdvisor', 'idle', 'disabled in settings');
-    if (CONFIG.featOrderRadar) {
+    if (CONFIG.featBattleAdvisor && CONFIG.featOrderRadar) {
       if (isCountryPage() || isMuPage()) {
         guard('orderRadar', applyOrderRadar);
         initSharedBodyObserver();

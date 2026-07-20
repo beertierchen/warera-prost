@@ -20,8 +20,9 @@ Panel kompakt bleibt:
   [Pillen-Zyklus](Pill-Reminder.de).
 - **Spieler-Notizen 📒** - *experimentell.* Notiz-Icon neben Spieler-Links. Siehe
   [Spieler-Notizen](Player-Notes.de).
-- **Battle-Advisor ⚔️** - *experimentell.* Button-Hervorhebung auf Kampfseiten; blendet
-  darunter das Feld für **Verbündete Ländercodes** ein. Siehe [Battle Advisor](Battle-Advisor.de).
+- **Battle-Advisor ⚔️** - *experimentell.* Button-Hervorhebung auf Kampfseiten; klappt das Untermenü für **⚔️ Battle-Advisor Optionen** (inkl. **Order-Radar für Länder- & MU-Header**) sowie das Feld für **Verbündete Ländercodes** auf. Siehe [Battle Advisor](Battle-Advisor.de).
+- **⚔️ Battle-Advisor-Optionen**:
+  - **Order-Radar (Länder- & MU-Header)**: Blendet aktuell gesetzte Battle-Orders direkt im Header-Banner von Länder- und MU-Seiten ein.
 - **🔧 Item-Advisor-Optionen**:
   - **Anzahl zu behaltender Items im Bestand (pro Typ/Tier)**: Legt die Bestandsgrenze fest, wie viele Gegenstände desselben Typs/Tiers als `💎 KEEP` empfohlen werden sollen (Standard: 3). Gegenstände außerhalb dieser Grenze erhalten keinen Diamanten.
 

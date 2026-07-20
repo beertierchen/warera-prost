@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 2026-07-20 | Refactoring: Order-Radar im Einstellungen-Menü verschachtelt (v0.9.5)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `docs/wiki/Settings.md`, `docs/wiki/Settings.de.md`
+
+**Änderungen (Deutsch):**
+- **Verschachtelung im Battle-Advisor**: Das Order-Radar ist nun sauber als Unter-Option im ausklappbaren Bereich "⚔️ Battle-Advisor Optionen" strukturiert.
+- **Kopplung der Haupt-Einstellung**: Wird der Battle-Advisor deaktiviert, schließt sich das Untermenü automatisch und das Order-Radar wird ebenfalls deaktiviert.
+
+**Changes (English):**
+- **Nested under Battle Advisor**: Order Radar is now neatly structured as a sub-option within the collapsible "⚔️ Battle Advisor Options" settings section.
+- **Master Toggle Coupling**: Disabling the main Battle Advisor toggle automatically collapses the sub-options and deactivates the Order Radar.
+
 ## 2026-07-20 | Feature: Order-Radar im Länder- & MU-Header (v0.9.4)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `README.md`, `docs/wiki/Battle-Advisor.md`, `docs/wiki/Battle-Advisor.de.md`, `tests/test-advisor-load.js`
