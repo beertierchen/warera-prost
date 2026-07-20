@@ -26,10 +26,9 @@ liefert künftige Updates automatisch.
 ## 3. Loslegen
 
 1. [WareEra](https://app.warera.io) öffnen.
-2. Dein Inventar aufrufen.
-3. Unten rechts auf das ⚙-Zahnrad klicken, um Funktionen zu konfigurieren - siehe
-   [Einstellungen](Settings.de). Der Punkt am Zahnrad zeigt die Datenfrische
-   (grün = aktuell, orange = veraltet, rot = Rate-Limit).
+2. Wenn noch kein API-Token konfiguriert ist, bietet dir PROST die interaktive Anleitung **„Tour of Beers“** an. Klicke auf **„Zeig mir wie“**, um dich Schritt für Schritt durch die Einrichtung leiten zu lassen, oder folge der manuellen Anleitung unter [Optional: API-Key](#api-key).
+3. Dein Inventar aufrufen, um die Overlays zu sehen.
+4. Unten rechts auf das ⚙-Zahnrad klicken, um weitere Funktionen zu konfigurieren - siehe [Einstellungen](Settings.de). Der Punkt am Zahnrad zeigt die Datenfrische (grün = aktuell, orange = veraltet, rot = Rate-Limit).
 
 ## Fehlerbehebung
 

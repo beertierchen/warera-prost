@@ -60,3 +60,11 @@ the dialog.
   1. Go to Settings > API Keys in the game.
   2. Create a read-only key.
   3. Paste it in Settings.
+
+### Interactive Onboarding ("Tour of Beers")
+
+If you are new or don't have an API token configured, PROST will automatically offer a **"Tour of Beers"** interactive guide on startup.
+- Click **"Show me how"** to launch the step-by-step tour.
+- The guide points a spotlight directly to the game's menu, Settings, API-Tokens section, token creator, and copy button.
+- Finally, it automatically opens the PROST settings window and guides you to paste and save the token.
+- You can relaunch the tour at any time by clicking the **"Tour of Beers"** button in PROST Settings, or by typing `PROST.tour()` in your browser's developer console.
