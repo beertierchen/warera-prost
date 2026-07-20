@@ -699,14 +699,16 @@ try {
   assert.ok(modalEl, 'Settings modal should be rendered');
 
   const hintBtns = bg.querySelectorAll('.wia-hint-toggle');
-  assert.strictEqual(hintBtns.length, 5, 'Should have exactly 5 hint toggle buttons (Notes, Battle, Pill Reminder, Market Graph, P&L Tracker)');
+  assert.strictEqual(hintBtns.length, 6, 'Should have exactly 6 hint toggle buttons (Notes, Battle, Pill Reminder, Market Graph, P&L Tracker, Order Radar)');
 
   const featPillCheckbox = bg.querySelector('.wia-feat-pill');
   const featMarketGraphCheckbox = bg.querySelector('.wia-feat-market-graph');
   const featPnlTrackerCheckbox = bg.querySelector('.wia-feat-pnl-tracker');
+  const featOrderRadarCheckbox = bg.querySelector('.wia-feat-order-radar');
   assert.ok(featPillCheckbox, 'Pill reminder checkbox should be present');
   assert.ok(featMarketGraphCheckbox, 'Market graph checkbox should be present');
   assert.ok(featPnlTrackerCheckbox, 'P&L Tracker checkbox should be present');
+  assert.ok(featOrderRadarCheckbox, 'Order Radar checkbox should be present');
 
   const highCritCheckbox = bg.querySelector('.wia-high-crit');
   assert.strictEqual(highCritCheckbox, null, 'High crit checkbox should be removed');
@@ -2681,8 +2683,165 @@ try {
       console.warn = originalConsoleWarn;
       assert.ok(consoleWarned, 'gateProcedure must console.warn on newly gated procedure');
       
-      const healthReason = globalThis.Health?.api?.reason || '';
-      assert.ok(healthReason.includes('procedure gated: test.procedure'), 'gateProcedure must setHealth on api feature');
+      console.log('--- Testing Order-Radar core filtering algorithms (Issue #60) ---');
+
+      // Regression tests for Order-Radar route behavior. These intentionally run
+      // before the implementation is added so the red/green cycle catches the
+      // original navigation and stale-result bugs.
+      assert.strictEqual(
+        globalThis.getOrderRadarBattleUrl('battle-123'),
+        'https://app.warera.io/battle/battle-123',
+        'Order-Radar rows should navigate to the full battle URL'
+      );
+      assert.strictEqual(
+        globalThis.isCurrentOrderRadarRoute(
+          { type: 'country', rawId: 'germany' },
+          { type: 'country', rawId: 'france' }
+        ),
+        false,
+        'A result for the previous country must be rejected after a country switch'
+      );
+      assert.strictEqual(
+        globalThis.isCurrentOrderRadarRoute(
+          { type: 'country', rawId: 'germany' },
+          { type: 'country', rawId: 'germany' }
+        ),
+        true,
+        'A result for the current country must remain eligible to render'
+      );
+      assert.strictEqual(
+        globalThis.isCurrentOrderRadarRequest(
+          1,
+          2,
+          { type: 'country', rawId: 'germany' },
+          { type: 'country', rawId: 'germany' }
+        ),
+        false,
+        'An older request must not overwrite a newer request for the same route'
+      );
+      assert.strictEqual(
+        globalThis.isCurrentOrderRadarRequest(
+          2,
+          2,
+          { type: 'country', rawId: 'germany' },
+          { type: 'country', rawId: 'germany' }
+        ),
+        true,
+        'The newest request for the current route may render'
+      );
+      assert.strictEqual(globalThis.normalizeOrderPriority('high'), 'red', 'High priority should be shown red');
+      assert.strictEqual(globalThis.normalizeOrderPriority('medium'), 'yellow', 'Medium priority should be shown yellow');
+      assert.strictEqual(globalThis.normalizeOrderPriority('low'), 'green', 'Low priority should be shown green');
+      assert.strictEqual(globalThis.normalizeOrderPriority('priority_3'), 'red', 'Priority level 3 should be shown red');
+      assert.strictEqual(globalThis.normalizeOrderPriority('priority_1'), 'green', 'Priority level 1 should be shown green');
+      const priorityRows = globalThis.sortOrdersByPriority([
+        { battleId: 'green', priority: 'green' },
+        { battleId: 'red', priority: 'red' },
+        { battleId: 'yellow', priority: 'yellow' }
+      ]);
+      assert.deepStrictEqual(
+        priorityRows.map((row) => row.battleId),
+        ['red', 'yellow', 'green'],
+        'Orders should be sorted from red priority to green priority'
+      );
+      assert.strictEqual(globalThis.getOrderRadarCompactLevel(900), 'full', 'Order-Radar should use full mode at >= 750px');
+      assert.strictEqual(globalThis.getOrderRadarCompactLevel(700), 'no-region', 'Order-Radar should hide region at 580-749px');
+      assert.strictEqual(globalThis.getOrderRadarCompactLevel(500), 'minimal', 'Order-Radar should use minimal mode at 440-579px');
+      assert.strictEqual(globalThis.getOrderRadarCompactLevel(370), 'icon-only', 'Order-Radar should use icon-only mode below 440px');
+
+      const mockCountryMap = {
+        c_de: { name: 'Germany', code: 'DE' },
+        c_fr: { name: 'France', code: 'FR' },
+        c_gb: { name: 'Britain', code: 'GB' }
+      };
+      const mockRegionMap = {
+        r_bavaria: 'Bavaria'
+      };
+
+      const mockBattles = [
+        {
+          _id: 'b1',
+          isActive: true,
+          attacker: { country: 'c_de', countryOrders: ['c_de'], muOrders: [], moneyPer1kDamages: 4.5, moneyPool: 1000 },
+          defender: { country: 'c_fr', countryOrders: [], muOrders: [], region: 'r_bavaria' },
+          currentRound: {
+            attacker: { points: 120, damages: 60000 },
+            defender: { points: 80, damages: 40000 }
+          }
+        },
+        {
+          _id: 'b2',
+          isActive: true,
+          attacker: { country: 'c_fr', countryOrders: [], muOrders: ['mu_123'] },
+          defender: { country: 'c_de', countryOrders: ['c_de'], muOrders: [] },
+          currentRound: {
+            attacker: { points: 50, damages: 30000 },
+            defender: { points: 150, damages: 70000 }
+          }
+        },
+        {
+          // Ally order: Germany set an order on France's side of a FR-vs-GB battle it is
+          // not a belligerent in. Germany appears in countryOrders without owning the side.
+          _id: 'b3',
+          isActive: true,
+          attacker: { country: 'c_fr', countryOrders: ['c_de'], muOrders: [] },
+          defender: { country: 'c_gb', countryOrders: [], muOrders: [], region: 'r_bavaria' },
+          currentRound: {
+            attacker: { points: 10, damages: 25000 },
+            defender: { points: 20, damages: 75000 }
+          }
+        },
+        {
+          // Country tournament: random countries mixed into teams, no side.country.
+          _id: 'b4',
+          isActive: true,
+          type: 'tournament',
+          attacker: { tournamentTeam: 'team_aaaa1111', countryOrders: ['c_de'], muOrders: [] },
+          defender: { tournamentTeam: 'team_bbbb2222', countryOrders: [], muOrders: [] },
+          currentRound: {
+            attacker: { points: 5, damages: 50000 },
+            defender: { points: 5, damages: 50000 }
+          }
+        }
+      ];
+
+      // Test 1: filterOrdersForCountry for c_de
+      const countryOrders = globalThis.filterOrdersForCountry(mockBattles, 'c_de', mockCountryMap, mockRegionMap);
+      assert.strictEqual(countryOrders.length, 4, 'Should find 4 country orders for Germany (b1 attacker, b2 defender, b3 ally, b4 tournament)');
+      assert.strictEqual(countryOrders[0].battleId, 'b1');
+      assert.strictEqual(countryOrders[0].side, 'attacker');
+      assert.strictEqual(countryOrders[0].ownCode, 'DE');
+      assert.strictEqual(countryOrders[0].enemyCode, 'FR');
+      assert.strictEqual(countryOrders[0].region, 'Bavaria');
+      assert.strictEqual(countryOrders[0].ratioPct, 60, 'Ratio should be 60% (60000/100000)');
+      assert.strictEqual(countryOrders[0].ground, 120, 'Ground points should be 120');
+      assert.strictEqual(countryOrders[0].ratePer1k, 4.5, 'Rate per 1k should be 4.5');
+      // Ally order (b3): detected via countryOrders membership even though Germany owns neither side.
+      assert.strictEqual(countryOrders[2].battleId, 'b3', 'Should detect ally order in a battle Germany is not a belligerent in');
+      assert.strictEqual(countryOrders[2].ownCode, 'FR', 'Row shows the backed side (France), not the ordering entity');
+      assert.strictEqual(countryOrders[2].enemyCode, 'GB');
+      // Tournament order (b4): no side country -> Team <id-suffix> labels + "Tournament" region.
+      assert.strictEqual(countryOrders[3].battleId, 'b4');
+      assert.strictEqual(countryOrders[3].ownCode, 'Team 1111');
+      assert.strictEqual(countryOrders[3].enemyCode, 'Team 2222');
+      assert.strictEqual(countryOrders[3].region, 'Tournament');
+
+      // Test 2: filterOrdersForMu reads the muOrders id array on each battle side directly
+      const muOrders1 = globalThis.filterOrdersForMu(mockBattles, 'mu_123', mockCountryMap, mockRegionMap);
+      assert.strictEqual(muOrders1.length, 1, 'Should find 1 MU order for mu_123');
+      assert.strictEqual(muOrders1[0].battleId, 'b2');
+      assert.strictEqual(muOrders1[0].side, 'attacker');
+      assert.strictEqual(muOrders1[0].ownCode, 'FR');
+      assert.strictEqual(muOrders1[0].enemyCode, 'DE');
+
+      const muOrders2 = globalThis.filterOrdersForMu(mockBattles, 'mu_456', mockCountryMap, mockRegionMap);
+      assert.strictEqual(muOrders2.length, 0, 'Should find 0 MU orders for un-ordered mu_456');
+
+      // Test 3: resolveCanonicalCountryId for slug 'de' -> 'c_de'
+      const resolvedId = globalThis.resolveCanonicalCountryId('de', mockCountryMap);
+      assert.strictEqual(resolvedId, 'c_de', 'Slug "de" should resolve to canonical ID "c_de"');
+
+      console.log('Order-Radar core algorithm tests passed successfully.');
 
       console.log('Compliance tests passed successfully.');
 

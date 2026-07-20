@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.9.3
+// @version      0.9.4
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -70,6 +70,7 @@
     scrapItemCode: 'scraps',
     featNotes: false,                    // experimental: user notes on /user/ links (off by default)
     featBattleAdvisor: false,            // experimental: highlight ally button on /battle/<id> pages
+    featOrderRadar: true,                // compact order radar in country & MU headers
     featSystemAlerts: true,               // receive signed system alerts
     alliedCountryCodes: ['de','pt','es','gm','ir','na','sr','th','at','fi','ie','no','se','uk','va','bf','cd','ye','ne','au','br','id'],
     featMarketGraph: false,
@@ -518,7 +519,15 @@
         settingsFeatMarketGraphCheckbox: 'Resource Market Intraday Graph',
         settingsFeatMarketGraphHint: 'Overlay an intraday (24h/3d) price graph on resource market buy/sell modals.',
         settingsFeatPnlTrackerCheckbox: 'Daily P&L Tracker',
-        settingsFeatPnlTrackerHint: 'Display your daily profit/loss tracker in the topbar next to your gold balance.'
+        settingsFeatPnlTrackerHint: 'Display your daily profit/loss tracker in the topbar next to your gold balance.',
+        orderRadarTitle: '⚔ ORDERS',
+        orderRadarDef: 'Def',
+        orderRadarAtt: 'Att',
+        settingsFeatOrderRadarCheckbox: 'Order-Radar (Country & MU Header)',
+        settingsFeatOrderRadarHint: 'Displays active battle orders directly inside the header banner on Country and MU pages.',
+        orderRadarPriorityRed: 'High-priority order',
+        orderRadarPriorityYellow: 'Medium-priority order',
+        orderRadarPriorityGreen: 'Low-priority order'
       },
       de: {
         never: 'nie',
@@ -775,7 +784,15 @@
         settingsFeatMarketGraphCheckbox: 'Ressourcen-Markt Intraday-Grafik',
         settingsFeatMarketGraphHint: 'Blendet einen Intraday-Preisverlauf (24h/3d) im Kauf-/Verkaufs-Modal von Ressourcen ein.',
         settingsFeatPnlTrackerCheckbox: 'Täglicher P&L Tracker',
-        settingsFeatPnlTrackerHint: 'Zeigt deinen täglichen Gewinn/Verlust Tracker in der Topbar neben deinem Goldstand an.'
+        settingsFeatPnlTrackerHint: 'Zeigt deinen täglichen Gewinn/Verlust Tracker in der Topbar neben deinem Goldstand an.',
+        orderRadarTitle: '⚔ ORDERS',
+        orderRadarDef: 'Def',
+        orderRadarAtt: 'Att',
+        settingsFeatOrderRadarCheckbox: 'Order-Radar (Länder- & MU-Header)',
+        settingsFeatOrderRadarHint: 'Zeigt aktuell gesetzte Battle-Orders direkt im Header-Banner von Länder- und MU-Seiten an.',
+        orderRadarPriorityRed: 'Order mit hoher Priorität',
+        orderRadarPriorityYellow: 'Order mit mittlerer Priorität',
+        orderRadarPriorityGreen: 'Order mit niedriger Priorität'
       }
     },
 
@@ -812,6 +829,8 @@
     stockKeepCount: NS + 'stockKeepCount',
     featNotes: NS + 'featNotes',
     featBattleAdvisor: NS + 'featBattle',
+    featOrderRadar: NS + 'featOrderRadar',
+    regionMap: NS + 'regionMap',
     alliedCountryCodes: NS + 'alliedCodes',
     featPillReminder: NS + 'featPill',
     featPillNotifHnH: NS + 'featPillNotifHnH',
@@ -1222,6 +1241,9 @@
   // Must attach to unsafeWindow-the page console runs in the page realm, not the
   // Tampermonkey sandbox, so a plain `window.WIA` would be invisible there.
   const PAGE_WINDOW = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : (typeof window !== 'undefined' ? window : null);
+  function getPagePathname() {
+    return (PAGE_WINDOW && PAGE_WINDOW.location && PAGE_WINDOW.location.pathname) || location.pathname;
+  }
   if (PAGE_WINDOW) {
     PAGE_WINDOW.PROST = PAGE_WINDOW.WIA = {
       debug: setDebug,
@@ -1332,6 +1354,18 @@
       if (!isBattlePage()) return ['idle', 'not on battle page'];
       const present = document.querySelector('.wia-battle-primary, .wia-battle-muted');
       return present ? ['ok', ''] : ['fail', 'advisory not injected on battle page'];
+    },
+    orderRadar() {
+      if (!CONFIG.featOrderRadar) return ['idle', 'disabled in settings'];
+      if (!getToken()) return ['idle', 'no API token set'];
+      const route = typeof getEntityFromRoute === 'function' ? getEntityFromRoute() : null;
+      if (!route) return ['idle', 'not on country or MU page'];
+      const strip = document.getElementById('wia-order-radar');
+      if (strip) return ['ok', ''];
+      if (typeof orderRadarLastOrders !== 'undefined' && orderRadarLastOrders && orderRadarLastOrders.length === 0) return ['idle', 'no active orders for this entity'];
+      const anchor = typeof findEntityBannerAnchor === 'function' ? findEntityBannerAnchor() : null;
+      if (!anchor) return ['fail', 'header banner container not found'];
+      return ['warn', 'radar not injected yet'];
     },
     pnl() {
       if (!CONFIG.featPnlTracker) return ['idle', 'disabled in settings'];
@@ -1609,25 +1643,26 @@
     return res;
   }
 
-  // tRPC v10 GET batch URL: ?batch=1&input={"0":{"json":<args>}}
+  // tRPC v10 GET query URL: ?input={"key":"value"}
   function trpcUrl(base, procedure, args) {
-    const input = encodeURIComponent(JSON.stringify({ 0: { json: args === undefined ? null : args } }));
-    // encode the procedure too: defense-in-depth so a future endpoint name can't alter the path
-    return `${base}/${encodeURIComponent(procedure)}?batch=1&input=${input}`;
+    const input = encodeURIComponent(JSON.stringify(args === undefined ? {} : args));
+    return `${base}/${encodeURIComponent(procedure)}?input=${input}`;
   }
 
-  // tRPC batch responses come back as [{ result: { data: { json: <payload> } } }]
   function unwrapTrpc(text) {
     const parsed = JSON.parse(text);
     const entry = Array.isArray(parsed) ? parsed[0] : parsed;
     if (entry && entry.error) {
-      throw new Error('trpc: ' + (entry.error.json?.message || 'error'));
+      throw new Error('trpc: ' + (entry.error.json?.message || entry.error.message || 'error'));
     }
     const data = entry && entry.result && entry.result.data;
-    if (!data) {
-      throw new Error('trpc: missing result data');
+    if (data !== undefined && data !== null) {
+      return (typeof data === 'object' && 'json' in data) ? data.json : data;
     }
-    return 'json' in data ? data.json : data;
+    if (entry && entry.result !== undefined && entry.result !== null) {
+      return entry.result;
+    }
+    return parsed;
   }
 
   // Serialize through a single chain so parallel callers (Promise.all of
@@ -1951,7 +1986,7 @@
   }
 
   function isShopPage() {
-    return /\/shop(\/|$)/.test(location.pathname);
+    return /\/shop(\/|$)/.test(getPagePathname());
   }
 
   function runFirstCardScopingLog() {
@@ -4393,6 +4428,7 @@ async function scanInventory(force) {
     const prevFeatMuHealDim = bg.querySelector('.wia-feat-mu-heal-dim')?.checked ?? CONFIG.featMuHealDim;
     const prevFeatMarketGraph = bg.querySelector('.wia-feat-market-graph')?.checked ?? CONFIG.featMarketGraph;
     const prevFeatPnlTracker = bg.querySelector('.wia-feat-pnl-tracker')?.checked ?? CONFIG.featPnlTracker;
+    const prevFeatOrderRadar = bg.querySelector('.wia-feat-order-radar')?.checked ?? CONFIG.featOrderRadar;
     const prevPillBuff = bg.querySelector('.wia-pill-buff')?.value ?? CONFIG.pillBuffH;
     const prevPillKnife = bg.querySelector('.wia-pill-knife')?.value ?? CONFIG.pillKnifeH;
     const prevPillDebuff = bg.querySelector('.wia-pill-debuff')?.value ?? CONFIG.pillDebuffH;
@@ -4542,6 +4578,14 @@ async function scanInventory(force) {
             <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
           </div>
           <div class="wia-hint" hidden>${t('settingsFeatPnlTrackerHint')}</div>
+        </div>
+        <div class="wia-feat-row" style="margin-top: 6px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <input type="checkbox" class="wia-feat-order-radar" style="width: auto;" ${prevFeatOrderRadar ? 'checked' : ''} />
+            <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatOrderRadarCheckbox')}</label>
+            <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
+          </div>
+          <div class="wia-hint" hidden>${t('settingsFeatOrderRadarHint')}</div>
         </div>
         <div class="wia-feat-row" style="margin-top: 6px;">
           <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%;">
@@ -4894,6 +4938,11 @@ async function scanInventory(force) {
       GM_setValue(KEYS.featBattleAdvisor, featBattle);
       CONFIG.featBattleAdvisor = featBattle;
       if (featBattle && isBattlePage()) { applyBattleAdvisory(); } else { teardownBattleAdvisory(); }
+
+      const featOrderRadar = bg.querySelector('.wia-feat-order-radar')?.checked ?? true;
+      GM_setValue(KEYS.featOrderRadar, featOrderRadar);
+      CONFIG.featOrderRadar = featOrderRadar;
+      if (featOrderRadar && (isCountryPage() || isMuPage())) { applyOrderRadar(); } else if (!featOrderRadar) { const el = document.getElementById('wia-order-radar'); if (el) el.remove(); }
 
       const featPill = bg.querySelector('.wia-feat-pill').checked;
       GM_setValue(KEYS.featPillReminder, featPill);
@@ -5572,11 +5621,11 @@ async function scanInventory(force) {
   // Bootstrap + MutationObserver
   // ───────────────────────────────────────────────────────────────────────────
   function isInventoryPage() {
-    return /\/user\/[^/]+\/inventory/.test(location.pathname);
+    return /\/user\/[^/]+\/inventory/.test(getPagePathname());
   }
 
   function isMarketPage() {
-    return /\/market\/equipments/.test(location.pathname);
+    return /\/market\/equipments/.test(getPagePathname());
   }
 
   // ===================== Tour of Beers (issue #50) =====================
@@ -5702,7 +5751,7 @@ function updateObserverTarget() {
     bootstrapObserver.observe(document.body, { childList: true, subtree: true });
   }
 
-  let lastPath = location.pathname;
+  let lastPath = getPagePathname();
 
   function startRoutePolling() {
     if (routePollFrame) {
@@ -5748,8 +5797,10 @@ function updateObserverTarget() {
   }
 
   function handleRouteChange() {
-    if (location.pathname === lastPath) return;
-    lastPath = location.pathname;
+    const pagePath = getPagePathname();
+    if (pagePath === lastPath) return;
+    dbg('orderRadar', 'debug', 'route changed', lastPath, '->', pagePath);
+    lastPath = pagePath;
     cachedCards = null;
     lastInventoryCards = null; // Reset fingerprint on route change
     lastInventoryCardTexts.clear();
@@ -5788,8 +5839,23 @@ function updateObserverTarget() {
         guard('battleAdvisor', applyBattleAdvisory);
         initSharedBodyObserver();
       }
+    } else if (isCountryPage() || isMuPage()) {
+      observer.disconnect();
+      if (CONFIG.featOrderRadar) {
+        // On an entity switch, drop cached orders & radar state so navigating
+        // between countries/MUs immediately fetches fresh entity orders.
+        orderRadarCache.clear();
+        orderRadarLastOrders = [];
+        orderRadarLastEntity = null;
+        const old = document.getElementById('wia-order-radar');
+        if (old) old.remove();
+        guard('orderRadar', applyOrderRadar);
+        initSharedBodyObserver();
+      }
     } else {
       teardownBattleAdvisory();
+      const orderRadarEl = document.getElementById('wia-order-radar');
+      if (orderRadarEl) orderRadarEl.remove();
       observer.disconnect();
       teardownSharedBodyObserver();
     }
@@ -5815,8 +5881,9 @@ function updateObserverTarget() {
   // Highlights the ally-side button and clones orders into it on /battle/<id>
   // ───────────────────────────────────────────────────────────────────────────
   function isBattlePage() {
-    return /\/battle\/[0-9a-zA-Z]{6,}/.test(location.pathname)
-      && !/\/battles/.test(location.pathname);
+    const path = getPagePathname();
+    return /\/battle\/[0-9a-zA-Z]{6,}/.test(path)
+      && !/\/battles/.test(path);
   }
 
   function battleFlagCode(btnEl) {
@@ -5915,7 +5982,7 @@ function updateObserverTarget() {
 
   function applyBattleAdvisory(expectedPath) {
     if (!isBattlePage()) return;
-    const currentPath = location.pathname;
+    const currentPath = getPagePathname();
     if (expectedPath && expectedPath !== currentPath) return; // bailed due to URL change
 
     const defBtn = document.querySelector('#defender-hit-button');
@@ -5972,7 +6039,7 @@ function updateObserverTarget() {
           scheduleNotesScan();
         }
       }
-if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
+if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
         const found = findMarketGraph();
         if (found) {
           setupModalObserver(found.modal);
@@ -5995,6 +6062,9 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
             applyBattleAdvisory();
           }
         }
+      }
+      if (CONFIG.featOrderRadar && (isCountryPage() || isMuPage())) {
+        ensureOrderRadarInjected();
       }
       triggerCraftingAdvisorCheck();
     });
@@ -6168,7 +6238,7 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
   // MU Heal Deemphasis module
   // ───────────────────────────────────────────────────────────────────────────
   function isMuPage() {
-    return /^\/mu(\/|$)/.test(location.pathname);
+    return /^\/mu(\/|$)/.test(getPagePathname());
   }
 
   function shouldDimMuHeal(featPill, featDim, inDebuff, hpFull) {
@@ -6330,6 +6400,656 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
       ? `dimmed (${[inDebuff && 'debuff', hpFull && 'hp-full'].filter(Boolean).join('+')})`
       : 'visible (no debuff, hp not full)';
     setHealth('muHealDim', 'ok', why);
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Order-Radar module
+  // Header-embedded strip showing active battle orders set by country or MU
+  // ───────────────────────────────────────────────────────────────────────────
+  function isCountryPage() {
+    return /^\/country(\/|$)/.test(getPagePathname());
+  }
+
+  function getEntityFromRoute() {
+    const path = getPagePathname();
+    const mCountry = path.match(/^\/country\/([0-9a-zA-Z_-]+)/);
+    if (mCountry) return { type: 'country', rawId: mCountry[1] };
+    const mMu = path.match(/^\/mu\/([0-9a-zA-Z_-]+)/);
+    if (mMu) return { type: 'mu', rawId: mMu[1] };
+    return null;
+  }
+
+  function resolveCanonicalCountryId(rawId, countryMap) {
+    if (!rawId) return null;
+    if (countryMap[rawId]) return rawId;
+    const lower = rawId.toLowerCase();
+    for (const [cid, info] of Object.entries(countryMap)) {
+      if (info && ((info.code && info.code.toLowerCase() === lower) || (info.name && info.name.toLowerCase() === lower))) {
+        return cid;
+      }
+    }
+    return rawId;
+  }
+
+  // Sub-nav tab links that live in the row BELOW the banner image — used to detect (and
+  // exclude) the banner root that also wraps those tabs, so the strip sits on the image.
+  const ORDER_RADAR_TAB_SEL = 'a[href$="/laws"], a[href$="/wars"], a[href$="/regions"], a[href$="/members"], a[href$="/citizens"], a[href$="/applications"], a[href$="/donations"], a[href$="/contracts"]';
+
+  // Anchor = the banner "visual layer": the largest ancestor of the /headerv4/ header
+  // image that is banner-sized but does NOT also contain the sub-nav tab row. Hashed class
+  // names are unstable across game builds, so we key off the stable header image + tab links.
+  function findEntityBannerAnchor() {
+    const img = document.querySelector('img[src*="/headerv4/"]');
+    if (!img) return null;
+    let el = img.parentElement;
+    let layer = null;
+    while (el && el !== document.body) {
+      if (el.offsetWidth >= 300 && el.offsetHeight >= 120) {
+        if (el.querySelector(ORDER_RADAR_TAB_SEL)) break; // reached the root that wraps the tabs
+        layer = el;                                       // banner-sized, tabs not inside → keep
+      }
+      if (el.tagName === 'MAIN' || el.id === 'app') break;
+      el = el.parentElement;
+    }
+    return layer;
+  }
+
+  const orderRadarCache = new Map(); // entityKey -> { at, orders }
+  const ORDER_RADAR_CACHE_TTL = 30000; // 30s cache TTL
+
+  // Shared active-battle list — the bounty poll already fetches the exact same
+  // battle.getBattles list, so we cache it here and let order-radar reuse it instead of
+  // making a second identical call. Falls back to its own POST when bounty is off / stale.
+  let sharedActiveBattles = { at: 0, items: null };
+  const SHARED_BATTLES_TTL = 45000; // 45s
+  const ORDER_PRIORITY_CACHE_TTL = 5 * 60 * 1000;
+  const ORDER_RADAR_COMPACT_BREAKPOINT = 400;
+  const ORDER_PRIORITY_COLORS = { red: '#ef6b6b', yellow: '#e5d264', green: '#5bd78a' };
+  const orderPriorityCache = new Map(); // battleId:side -> { at, items|promise }
+
+  function setSharedActiveBattles(items) {
+    if (Array.isArray(items)) sharedActiveBattles = { at: now(), items };
+  }
+
+  async function getActiveBattles() {
+    if (sharedActiveBattles.items && (now() - sharedActiveBattles.at) < SHARED_BATTLES_TTL) {
+      return sharedActiveBattles.items;
+    }
+    const items = [];
+    let cursor = null;
+    let pages = 0;
+    const MAX_PAGES = 5;
+    do {
+      const args = { isActive: true, filter: 'all', limit: 100 };
+      if (cursor) { args.cursor = cursor; args.direction = 'forward'; }
+      // POST (not batch-GET): batch-GET ignores `limit` → only 10 battles/page.
+      const res = await resolveApiPost('battle.getBattles', args);
+      const payloadObj = (res && res.payload) || res || {};
+      const pageItems = payloadObj.items || (payloadObj.json && payloadObj.json.items) || (Array.isArray(payloadObj) ? payloadObj : []);
+      items.push(...pageItems);
+      cursor = payloadObj.nextCursor || (payloadObj.json && payloadObj.json.nextCursor);
+      pages++;
+    } while (cursor && pages < MAX_PAGES);
+    setSharedActiveBattles(items);
+    return items;
+  }
+  function getId(val) {
+    if (!val) return null;
+    if (typeof val === 'string') return val;
+    if (typeof val === 'object') return val._id || val.id || null;
+    return String(val);
+  }
+
+  function normalizeOrderPriority(value) {
+    const raw = String(value == null ? '' : value).trim().toLowerCase();
+    if (!raw) return null;
+    if (/red|high|critical|urgent|(?:priority|level|tier)[_-]?3$|^3$/.test(raw)) return 'red';
+    if (/yellow|medium|normal|(?:priority|level|tier)[_-]?2$|^2$/.test(raw)) return 'yellow';
+    if (/green|low|(?:priority|level|tier)[_-]?1$|^1$/.test(raw)) return 'green';
+    return null;
+  }
+
+  function orderPriorityRank(priority) {
+    return { red: 0, yellow: 1, green: 2 }[normalizeOrderPriority(priority)] ?? 3;
+  }
+
+  function sortOrdersByPriority(orders) {
+    return (orders || []).map((order, index) => ({ order, index }))
+      .sort((a, b) => orderPriorityRank(a.order.priority) - orderPriorityRank(b.order.priority) || a.index - b.index)
+      .map(({ order }) => order);
+  }
+
+  function getMainBannerWindowWidth() {
+    const banner = findEntityBannerAnchor();
+    const mainWindow = document.getElementById('main-window-container')
+      || document.getElementById('main-window')
+      || (banner ? banner.closest('#main-window-container, #main-window, ._1dnmndyf, body') : null);
+
+    if (mainWindow && typeof mainWindow.getBoundingClientRect === 'function') {
+      const w = mainWindow.getBoundingClientRect().width;
+      if (w > 0) return w;
+    }
+    if (banner && typeof banner.getBoundingClientRect === 'function') {
+      const w = banner.getBoundingClientRect().width;
+      if (w > 0) return w;
+    }
+    return typeof PAGE_WINDOW !== 'undefined' && PAGE_WINDOW.innerWidth ? PAGE_WINDOW.innerWidth : 800;
+  }
+
+  function getOrderRadarCompactLevel(width) {
+    if (!Number.isFinite(width) || width <= 0) return 'full';
+    if (width < 440) return 'icon-only';
+    if (width < 580) return 'minimal';
+    if (width < 750) return 'no-region';
+    return 'full';
+  }
+
+  function shouldCompactOrderRadar(width) {
+    return getOrderRadarCompactLevel(width) === 'icon-only';
+  }
+
+  function getOrderRadarPriorityColor(priority) {
+    return ORDER_PRIORITY_COLORS[normalizeOrderPriority(priority)] || '#94a3b8';
+  }
+
+  async function getBattleSideOrderDetails(battleId, side) {
+    const key = `${battleId}:${side}`;
+    const cached = orderPriorityCache.get(key);
+    if (cached && (now() - cached.at) < ORDER_PRIORITY_CACHE_TTL) {
+      return cached.promise || cached.items || [];
+    }
+
+    const promise = (async () => {
+      const res = await resolveApiBase('battleOrder.getByBattle', { battleId, side });
+      const payload = (res && res.payload) || res || [];
+      return Array.isArray(payload)
+        ? payload
+        : (payload.items || (payload.json && payload.json.items) || []);
+    })();
+    orderPriorityCache.set(key, { at: now(), promise });
+    try {
+      const items = await promise;
+      orderPriorityCache.set(key, { at: now(), items });
+      return items;
+    } catch (e) {
+      orderPriorityCache.delete(key);
+      throw e;
+    }
+  }
+
+  function orderBelongsToEntity(order, entityType, entityId, countryMap) {
+    if (!order) return false;
+    if (entityType === 'country') return matchesCountry(order.country, entityId, countryMap);
+    return getId(order.mu) === getId(entityId);
+  }
+
+  async function addOrderPriorities(orders, entityType, entityId, countryMap) {
+    const enriched = await Promise.all((orders || []).map(async (order) => {
+      try {
+        const details = await getBattleSideOrderDetails(order.battleId, order.side);
+        const matching = details.find((item) => item && item.isActive !== false && orderBelongsToEntity(item, entityType, entityId, countryMap));
+        const rawPriority = matching && matching.priority;
+        dbg('orderRadar', 'debug', 'priority detail', order.battleId, order.side, entityType, entityId, 'items', details.length, 'raw', rawPriority || 'no-match');
+        return { ...order, priority: normalizeOrderPriority(rawPriority), priorityRaw: rawPriority || null };
+      } catch (e) {
+        dbg('orderRadar', 'debug', 'priority fetch failed', order.battleId, order.side, e.message);
+        return { ...order, priority: null };
+      }
+    }));
+    return sortOrdersByPriority(enriched);
+  }
+
+  function matchesCountry(cid, targetCid, countryMap = {}) {
+    if (!cid || !targetCid) return false;
+    const cStr = getId(cid);
+    const tStr = getId(targetCid);
+    if (cStr === tStr) return true;
+
+    const cObj = countryMap[cStr];
+    if (cObj) {
+      if (cObj.code && cObj.code.toLowerCase() === tStr.toLowerCase()) return true;
+      if (cObj.name && cObj.name.toLowerCase() === tStr.toLowerCase()) return true;
+    }
+    const tObj = countryMap[tStr];
+    if (tObj) {
+      if (tObj.code && tObj.code.toLowerCase() === cStr.toLowerCase()) return true;
+      if (tObj.name && tObj.name.toLowerCase() === cStr.toLowerCase()) return true;
+    }
+    return false;
+  }
+
+  // Build one radar row from a battle side. Ground (points) + ratio (damages) ride on the
+  // expanded currentRound object that battle.getBattles already returns — no extra call.
+  function buildOrderRow(b, side, sideObj, countryMap, regionMap) {
+    const enemyObj = b[side === 'attacker' ? 'defender' : 'attacker'] || {};
+
+    // Country vs country → flag code. Tournament battles mix random countries into teams
+    // (no side.country, only tournamentTeam) → label "Team <id-suffix>".
+    const codeFor = (so) => {
+      const cc = countryMap[getId(so.country)];
+      if (cc && cc.code) return cc.code;
+      if (so.tournamentTeam) return 'Team ' + String(getId(so.tournamentTeam)).slice(-4);
+      return '?';
+    };
+
+    const currentRound = (b.currentRound && typeof b.currentRound === 'object') ? b.currentRound : {};
+    const roundAtt = currentRound.attacker || {};
+    const roundDef = currentRound.defender || {};
+    const sideRoundObj = side === 'attacker' ? roundAtt : roundDef;
+    const enemyRoundObj = side === 'attacker' ? roundDef : roundAtt;
+
+    const sideDamages = sideRoundObj.damages || 0;
+    const enemyDamages = enemyRoundObj.damages || 0;
+    const totalDamages = sideDamages + enemyDamages;
+    const ratioPct = totalDamages > 0 ? Math.round((sideDamages / totalDamages) * 100) : 50;
+
+    const regionVal = b.defender && b.defender.region;
+    const regionId = getId(regionVal);
+    let regionName = (regionVal && typeof regionVal === 'object' && regionVal.name)
+      ? regionVal.name
+      : (regionId ? (regionMap[regionId] || regionId) : '');
+    if (!regionName) regionName = b.type === 'tournament' ? 'Tournament' : '?';
+
+    return {
+      battleId: b._id,
+      side,
+      ownCode: codeFor(sideObj),
+      enemyCode: codeFor(enemyObj),
+      isTournament: b.type === 'tournament' || (!getId(sideObj.country) && !!sideObj.tournamentTeam),
+      region: regionName,
+      ratioPct,
+      ground: sideRoundObj.points || 0,
+      ratePer1k: sideObj.moneyPer1kDamages || 0,
+      moneyPool: sideObj.moneyPool || 0
+    };
+  }
+
+  // 2-letter ISO country code -> regional-indicator flag emoji (de -> 🇩🇪). Empty for non-codes.
+  function codeToFlag(code) {
+    if (!code || !/^[a-zA-Z]{2}$/.test(code)) return '';
+    return code.toUpperCase().replace(/./g, (c) => String.fromCodePoint(0x1F1E6 + c.charCodeAt(0) - 65));
+  }
+
+  function getOrderRadarBattleUrl(battleId) {
+    return `https://app.warera.io/battle/${encodeURIComponent(String(battleId))}`;
+  }
+
+  function isCurrentOrderRadarRoute(expected, actual) {
+    return !!expected && !!actual && expected.type === actual.type && expected.rawId === actual.rawId;
+  }
+
+  function isCurrentOrderRadarRequest(requestId, latestRequestId, expectedRoute, actualRoute) {
+    return requestId === latestRequestId && isCurrentOrderRadarRoute(expectedRoute, actualRoute);
+  }
+
+  // countryOrders lists the ids of EVERY country that set an order on this side — including
+  // allies ordering in a battle they are not a belligerent in (verified against live
+  // battle.getBattles: Germany appeared in countryOrders of 2 battles it was not a side of).
+  // So match on membership, NOT on the side owning the country.
+  function filterOrdersForCountry(items, countryId, countryMap = {}, regionMap = {}) {
+    const resultOrders = [];
+    const targetCid = getId(countryId);
+    for (const b of (items || [])) {
+      if (!b || !b.isActive) continue;
+      for (const side of ['attacker', 'defender']) {
+        const sideObj = b[side];
+        if (!sideObj) continue;
+        const hasOrder = (sideObj.countryOrders || []).some((c) => matchesCountry(c, targetCid, countryMap));
+        if (hasOrder) resultOrders.push(buildOrderRow(b, side, sideObj, countryMap, regionMap));
+      }
+    }
+    return resultOrders;
+  }
+
+  // muOrders holds the ids of every MU that set an order on this side (verified against live
+  // battle.getBattles + battleOrder.getByBattle). Membership => that MU has an active order.
+  function filterOrdersForMu(items, muId, countryMap = {}, regionMap = {}) {
+    const resultOrders = [];
+    const targetMuId = getId(muId);
+    for (const b of (items || [])) {
+      if (!b || !b.isActive) continue;
+      for (const side of ['attacker', 'defender']) {
+        const sideObj = b[side];
+        if (!sideObj) continue;
+        const hasMuOrder = (sideObj.muOrders || []).map(getId).includes(targetMuId);
+        if (hasMuOrder) resultOrders.push(buildOrderRow(b, side, sideObj, countryMap, regionMap));
+      }
+    }
+    return resultOrders;
+  }
+
+  async function fetchOrdersForEntity(entityType, rawEntityId) {
+    const countryMap = await loadCountryMap();
+    const regionMap = await loadRegionMap();
+
+    const entityId = entityType === 'country' ? resolveCanonicalCountryId(rawEntityId, countryMap) : rawEntityId;
+    const cacheKey = `${entityType}:${entityId}`;
+    const cached = orderRadarCache.get(cacheKey);
+    if (cached && (now() - cached.at) < ORDER_RADAR_CACHE_TTL) {
+      return { orders: cached.orders, priorityPromise: cached.priorityPromise || Promise.resolve(cached.orders) };
+    }
+
+    // Reuse the shared active-battle list (the bounty poll fetches the same list). Countries
+    // & MUs can set orders on ANY active battle, so we need the full list, not a filtered one.
+    const items = await getActiveBattles();
+
+    // Dedupe battles by id — pagination can return the same battle on overlapping pages,
+    // which would otherwise render as duplicate rows.
+    const seenBattles = new Set();
+    const uniqueItems = items.filter((b) => {
+      const id = b && b._id;
+      if (!id || seenBattles.has(id)) return false;
+      seenBattles.add(id);
+      return true;
+    });
+
+    const baseOrders = entityType === 'country'
+      ? filterOrdersForCountry(uniqueItems, entityId, countryMap, regionMap)
+      : filterOrdersForMu(uniqueItems, entityId, countryMap, regionMap);
+    const initialOrders = sortOrdersByPriority(baseOrders);
+    const priorityPromise = addOrderPriorities(baseOrders, entityType, entityId, countryMap)
+      .then((enriched) => {
+        const current = orderRadarCache.get(cacheKey);
+        if (current && current.priorityPromise === priorityPromise) {
+          current.orders = enriched;
+          current.at = now();
+        }
+        return enriched;
+      });
+    orderRadarCache.set(cacheKey, { at: now(), orders: initialOrders, priorityPromise });
+    return { orders: initialOrders, priorityPromise };
+  }
+
+  let orderRadarLastOrders = [];
+  let orderRadarLastEntity = null;   // `${type}:${id}` the cached orders belong to
+  let orderRadarRequestId = 0;       // invalidates results from older route/fetch requests
+  let orderRadarTimer = null;
+  let orderRadarResizeObserver = null;
+  let orderRadarObservedContainer = null;
+  let orderRadarResizeRaf = 0;
+
+  function attachOrderRadarResizeObserver(container) {
+    if (typeof ResizeObserver === 'undefined' || !container) return;
+    const obsTarget = document.getElementById('main-window-container')
+      || document.getElementById('main-window')
+      || container;
+    if (obsTarget === orderRadarObservedContainer) return;
+    if (!orderRadarResizeObserver) {
+      orderRadarResizeObserver = new ResizeObserver(() => {
+        if (orderRadarResizeRaf) return;
+        const schedule = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (fn) => setTimeout(fn, 16);
+        orderRadarResizeRaf = schedule(() => {
+          orderRadarResizeRaf = 0;
+          if (orderRadarLastOrders.length && getEntityFromRoute()) {
+            renderOrderRadarUI(orderRadarLastOrders);
+          }
+        });
+      });
+    }
+    orderRadarResizeObserver.disconnect();
+    orderRadarResizeObserver.observe(obsTarget);
+    orderRadarObservedContainer = obsTarget;
+  }
+
+  function detachOrderRadarResizeObserver() {
+    if (orderRadarResizeObserver) orderRadarResizeObserver.disconnect();
+    if (orderRadarResizeRaf) {
+      const cancel = typeof cancelAnimationFrame === 'function' ? cancelAnimationFrame : clearTimeout;
+      cancel(orderRadarResizeRaf);
+      orderRadarResizeRaf = 0;
+    }
+    orderRadarObservedContainer = null;
+  }
+
+  // Debounced (re)run — used by the MutationObserver when React drops our strip.
+  function scheduleOrderRadar() {
+    if (orderRadarTimer) clearTimeout(orderRadarTimer);
+    orderRadarTimer = setTimeout(() => {
+      orderRadarTimer = null;
+      guard('orderRadar', applyOrderRadar);
+    }, 100);
+  }
+
+  function ensureOrderRadarInjected() {
+    if (!CONFIG.featOrderRadar) return;
+    const route = getEntityFromRoute();
+    if (!route) {
+      const existing = document.getElementById('wia-order-radar');
+      if (existing) existing.remove();
+      return;
+    }
+    const key = `${route.type}:${route.rawId}`;
+    const existing = document.getElementById('wia-order-radar');
+    if (existing) {
+      if (existing.getAttribute('data-wia-entity') !== key) {
+        existing.remove();
+      } else {
+        return;
+      }
+    }
+    if (orderRadarLastEntity === key && orderRadarLastOrders.length && findEntityBannerAnchor()) {
+      renderOrderRadarUI(orderRadarLastOrders);
+      if (document.getElementById('wia-order-radar')) {
+        setHealth('orderRadar', 'ok', `${orderRadarLastOrders.length} orders rendered`);
+      }
+      return;
+    }
+    scheduleOrderRadar();
+  }
+
+  function renderOrderRadarUI(orders) {
+    const route = getEntityFromRoute();
+    const currentEntityKey = route ? `${route.type}:${route.rawId}` : null;
+    const existing = document.getElementById('wia-order-radar');
+    if (!orders || orders.length === 0 || !currentEntityKey) {
+      if (existing) existing.remove();
+      detachOrderRadarResizeObserver();
+      return;
+    }
+
+    const container = findEntityBannerAnchor();
+    if (!container) return;
+    const windowWidth = getMainBannerWindowWidth();
+    const level = getOrderRadarCompactLevel(windowWidth);
+    const compact = level === 'icon-only';
+    // Give the banner a positioning context so the strip overlays its bottom-right corner
+    // (above the sub-nav tabs) instead of pushing into page flow below the header.
+    if (getComputedStyle(container).position === 'static') container.style.position = 'relative';
+
+    let wrap = existing;
+    if (!wrap || wrap.getAttribute('data-wia-entity') !== currentEntityKey) {
+      if (wrap) wrap.remove();
+      wrap = document.createElement('div');
+      wrap.id = 'wia-order-radar';
+      wrap.className = 'wia-order-radar-container';
+    } else {
+      wrap.innerHTML = '';
+    }
+    wrap.setAttribute('data-wia-entity', currentEntityKey);
+    wrap.classList.toggle('wia-order-radar-compact', compact);
+    // Scales with the banner: caps at 460px but shrinks with the header on narrow layouts.
+    wrap.style.cssText = compact
+      ? 'position:absolute; right:8px; bottom:8px; display:flex; flex-direction:column; gap:3px; align-items:center; z-index:40; width:28px; pointer-events:auto;'
+      : 'position:absolute; right:10px; bottom:10px; display:flex; flex-direction:column; gap:3px; align-items:stretch; z-index:40; width:max-content; max-width:min(460px, calc(100% - 20px)); pointer-events:auto;';
+
+    const titleDiv = document.createElement('div');
+    titleDiv.className = 'wia-order-radar-header';
+    titleDiv.style.cssText = compact
+      ? 'font-size:11px; font-weight:700; color:#cbd5e1; letter-spacing:0.5px; user-select:none; margin-bottom:1px; text-align:center; text-shadow:0 1px 2px rgba(0,0,0,0.85);'
+      : 'font-size:11px; font-weight:700; color:#cbd5e1; letter-spacing:0.5px; user-select:none; margin-bottom:1px; text-align:right; text-shadow:0 1px 2px rgba(0,0,0,0.85);';
+    titleDiv.textContent = compact ? `⚔ ${orders.length}` : `${t('orderRadarTitle')} [${orders.length}]`;
+    wrap.appendChild(titleDiv);
+
+    // API-sourced strings (region/country/team labels) are escaped — never trust them raw.
+    const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+    orders.forEach(ord => {
+      const row = document.createElement('a');
+      row.href = `/battle/${ord.battleId}`;
+      row.className = 'wia-order-radar-row';
+      // Left tick = side (Def blue / Att red). Background bar = own(blue) vs enemy(red) by ratio.
+      const sideColor = ord.side === 'defender' ? '#60a5fa' : '#f87171';
+      const ratioColor = ord.ratioPct >= 50 ? '#4ade80' : '#f87171';
+      const priority = normalizeOrderPriority(ord.priority);
+      const priorityColor = getOrderRadarPriorityColor(priority);
+      const priorityLabel = priority ? t(`orderRadarPriority${priority[0].toUpperCase()}${priority.slice(1)}`) : '';
+      const p = Math.max(0, Math.min(100, Number(ord.ratioPct) || 0));
+      const priorityMarker = `width:${compact ? 16 : 12}px; height:${compact ? 16 : 12}px; background:radial-gradient(circle, ${priorityColor} 0 27%, transparent 30% 43%, ${priorityColor} 46% 59%, transparent 62%); filter:drop-shadow(0 0 2px ${priorityColor}); flex:0 0 auto;`;
+
+      let gridStyle = 'display:grid; grid-template-columns:auto auto minmax(48px,1fr) 40px 46px 46px; align-items:center; gap:7px;';
+      if (level === 'no-region') {
+        gridStyle = 'display:grid; grid-template-columns:auto auto 40px 46px 46px; align-items:center; gap:7px;';
+      } else if (level === 'minimal') {
+        gridStyle = 'display:grid; grid-template-columns:auto auto 40px; align-items:center; gap:7px;';
+      } else if (level === 'icon-only') {
+        gridStyle = 'display:flex; justify-content:center; align-items:center; width:24px; height:24px; border-radius:50%;';
+      }
+
+      row.style.cssText = `
+        ${gridStyle}
+        padding:${compact ? '2px' : '3px 9px'}; border-radius:${compact ? '50%' : '5px'}; border-left:${compact ? '1px' : '3px'} solid ${sideColor};
+        font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size:12px; line-height:1.35;
+        color:#f8fafc; text-shadow:0 1px 2px rgba(0,0,0,0.85); text-decoration:none; cursor:pointer;
+        box-sizing:border-box; width:100%;
+        background: linear-gradient(90deg, rgba(37,99,235,0.42) 0%, rgba(37,99,235,0.42) ${p}%, rgba(153,27,27,0.42) ${p}%, rgba(153,27,27,0.42) 100%);
+        transition: filter 0.12s;
+      `;
+
+      const matchup = ord.isTournament
+        ? '🏆'
+        : `${codeToFlag(ord.ownCode) || esc(ord.ownCode)} › ${codeToFlag(ord.enemyCode) || esc(ord.enemyCode)}`;
+
+      const markerHtml = `<span aria-label="${esc(priorityLabel)}" title="${esc(priorityLabel)}" style="${priorityMarker} opacity:${priority ? '1' : '.55'};"></span>`;
+      row.title = `${priorityLabel ? priorityLabel + ' · ' : ''}${matchup} · ${esc(ord.region)}`;
+
+      if (level === 'icon-only') {
+        row.innerHTML = markerHtml;
+      } else if (level === 'minimal') {
+        row.innerHTML = `
+          ${markerHtml}
+          <span style="white-space:nowrap;">${matchup}</span>
+          <span style="text-align:right; font-weight:700; color:${ratioColor};">${Number(ord.ratioPct)}%</span>
+        `;
+      } else if (level === 'no-region') {
+        row.innerHTML = `
+          ${markerHtml}
+          <span style="white-space:nowrap;">${matchup}</span>
+          <span style="text-align:right; font-weight:700; color:${ratioColor};">${Number(ord.ratioPct)}%</span>
+          <span style="text-align:right; color:#e2e8f0; white-space:nowrap;">⛰${Number(ord.ground)}</span>
+          <span style="text-align:right; color:#fbbf24; white-space:nowrap;">💰${Number(ord.ratePer1k)}</span>
+        `;
+      } else {
+        row.innerHTML = `
+          ${markerHtml}
+          <span style="white-space:nowrap;">${matchup}</span>
+          <span style="min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(ord.region)}</span>
+          <span style="text-align:right; font-weight:700; color:${ratioColor};">${Number(ord.ratioPct)}%</span>
+          <span style="text-align:right; color:#e2e8f0; white-space:nowrap;">⛰${Number(ord.ground)}</span>
+          <span style="text-align:right; color:#fbbf24; white-space:nowrap;">💰${Number(ord.ratePer1k)}</span>
+        `;
+      }
+
+      row.addEventListener('click', (e) => {
+        if (e.ctrlKey || e.metaKey || e.button === 1 || e.shiftKey) return;
+        e.preventDefault();
+        PAGE_WINDOW.location.href = getOrderRadarBattleUrl(ord.battleId);
+      });
+
+      row.addEventListener('mouseenter', () => { row.style.filter = 'brightness(1.18)'; });
+      row.addEventListener('mouseleave', () => { row.style.filter = 'none'; });
+
+      wrap.appendChild(row);
+    });
+
+    if (!container.contains(wrap)) {
+      container.appendChild(wrap);
+    }
+    attachOrderRadarResizeObserver(container);
+  }
+
+  async function applyOrderRadar() {
+    if (!CONFIG.featOrderRadar) {
+      setHealth('orderRadar', 'idle', 'disabled in settings');
+      const existing = document.getElementById('wia-order-radar');
+      if (existing) existing.remove();
+      return;
+    }
+
+    const route = getEntityFromRoute();
+    if (!route) {
+      setHealth('orderRadar', 'idle', 'not on country or MU page');
+      const existing = document.getElementById('wia-order-radar');
+      if (existing) existing.remove();
+      return;
+    }
+
+    const requestId = ++orderRadarRequestId;
+    const requestedRoute = { type: route.type, rawId: route.rawId };
+    try {
+      const fetched = await fetchOrdersForEntity(route.type, route.rawId);
+      const orders = fetched.orders;
+      if (!isCurrentOrderRadarRequest(requestId, orderRadarRequestId, requestedRoute, getEntityFromRoute())) return;
+      orderRadarLastOrders = orders;
+      orderRadarLastEntity = `${route.type}:${route.rawId}`;
+
+      if (!orders || orders.length === 0) {
+        setHealth('orderRadar', 'idle', 'no active orders for this entity');
+        const existing = document.getElementById('wia-order-radar');
+        if (existing) existing.remove();
+        return;
+      }
+
+      let container = findEntityBannerAnchor();
+      if (!container) {
+        setHealth('orderRadar', 'warn', 'header container mounting');
+        scheduleOrderRadar();
+        return;
+      }
+
+      renderOrderRadarUI(orders);
+
+      // Priority details are intentionally background work: the base radar must
+      // appear immediately even when the API throttle queues several detail reads.
+      fetched.priorityPromise.then((enriched) => {
+        if (!isCurrentOrderRadarRequest(requestId, orderRadarRequestId, requestedRoute, getEntityFromRoute())) return;
+        orderRadarLastOrders = enriched;
+        renderOrderRadarUI(enriched);
+        setHealth('orderRadar', 'ok', `${enriched.length} orders rendered`);
+      }).catch(() => {});
+
+      // Re-find the anchor: React may have re-rendered the banner during the await.
+      const anchor = findEntityBannerAnchor();
+      const injected = document.getElementById('wia-order-radar');
+      const isVisible = injected && (injected.offsetParent !== null || injected.getBoundingClientRect().height > 0);
+      const isInsideBanner = anchor && anchor.contains(injected);
+
+      if (injected && isVisible && isInsideBanner) {
+        setHealth('orderRadar', 'ok', `${orders.length} orders rendered`);
+      } else {
+        // Banner not settled yet — schedule retry.
+        setHealth('orderRadar', 'warn', 'radar not injected yet');
+        scheduleOrderRadar();
+      }
+    } catch (e) {
+      setHealth('orderRadar', 'fail', 'fetch failed: ' + e.message);
+    }
+  }
+
+  if (CONFIG.debug || typeof process !== 'undefined') {
+    globalThis.filterOrdersForCountry = filterOrdersForCountry;
+    globalThis.filterOrdersForMu = filterOrdersForMu;
+    globalThis.getEntityFromRoute = getEntityFromRoute;
+    globalThis.findEntityBannerAnchor = findEntityBannerAnchor;
+    globalThis.resolveCanonicalCountryId = resolveCanonicalCountryId;
+    globalThis.getOrderRadarBattleUrl = getOrderRadarBattleUrl;
+    globalThis.getPagePathname = getPagePathname;
+    globalThis.isCurrentOrderRadarRoute = isCurrentOrderRadarRoute;
+    globalThis.isCurrentOrderRadarRequest = isCurrentOrderRadarRequest;
+    globalThis.normalizeOrderPriority = normalizeOrderPriority;
+    globalThis.sortOrdersByPriority = sortOrdersByPriority;
+    globalThis.shouldCompactOrderRadar = shouldCompactOrderRadar;
+    globalThis.getOrderRadarCompactLevel = getOrderRadarCompactLevel;
+    globalThis.applyOrderRadar = applyOrderRadar;
   }
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -6933,7 +7653,7 @@ if (CONFIG.featMarketGraph && location.pathname.startsWith('/market')) {
     }
 
     if (foundState === null) {
-      const path = location.pathname;
+      const path = getPagePathname();
       const isProfile = path === `/user/${ownId}` || path === `/user/${encodeURIComponent(ownId)}`;
       if (isProfile && ownLinks.length > 0) {
         foundState = 'none';
@@ -10570,7 +11290,8 @@ function checkInventoryDeltaWear() {
     if (countryMapMem) return countryMapMem;
     const cached = GM_getValue(KEYS.bountyCountryMap, null);
     if (cached && (now() - cached.at) < BOUNTY_MAP_TTL_MS && cached.map) { countryMapMem = cached.map; return countryMapMem; }
-    const list = (await resolveApiPost('country.getAllCountries', {})).payload || [];
+    const res = await resolveApiBase('country.getAllCountries', {});
+    const list = (res && res.payload) || res || [];
     const map = {};
     for (const c of list) {
       if (c && c._id) map[c._id] = {
@@ -10587,6 +11308,38 @@ function checkInventoryDeltaWear() {
   async function resolveCountryName(id) {
     if (!id) return '?';
     try { const m = await loadCountryMap(); if (m[id]) return m[id].name; } catch (e) { /* fall through */ }
+    return id;
+  }
+
+  const REGION_MAP_TTL_MS = 86400000;   // 24h
+  let regionMapMem = null;
+  async function loadRegionMap() {
+    if (regionMapMem) return regionMapMem;
+    const cached = GM_getValue(KEYS.regionMap, null);
+    if (cached && (now() - cached.at) < REGION_MAP_TTL_MS && cached.map) { regionMapMem = cached.map; return regionMapMem; }
+    try {
+      const res = await resolveApiBase('region.getRegionsObject', {});
+      const rawMap = (res && res.payload) || res || {};
+      const map = {};
+      for (const [id, r] of Object.entries(rawMap)) {
+        if (r && typeof r === 'object') {
+          map[id] = r.name || r.code || id;
+        } else if (typeof r === 'string') {
+          map[id] = r;
+        }
+      }
+      regionMapMem = map;
+      GM_setValue(KEYS.regionMap, { at: now(), map });
+      return map;
+    } catch (e) {
+      dbg('orderRadar', 'warn', 'region map load failed', e.message);
+      return {};
+    }
+  }
+
+  async function resolveRegionName(id) {
+    if (!id) return '?';
+    try { const m = await loadRegionMap(); if (m[id]) return m[id]; } catch (e) { /* fall through */ }
     return id;
   }
 
@@ -11213,6 +11966,9 @@ function checkInventoryDeltaWear() {
         renewPollLock();   // pagination can span ~30s; keep our lock fresh so no tab overlaps
         if (pages >= BOUNTY_PAGE_CAP && cursor) { dbg('bountyNotify', 'debug', 'page cap hit', pages); break; }
       } while (cursor);
+
+      // Share this list so the Order-Radar can reuse it instead of making its own identical call.
+      setSharedActiveBattles(all);
 
       const bounties = extractAllyBounties(all, allySet, ownCountry);
       const allBounties = extractAllyBounties(all, null, ownCountry);
@@ -11868,6 +12624,7 @@ function checkInventoryDeltaWear() {
     regFeature('pnl', 'P&L Tracker');
     regFeature('marketGraph', 'Market Graph');
     regFeature('battleAdvisor', 'Battle Advisor');
+    regFeature('orderRadar', 'Order-Radar');
     regFeature('pillReminder', 'Pill Reminder');
     regFeature('muHealDim', 'MU Heal Dim');
     regFeature('notes', 'User Notes');
@@ -11890,6 +12647,7 @@ function checkInventoryDeltaWear() {
     CONFIG.stockKeepCount = Number.parseInt(GM_getValue(KEYS.stockKeepCount, 3), 10) || 3;
     CONFIG.featNotes = GM_getValue(KEYS.featNotes, false);
     CONFIG.featBattleAdvisor = GM_getValue(KEYS.featBattleAdvisor, false);
+    CONFIG.featOrderRadar = GM_getValue(KEYS.featOrderRadar, true);
     CONFIG.alliedCountryCodes = GM_getValue(KEYS.alliedCountryCodes, CONFIG.alliedCountryCodes);
     CONFIG.featPillReminder = GM_getValue(KEYS.featPillReminder, false);
     CONFIG.featPillNotifHnH = GM_getValue(KEYS.featPillNotifHnH, false);
@@ -11924,6 +12682,12 @@ function checkInventoryDeltaWear() {
       }
       else setHealth('battleAdvisor', 'idle', 'not on battle page');
     } else setHealth('battleAdvisor', 'idle', 'disabled in settings');
+    if (CONFIG.featOrderRadar) {
+      if (isCountryPage() || isMuPage()) {
+        guard('orderRadar', applyOrderRadar);
+        initSharedBodyObserver();
+      } else setHealth('orderRadar', 'idle', 'not on country or MU page');
+    } else setHealth('orderRadar', 'idle', 'disabled in settings');
     if (CONFIG.featPillReminder) guard('pillReminder', initPillReminder); else setHealth('pillReminder', 'idle', 'disabled in settings');
     if (CONFIG.featMuHealDim) applyMuHealDimSoon(); else setHealth('muHealDim', 'idle', 'disabled in settings');
     if (CONFIG.featMarketGraph) guard('marketGraph', initMarketGraph); else setHealth('marketGraph', 'idle', 'disabled in settings');
@@ -11946,16 +12710,17 @@ function checkInventoryDeltaWear() {
     const fireRoute = debounce(handleRouteChange, 15);
 
     for (const m of ['pushState', 'replaceState']) {
-      const orig = history[m];
+      const pageHistory = PAGE_WINDOW && PAGE_WINDOW.history;
+      const orig = pageHistory && pageHistory[m];
       if (orig) {
-        history[m] = function (...a) {
+        pageHistory[m] = function (...a) {
           const r = orig.apply(this, a);
           fireRoute();
           return r;
         };
       }
     }
-    window.addEventListener('popstate', fireRoute);
+    (PAGE_WINDOW || window).addEventListener('popstate', fireRoute);
 
     // Fallback interval check
     setInterval(handleRouteChange, 2000);

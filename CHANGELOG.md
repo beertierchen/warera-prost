@@ -1,5 +1,21 @@
 # CHANGELOG
 
+## 2026-07-20 | Feature: Order-Radar im Länder- & MU-Header (v0.9.4)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `README.md`, `docs/wiki/Battle-Advisor.md`, `docs/wiki/Battle-Advisor.de.md`, `tests/test-advisor-load.js`
+
+**Änderungen (Deutsch):**
+- **Order-Radar für Länder & MUs**: Zeigt aktive Befehle (Battle Orders) direkt im Header-Banner von Länder- und MU-Seiten an.
+- **Zielscheiben-Icons für Order-Priorität**: Befehle werden mit nativen Zielscheiben-Icons (Rot = hohe Priorität, Gelb = mittlere Priorität, Grün = niedrige Priorität) dargestellt und nach Dringlichkeit sortiert.
+- **4-Stufen Responsive Layout**: Schrumpft dynamisch basierend auf der verfügbaren Hauptfensterbreite (`>=750px` Vollständig, `580-749px` Ohne Region, `440-579px` Minimal, `<440px` Icon-Only Badges) und verhindert das Überlappen von Banner-Texten.
+- **Sofortiges SPA-Routing**: Beim Wechsel zwischen Ländern oder MUs wird die Anzeige ohne Seiten-Reload augenblicklich aktualisiert.
+
+**Changes (English):**
+- **Order-Radar for Countries & MUs**: Displays active battle orders directly in the header banner of country and MU pages.
+- **Target Icons for Order Priority**: Shows native target icons (Red = high priority, Yellow = medium priority, Green = low priority) sorted by priority rank.
+- **4-Tier Responsive Layout**: Dynamically collapses based on main window width (`>=750px` Full, `580-749px` No Region, `440-579px` Minimal, `<440px` Icon-Only Badges) to prevent overlapping header text.
+- **Instant SPA Navigation**: Seamlessly updates order displays on country or MU transitions without requiring a page reload.
+
 ## 2026-07-18 | Feature: Version-Selfcheck & Signierter Admin-Sicherheitskanal (v0.9.3)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/test-advisor-load.js`, `.gitignore`, `README.md`, `tools/admin-sign/sign.js`

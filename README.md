@@ -89,7 +89,7 @@ The script is strictly **session-less** — it never accesses or transmits your 
 
 ## Roadmap
 
-PROST ships as an overlay *suite*. Already shipped beyond inventory advice: **battle advisor**, **pill / H&H timer**, **market price graph**, **daily P&L tracker**, **ntfy + in-page bounty notifications**, and a built-in **health / status HUD**.
+PROST ships as an overlay *suite*. Already shipped beyond inventory advice: **battle advisor**, **order radar (country & MU banners)**, **pill / H&H timer**, **market price graph**, **daily P&L tracker**, **ntfy + in-page bounty notifications**, and a built-in **health / status HUD**.
 
 Planned work and the idea backlog are tracked in [issues](https://github.com/beertierchen/warera-prost/issues) (labelled by area — `market`, `battle`, `notifications`, `equipment`, …) and organised on a Kanban [project board](https://github.com/users/beertierchen/projects/1).
 
