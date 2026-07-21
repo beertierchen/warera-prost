@@ -2841,6 +2841,18 @@ try {
       const resolvedId = globalThis.resolveCanonicalCountryId('de', mockCountryMap);
       assert.strictEqual(resolvedId, 'c_de', 'Slug "de" should resolve to canonical ID "c_de"');
 
+      // Test Gating TTL & Whitelist (Issue #62)
+      assert.strictEqual(globalThis.isProcedureGated('battle.getBattles'), false, 'Public anonymous procedure battle.getBattles should never be gated');
+      globalThis.gateProcedure('battle.getBattles');
+      assert.strictEqual(globalThis.isProcedureGated('battle.getBattles'), false, 'Public procedure battle.getBattles must remain un-gated after gateProcedure call');
+
+      assert.strictEqual(typeof globalThis.exportDebugLog, 'function', 'exportDebugLog should be a function');
+      const exportedLog = globalThis.exportDebugLog();
+      assert.ok(exportedLog.includes('PROST Debug Log Export'), 'Exported log should contain header');
+      assert.ok(exportedLog.includes('Version:'), 'Exported log should contain script version');
+      assert.ok(exportedLog.includes('Feature Health Registry'), 'Exported log should contain Health registry section');
+      console.log('Gating TTL, Whitelist, and Debug Log Export tests passed successfully.');
+
       console.log('Order-Radar core algorithm tests passed successfully.');
 
       console.log('Compliance tests passed successfully.');

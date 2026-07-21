@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## 2026-07-20 | Fix: Gateway-Fallback, Gating-TTL & Debug-Log Export (v0.9.6)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `docs/wiki/Settings.md`, `docs/wiki/Settings.de.md`, `tests/test-advisor-load.js`
+
+**Änderungen (Deutsch):**
+- **Automatischer Gateway-Fallback**: Bei 401-, 403- oder 429-Fehlern an `api2.warera.io` schlägt die Anfrage nicht mehr fehl, sondern führt einen automatischen Fallback auf das anonyme Gateway durch.
+- **Gating-TTL (10 Min) & Whitelist**: Gesperrte Prozeduren laufen nach 10 Minuten automatisch ab. Öffentliche Endpunkte (`battle.getBattles` etc.) sind vom Gating ausgeschlossen.
+- **📋 Debug-Log kopieren**: Neuer Export-Button in den Einstellungen unter Diagnose kopiert Systemstatus, Health-Registry und Logzeilen direkt in die Zwischenablage für schnellen Support.
+
+**Changes (English):**
+- **Automatic Gateway Fallback**: On 401, 403, or 429 errors from `api2.warera.io`, requests automatically fall back to the keyless gateway.
+- **Gating TTL (10 min) & Whitelist**: Gated procedures auto-expire after 10 minutes. Public read-only endpoints are excluded from gating.
+- **📋 Copy Debug Log**: New export button under Diagnostics copies system status, health registry, and logs directly to clipboard for quick support.
+
 ## 2026-07-20 | Refactoring: Order-Radar im Einstellungen-Menü verschachtelt (v0.9.5)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `docs/wiki/Settings.md`, `docs/wiki/Settings.de.md`

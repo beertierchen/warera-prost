@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.9.5
+// @version      0.9.6
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -1192,6 +1192,34 @@
     return false;
   }
 
+  function exportDebugLog() {
+    const lines = [];
+    lines.push(`=== PROST Debug Log Export ===`);
+    lines.push(`Generated: ${new Date().toISOString()}`);
+    lines.push(`Version: ${SCRIPT_VERSION}`);
+    lines.push(`Has API Key: ${!!getToken()}`);
+    lines.push(`Debug Mode: ${!!CONFIG.debug}`);
+    lines.push(`Gated Procedures: ${JSON.stringify(GM_getValue(KEYS.gatedProcedures, []))}`);
+    lines.push(`Rate Limited Until: ${GM_getValue(KEYS.rateLimitedUntil, 0)} (now: ${now()})`);
+    lines.push(`NTFY Rate Limited Until: ${GM_getValue(KEYS.ntfyRateLimitedUntil, 0)}`);
+    lines.push(``);
+    lines.push(`=== Feature Health Registry ===`);
+    for (const [id, h] of Object.entries(Health)) {
+      lines.push(`[${id}] status=${h.status} info="${h.info || ''}" lastRun=${h.lastRun ? new Date(h.lastRun).toISOString() : 'never'}`);
+    }
+    lines.push(``);
+    lines.push(`=== Recent Debug Logs (${Debug.buf.length} entries) ===`);
+    for (const entry of Debug.buf) {
+      const timeStr = new Date(entry.t).toISOString().split('T')[1].replace('Z', '');
+      const msgStr = Array.isArray(entry.msg)
+        ? entry.msg.map(m => (m && m.message) || (typeof m === 'object' ? JSON.stringify(m) : String(m))).join(' ')
+        : String(entry.msg);
+      lines.push(`${timeStr} [PROST:${entry.feat}] [${(entry.level || 'info').toUpperCase()}] ${msgStr}`);
+    }
+    return lines.join('\n');
+  }
+  globalThis.exportDebugLog = exportDebugLog;
+
   function log(...a) { dbg('core', 'debug', ...a); }   // back-compat alias
 
   // Health registry: id -> live status. status: 'ok'|'warn'|'fail'|'idle'.
@@ -1582,17 +1610,55 @@
     GM_setValue(KEYS.rateLimitedUntil, now() + CONFIG.rateLimitBackoffMs);
   }
 
+  const PUBLIC_ANONYMOUS_PROCEDURES = new Set([
+    'battle.getBattles',
+    'battleOrder.getByBattle',
+    'country.getAllCountries',
+    'region.getRegionsObject',
+    'search.searchAnything'
+  ]);
+  const GATED_PROCEDURE_TTL_MS = 10 * 60 * 1000; // 10 minutes TTL for gated procedures
+
+  function sanitizeGatedProcedures() {
+    try {
+      const raw = GM_getValue(KEYS.gatedProcedures, []);
+      if (!Array.isArray(raw)) {
+        GM_setValue(KEYS.gatedProcedures, []);
+        return [];
+      }
+      const currentTime = now();
+      const clean = [];
+      for (const item of raw) {
+        const procName = typeof item === 'string' ? item : item?.procedure;
+        const timestamp = typeof item === 'object' && item?.at ? item.at : 0;
+        if (!procName || PUBLIC_ANONYMOUS_PROCEDURES.has(procName)) continue;
+        if (timestamp > 0 && currentTime - timestamp > GATED_PROCEDURE_TTL_MS) {
+          dbg('api', 'debug', `un-gated procedure ${procName} (TTL expired)`);
+          continue;
+        }
+        clean.push(typeof item === 'object' ? item : { procedure: procName, at: currentTime });
+      }
+      GM_setValue(KEYS.gatedProcedures, clean);
+      return clean;
+    } catch (e) {
+      GM_setValue(KEYS.gatedProcedures, []);
+      return [];
+    }
+  }
+
   function isProcedureGated(procedure) {
-    const gated = GM_getValue(KEYS.gatedProcedures, []);
-    return Array.isArray(gated) && gated.includes(procedure);
+    if (PUBLIC_ANONYMOUS_PROCEDURES.has(procedure)) return false;
+    const gated = sanitizeGatedProcedures();
+    return gated.some((item) => item.procedure === procedure);
   }
   function gateProcedure(procedure) {
-    let gated = GM_getValue(KEYS.gatedProcedures, []);
-    if (!Array.isArray(gated)) gated = [];
-    if (!gated.includes(procedure)) {
-      gated.push(procedure);
+    if (PUBLIC_ANONYMOUS_PROCEDURES.has(procedure)) return;
+    const gated = sanitizeGatedProcedures();
+    if (!gated.some((item) => item.procedure === procedure)) {
+      gated.push({ procedure, at: now() });
       GM_setValue(KEYS.gatedProcedures, gated);
       console.warn(`[PROST:api] procedure gated: ${procedure} (auth/permission failure)`);
+      dbg('api', 'warn', `procedure gated: ${procedure} (auth/permission failure)`);
       setHealth('api', 'warn', `procedure gated: ${procedure} (auth/permission failure)`);
     }
   }
@@ -1689,10 +1755,7 @@
     if (isProcedureGated(procedure)) throw new Error('gated: ' + procedure);
     const cached = GM_getValue(KEYS.apiBase, '');
     const hasKey = !!getToken();
-    let allowedBases = CONFIG.apiBases;
-    if (!hasKey) {
-      allowedBases = gatewayBases;
-    }
+    let allowedBases = hasKey ? CONFIG.apiBases : gatewayBases;
     const bases = cached && allowedBases.includes(cached)
       ? [cached, ...allowedBases.filter((b) => b !== cached)]
       : allowedBases;
@@ -1702,21 +1765,30 @@
       try {
         await throttle();
         const res = await gmRequest({ method: 'GET', url: trpcUrl(base, procedure, args), headers: headersForBase(base) });
-        if (res.status === 429) { tripRateLimit(); throw new Error('429'); }
+        if (res.status === 429) {
+          dbg('api', 'warn', `base ${base} rate-limited (429) for ${procedure}, attempting fallback base`);
+          tripRateLimit();
+          lastErr = new Error('429');
+          continue;
+        }
         if (res.status === 401 || res.status === 403) {
-          gateProcedure(procedure);
-          throw new Error(String(res.status));
+          dbg('api', 'warn', `base ${base} returned ${res.status} for ${procedure}, attempting gateway fallback`);
+          lastErr = new Error(String(res.status));
+          continue;
         }
         if (res.status >= 200 && res.status < 300) {
           GM_setValue(KEYS.apiBase, base);
+          dbg('api', 'debug', `resolveApiBase ${procedure} succeeded on ${base}`);
           return { base, payload: unwrapTrpc(res.text) };
         }
         lastErr = new Error('HTTP ' + res.status);
       } catch (e) {
         lastErr = e;
-        if (String(e.message).includes('429')) break;
-        if (String(e.message).includes('401') || String(e.message).includes('403')) break;
+        dbg('api', 'warn', `resolveApiBase ${procedure} failed on ${base}: ${e.message}`);
       }
+    }
+    if (lastErr && (lastErr.message === '401' || lastErr.message === '403')) {
+      gateProcedure(procedure);
     }
     if (!hasKey && api2Bases.length > 0) {
       throw new Error('apiKeyRequired: ' + procedure);
@@ -1729,10 +1801,7 @@
     if (isProcedureGated(procedure)) throw new Error('gated: ' + procedure);
     const cached = GM_getValue(KEYS.apiBase, '');
     const hasKey = !!getToken();
-    let allowedBases = CONFIG.apiBases;
-    if (!hasKey) {
-      allowedBases = gatewayBases;
-    }
+    let allowedBases = hasKey ? CONFIG.apiBases : gatewayBases;
     const bases = cached && allowedBases.includes(cached)
       ? [cached, ...allowedBases.filter((b) => b !== cached)]
       : allowedBases;
@@ -1742,31 +1811,41 @@
       try {
         await throttle();
         const url = `${base}/${encodeURIComponent(procedure)}`;
+        const headers = {
+          ...headersForBase(base),
+          'Content-Type': 'application/json',
+          'accept': '*/*'
+        };
         const res = await gmRequest({
           method: 'POST',
           url,
-          headers: {
-            ...headersForBase(base),
-            'Content-Type': 'application/json',
-            'accept': '*/*'
-          },
+          headers,
           data: JSON.stringify(args)
         });
-        if (res.status === 429) { tripRateLimit(); throw new Error('429'); }
+        if (res.status === 429) {
+          dbg('api', 'warn', `base ${base} rate-limited (429) for ${procedure}, attempting fallback base`);
+          tripRateLimit();
+          lastErr = new Error('429');
+          continue;
+        }
         if (res.status === 401 || res.status === 403) {
-          gateProcedure(procedure);
-          throw new Error(String(res.status));
+          dbg('api', 'warn', `base ${base} returned ${res.status} for ${procedure}, attempting gateway fallback`);
+          lastErr = new Error(String(res.status));
+          continue;
         }
         if (res.status >= 200 && res.status < 300) {
           GM_setValue(KEYS.apiBase, base);
+          dbg('api', 'debug', `resolveApiPost ${procedure} succeeded on ${base}`);
           return { base, payload: unwrapTrpc(res.text) };
         }
         lastErr = new Error('HTTP ' + res.status);
       } catch (e) {
         lastErr = e;
-        if (String(e.message).includes('429')) break;
-        if (String(e.message).includes('401') || String(e.message).includes('403')) break;
+        dbg('api', 'warn', `resolveApiPost ${procedure} failed on ${base}: ${e.message}`);
       }
+    }
+    if (lastErr && (lastErr.message === '401' || lastErr.message === '403')) {
+      gateProcedure(procedure);
     }
     if (!hasKey && api2Bases.length > 0) {
       throw new Error('apiKeyRequired: ' + procedure);
@@ -2329,6 +2408,8 @@
     globalThis.setToken = setToken;
     globalThis.getToken = getToken;
     globalThis.gateProcedure = gateProcedure;
+    globalThis.isProcedureGated = isProcedureGated;
+    globalThis.sanitizeGatedProcedures = sanitizeGatedProcedures;
     globalThis.Health = Health;
     globalThis.parseStats = parseStats;
     globalThis.getItemState = getItemState;
@@ -4659,6 +4740,7 @@ async function scanInventory(force) {
           <details class="wia-health-details" style="margin-top: 6px;">
             <summary style="font-size: 11px; color: #8b949e; cursor: pointer; user-select: none; font-weight: bold; outline: none;">Feature-Health / Diagnose</summary>
             <button type="button" class="wia-health-btn" style="margin: 6px 0; font-size: 11px; padding: 3px 8px; cursor: pointer;">Aktualisieren</button>
+            <button type="button" class="wia-debug-export-btn" style="margin: 6px 4px; font-size: 11px; padding: 3px 8px; cursor: pointer; color: #10b981; background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.2); border-radius: 3px;">📋 Debug-Log kopieren</button>
             <button type="button" class="wia-pnl-print-btn" style="margin: 6px 4px; font-size: 11px; padding: 3px 8px; cursor: pointer; color: #58a6ff; background: rgba(88,166,255,0.1); border: 1px solid rgba(88,166,255,0.2); border-radius: 3px;">P&L Kassenzettel (Konsole)</button>
             <button type="button" class="wia-skins-dump-btn" style="margin: 6px 4px; font-size: 11px; padding: 3px 8px; cursor: pointer; color: #ff9800; background: rgba(255,152,0,0.1); border: 1px solid rgba(255,152,0,0.2); border-radius: 3px;">Skins Dump (Konsole)</button>
             <div class="wia-health-panel"></div>
@@ -4819,6 +4901,21 @@ async function scanInventory(force) {
     }
     if (healthBtn && healthPanel) {
       healthBtn.onclick = (e) => { e.preventDefault(); runProbes(); renderHealthPanel(healthPanel); };
+    }
+    const debugExportBtn = modal.querySelector('.wia-debug-export-btn');
+    if (debugExportBtn) {
+      debugExportBtn.onclick = (e) => {
+        e.preventDefault();
+        const text = exportDebugLog();
+        if (typeof GM_setClipboard === 'function') {
+          GM_setClipboard(text);
+        } else if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text);
+        }
+        const originalText = debugExportBtn.textContent;
+        debugExportBtn.textContent = '✓ Kopiert!';
+        setTimeout(() => { debugExportBtn.textContent = originalText; }, 2000);
+      };
     }
     const printBtn = modal.querySelector('.wia-pnl-print-btn');
     if (printBtn) {

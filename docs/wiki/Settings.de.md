@@ -30,6 +30,7 @@ Panel kompakt bleibt:
 
 Ein eingebautes **[Diagnose](Diagnostics.de)**-Panel zeigt Feature-Health, Scan-Performance
 (grün/gelb/rot-Ampel) und einen Debug-Dump. 
+* **📋 Debug-Log kopieren**: Kopiert mit einem Klick einen vollständigen Diagnose-Bericht (Skriptversion, API-Key-Status, Gated Procedures, Rate-Limits, Feature-Health & Log-Zeilen) in die Zwischenablage für den schnellen Support.
 * **Benachrichtigungen testen**: Über das ausklappbare Untermenü können alle In-Game Toasts und ntfy-Push-Events (Kopfgeld, HP & Hunger voll, Pillenfenster, Debuff abgelaufen) direkt per Knopfdruck simuliert und getestet werden.
 
 ## Benachrichtigungen (ntfy.sh)

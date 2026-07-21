@@ -29,6 +29,7 @@ panel stays compact.
 
 A built-in **[Diagnostics](Diagnostics)** panel shows feature health, scan
 performance (a green/yellow/red traffic-light) and a debug dump.
+* **📋 Copy Debug Log**: A dedicated button under *Feature-Health / Diagnostics* copies the complete diagnostic export (script version, API key status, gated procedures, rate limits, feature health registry, and recent debug logs) directly to your clipboard for easy sharing with developers.
 * **Test Notifications**: An expandable section allows you to trigger all in-game toasts and ntfy push notifications (Bounty, HnH, Pill Window, Debuff) directly for instant verification.
 
 ## Notifications (ntfy.sh)
