@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 2026-07-21 | Fix: Universelles Gating für alle Prozeduren mit 10-Minuten-TTL (v0.9.7)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/test-advisor-load.js`
+
+**Änderungen (Deutsch):**
+- **Universelles Gating**: Alle API-Prozeduren (auch öffentliche/anonyme Abfragen) unterliegen dem Gating-Schutz, falls alle Server-Bases fehlschlagen, um IP-Sperren zu verhindern.
+- **Automatische 10-Minuten-TTL**: Nach 10 Minuten wird die Sperre für jede Prozedur automatisch wieder aufgehoben und ein erneuter Versuch unternommen.
+
+**Changes (English):**
+- **Universal Gating**: All API procedures (including public ones) are subject to gating protection if all API bases fail to prevent IP bans.
+- **Automatic 10-Minute TTL**: Gated procedures auto-expire after 10 minutes for automatic retry.
+
 ## 2026-07-20 | Fix: Gateway-Fallback, Gating-TTL & Debug-Log Export (v0.9.6)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `docs/wiki/Settings.md`, `docs/wiki/Settings.de.md`, `tests/test-advisor-load.js`

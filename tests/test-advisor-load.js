@@ -2841,17 +2841,20 @@ try {
       const resolvedId = globalThis.resolveCanonicalCountryId('de', mockCountryMap);
       assert.strictEqual(resolvedId, 'c_de', 'Slug "de" should resolve to canonical ID "c_de"');
 
-      // Test Gating TTL & Whitelist (Issue #62)
-      assert.strictEqual(globalThis.isProcedureGated('battle.getBattles'), false, 'Public anonymous procedure battle.getBattles should never be gated');
+      // Test Gating TTL & Procedure Gating (Issue #62)
+      globalThis.GM_setValue(globalThis.KEYS.gatedProcedures, []);
+      assert.strictEqual(globalThis.isProcedureGated('battle.getBattles'), false, 'battle.getBattles initially not gated');
       globalThis.gateProcedure('battle.getBattles');
-      assert.strictEqual(globalThis.isProcedureGated('battle.getBattles'), false, 'Public procedure battle.getBattles must remain un-gated after gateProcedure call');
+      assert.strictEqual(globalThis.isProcedureGated('battle.getBattles'), true, 'battle.getBattles should be gated when all bases fail');
+      globalThis.GM_setValue(globalThis.KEYS.gatedProcedures, []);
+      assert.strictEqual(globalThis.isProcedureGated('battle.getBattles'), false, 'battle.getBattles un-gated after clearing GM storage');
 
       assert.strictEqual(typeof globalThis.exportDebugLog, 'function', 'exportDebugLog should be a function');
       const exportedLog = globalThis.exportDebugLog();
       assert.ok(exportedLog.includes('PROST Debug Log Export'), 'Exported log should contain header');
       assert.ok(exportedLog.includes('Version:'), 'Exported log should contain script version');
       assert.ok(exportedLog.includes('Feature Health Registry'), 'Exported log should contain Health registry section');
-      console.log('Gating TTL, Whitelist, and Debug Log Export tests passed successfully.');
+      console.log('Gating TTL and Debug Log Export tests passed successfully.');
 
       console.log('Order-Radar core algorithm tests passed successfully.');
 

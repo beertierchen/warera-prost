@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.9.6
+// @version      0.9.7
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -1610,13 +1610,6 @@
     GM_setValue(KEYS.rateLimitedUntil, now() + CONFIG.rateLimitBackoffMs);
   }
 
-  const PUBLIC_ANONYMOUS_PROCEDURES = new Set([
-    'battle.getBattles',
-    'battleOrder.getByBattle',
-    'country.getAllCountries',
-    'region.getRegionsObject',
-    'search.searchAnything'
-  ]);
   const GATED_PROCEDURE_TTL_MS = 10 * 60 * 1000; // 10 minutes TTL for gated procedures
 
   function sanitizeGatedProcedures() {
@@ -1631,7 +1624,7 @@
       for (const item of raw) {
         const procName = typeof item === 'string' ? item : item?.procedure;
         const timestamp = typeof item === 'object' && item?.at ? item.at : 0;
-        if (!procName || PUBLIC_ANONYMOUS_PROCEDURES.has(procName)) continue;
+        if (!procName) continue;
         if (timestamp > 0 && currentTime - timestamp > GATED_PROCEDURE_TTL_MS) {
           dbg('api', 'debug', `un-gated procedure ${procName} (TTL expired)`);
           continue;
@@ -1647,12 +1640,10 @@
   }
 
   function isProcedureGated(procedure) {
-    if (PUBLIC_ANONYMOUS_PROCEDURES.has(procedure)) return false;
     const gated = sanitizeGatedProcedures();
     return gated.some((item) => item.procedure === procedure);
   }
   function gateProcedure(procedure) {
-    if (PUBLIC_ANONYMOUS_PROCEDURES.has(procedure)) return;
     const gated = sanitizeGatedProcedures();
     if (!gated.some((item) => item.procedure === procedure)) {
       gated.push({ procedure, at: now() });
