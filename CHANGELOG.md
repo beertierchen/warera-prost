@@ -1,5 +1,21 @@
 # CHANGELOG
 
+## 2026-07-21 | Feature: Truppen-Radar für Militäreinheiten (v0.9.8)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/test-troop-radar.js`, `docs/wiki/`
+
+**Änderungen (Deutsch):**
+- **Neues Truppen-Radar**: Auf der MU-Mitgliederseite wird ein taktisches Overlay mit HP-Balken, Skill-Build-Klassen (`💥 WAR`, `⚖ Hybrid`, `💰 Eco`) und detailliertem Pillen-Status angezeigt.
+- **Absolute Ablaufzeiten**: Zeigt die exakte Uhrzeit an, bis wann ein Mitglied gepillt ist (`Gepillt bis: HH:MM`) oder ab wann wieder eine Pille genommen werden kann (`Kann pillen ab: HH:MM`).
+- **Übersichts-Banner**: Ein Header-Banner liefert Statistiken über kampfbereite Warskiller, Durchschnitts-HP und direkte Links zu ungepillten, bereiten Spielern.
+- **Einstellungs-Integration**: Das Feature lässt sich flexibel als Unter-Option des Battle-Advisors de-/aktivieren.
+
+**Changes (English):**
+- **New Troop Radar**: Displays member HP bars, skill build classes (`💥 WAR`, `⚖ Hybrid`, `💰 Eco`), and active buff states as a tactical overlay on the MU members roster page.
+- **Absolute Expiration Times**: Renders exact local timestamps indicating when active pill buffs expire (`Gepillt bis: HH:MM`) or when recovery debuffs end (`Kann pillen ab: HH:MM`).
+- **Header Summary Banner**: Provides a quick troop digest with combat-ready ratios, average HP, and direct profile shortcuts to unpilled members who are ready.
+- **Settings Toggle**: Configurable sub-option grouped neatly under the Battle Advisor settings.
+
 ## 2026-07-21 | Fix: Universelles Gating für alle Prozeduren mit 10-Minuten-TTL (v0.9.7)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/test-advisor-load.js`

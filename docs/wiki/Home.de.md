@@ -25,6 +25,7 @@ Browserspiel [**WareEra**](https://app.warera.io).
 | [Ressourcen-Markt-Graph](Market-Graph.de) | *Experimentell.* Intraday-Preisverlauf (24h/3d) im Kauf-/Verkaufs-Modal von Ressourcen. |
 | [Crafting-Rechner](Crafting-Calculator.de) | *Experimentell.* Profit-Schätzung fürs Herstellen - Ressourcenkosten vs. Marktwert. |
 | [Battle Advisor](Battle-Advisor.de) | *Experimentell.* Hebt auf Kampfseiten den Button deiner Seite hervor und zeigt aktive Befehle inline. |
+| [Truppen-Radar](Troop-Radar.de) | Zeigt HP, Skillung, aktive Pillenlaufzeit und Debuff-Erholungszeiten in MU-Mitgliederliste und Header. |
 | [Pill Reminder](Pill-Reminder.de) | *Experimentell.* Topbar-Status + Countdown für den Pillen-Zyklus, mit HP-/Hunger-Prüfung. |
 | [Bounty-Push-Meldungen](Bounty-Notify.de) | *Experimentell.* Hintergrunddienst sendet Kopfgeld-Benachrichtigungen aufs Handy oder den Desktop via ntfy.sh. |
 | [Spieler-Notizen](Player-Notes.de) | *Experimentell.* Privates Notiz-Icon neben Spieler-Links, lokal gespeichert. |

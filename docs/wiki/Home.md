@@ -24,6 +24,7 @@ browser game [**WareEra**](https://app.warera.io).
 | [Resource Market Graph](Market-Graph) | *Experimental.* Intraday (24h/3d) price graph on resource-market buy/sell modals. |
 | [Crafting Calculator](Crafting-Calculator) | *Experimental.* Profit estimate for crafting — resource cost vs. market value. |
 | [Battle Advisor](Battle-Advisor) | *Experimental.* Highlights your side's button on battle pages and previews active orders inline. |
+| [Troop Radar](Troop-Radar) | Displays member HP, builds, active buff times, and debuff cooldowns in MU member list and header. |
 | [Pill Reminder](Pill-Reminder) | *Experimental.* Topbar status + countdown for the pill cycle, with health/hunger checks. |
 | [Bounty Notifications](Bounty-Notify) | *Experimental.* Background poller sending allied bounty alerts to your phone or desktop via ntfy.sh. |
 | [Player Notes](Player-Notes) | *Experimental.* A private note icon next to player links, stored locally. |

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.9.7
+// @version      0.9.8
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -71,6 +71,7 @@
     featNotes: false,                    // experimental: user notes on /user/ links (off by default)
     featBattleAdvisor: false,            // experimental: highlight ally button on /battle/<id> pages
     featOrderRadar: true,                // compact order radar in country & MU headers
+    featTroopRadar: true,                // troop radar in MU member list & header
     featSystemAlerts: true,               // receive signed system alerts
     alliedCountryCodes: ['de','pt','es','gm','ir','na','sr','th','at','fi','ie','no','se','uk','va','bf','cd','ye','ne','au','br','id'],
     featMarketGraph: false,
@@ -528,7 +529,20 @@
         settingsBattleSettingsLabel: '⚔️ Battle Advisor Options',
         orderRadarPriorityRed: 'High-priority order',
         orderRadarPriorityYellow: 'Medium-priority order',
-        orderRadarPriorityGreen: 'Low-priority order'
+        orderRadarPriorityGreen: 'Low-priority order',
+        troopRadarTitle: '⚔ TROOP RADAR',
+        troopRadarReady: 'Ready for Battle',
+        troopRadarWarskiller: 'Warskillers',
+        troopRadarPilled: 'Pilled',
+        troopRadarAvgHp: 'Avg HP',
+        troopRadarWar: 'WAR',
+        troopRadarEco: 'Eco',
+        troopRadarHybrid: 'Hybrid',
+        troopRadarPillOn: 'pilled',
+        troopRadarPillOff: 'ready to pill',
+        troopRadarPillCd: 'not ready',
+        settingsFeatTroopRadarCheckbox: 'Troop-Radar (MU Member List & Header)',
+        settingsFeatTroopRadarHint: 'Displays member combat readiness (HP, pill status, skill orientation) in MU member lists and header.'
       },
       de: {
         never: 'nie',
@@ -794,7 +808,20 @@
         settingsBattleSettingsLabel: '⚔️ Battle-Advisor Optionen',
         orderRadarPriorityRed: 'Order mit hoher Priorität',
         orderRadarPriorityYellow: 'Order mit mittlerer Priorität',
-        orderRadarPriorityGreen: 'Order mit niedriger Priorität'
+        orderRadarPriorityGreen: 'Order mit niedriger Priorität',
+        troopRadarTitle: '⚔ TRUPPEN-RADAR',
+        troopRadarReady: 'Kampfbereit',
+        troopRadarWarskiller: 'Warskiller',
+        troopRadarPilled: 'Gepillt',
+        troopRadarAvgHp: 'Ø HP',
+        troopRadarWar: 'WAR',
+        troopRadarEco: 'Eco',
+        troopRadarHybrid: 'Hybrid',
+        troopRadarPillOn: 'gepillt',
+        troopRadarPillOff: 'bereit zu pillen',
+        troopRadarPillCd: 'nicht bereit',
+        settingsFeatTroopRadarCheckbox: 'Truppen-Radar (MU-Member-Liste & Header)',
+        settingsFeatTroopRadarHint: 'Zeigt Kampfbereitschaft (HP, Pillen-Status, Skill-Klasse) in MU-Mitgliederlisten und Header an.'
       }
     },
 
@@ -832,6 +859,7 @@
     featNotes: NS + 'featNotes',
     featBattleAdvisor: NS + 'featBattle',
     featOrderRadar: NS + 'featOrderRadar',
+    featTroopRadar: NS + 'featTroopRadar',
     regionMap: NS + 'regionMap',
     alliedCountryCodes: NS + 'alliedCodes',
     featPillReminder: NS + 'featPill',
@@ -1291,6 +1319,41 @@
         return id ? runProbe(id) : runProbes();
       },
       logs(n = 50) { return Debug.buf.slice(-n); },
+      troopRadar: {
+        classify: (skills) => typeof classifyWarskiller === 'function' ? classifyWarskiller(skills) : null,
+        evaluatePill: (skills, health, hunger) => typeof evaluatePillStatus === 'function' ? evaluatePillStatus(skills, health, hunger) : null,
+        summarize: (members) => typeof summarizeTroops === 'function' ? summarizeTroops(members) : null,
+        fetchRoster: (muId) => typeof fetchMuRoster === 'function' ? fetchMuRoster(muId) : null,
+        fetchMember: (userId) => typeof fetchTroopMemberData === 'function' ? fetchTroopMemberData(userId) : null,
+        fetch: (muId) => typeof fetchFullTroopRadar === 'function' ? fetchFullTroopRadar(muId) : null,
+        test: async (explicitId) => {
+          if (typeof fetchFullTroopRadar !== 'function') return 'troopRadar not loaded';
+          let muId = explicitId;
+          if (!muId || muId === '<muId>' || (typeof muId === 'string' && muId.includes('<'))) {
+            const route = typeof getEntityFromRoute === 'function' ? getEntityFromRoute() : null;
+            if (route && route.type === 'mu') {
+              muId = route.rawId;
+              console.log(`[PROST:troopRadar] Auto-detected MU ID from current route: ${muId}`);
+            } else {
+              console.warn('[PROST:troopRadar] No MU ID provided. Usage: PROST.troopRadar.test("65a123...") or run while on a /mu/<id> page.');
+              return 'Missing MU ID';
+            }
+          }
+          console.log(`[PROST:troopRadar] Testing MU ID: ${muId}...`);
+          try {
+            const res = await fetchFullTroopRadar(muId);
+            console.log('[PROST:troopRadar] Roster:', res.roster);
+            console.log('[PROST:troopRadar] Initial Summary (Optimistic):', res.summary);
+            const full = await res.detailsPromise;
+            console.log('[PROST:troopRadar] Full Members Data:', full.membersData);
+            console.log('[PROST:troopRadar] Full Summary:', full.summary);
+            return full;
+          } catch (err) {
+            console.error('[PROST:troopRadar] Test failed:', err.message);
+            return { error: err.message };
+          }
+        }
+      },
       tour() { return (typeof startTour === 'function') ? startTour() : 'tour not loaded'; },
       tourDemo(stepIdx) {
         if (typeof PROST !== 'undefined' && typeof PROST.tourDemo === 'function') {
@@ -1396,6 +1459,16 @@
       const anchor = typeof findEntityBannerAnchor === 'function' ? findEntityBannerAnchor() : null;
       if (!anchor) return ['fail', 'header banner container not found'];
       return ['warn', 'radar not injected yet'];
+    },
+    troopRadar() {
+      if (!CONFIG.featTroopRadar) return ['idle', 'disabled in settings'];
+      if (!getToken()) return ['idle', 'no API token set'];
+      if (!isMuPage()) return ['idle', 'not on MU page'];
+      const injected = document.getElementById('wia-troop-radar');
+      if (injected) return ['ok', ''];
+      const memberLinks = document.querySelectorAll("a[href*='/user/']").length;
+      if (memberLinks === 0) return ['warn', 'no member links found'];
+      return ['warn', 'troop radar not injected yet'];
     },
     pnl() {
       if (!CONFIG.featPnlTracker) return ['idle', 'disabled in settings'];
@@ -1741,12 +1814,12 @@
   }
 
   // Probe configured bases once, remember the one that works.
-  async function resolveApiBase(procedure, args) {
+  async function resolveApiBase(procedure, args, opts = {}) {
     if (isRateLimited()) throw new Error('429');
     if (isProcedureGated(procedure)) throw new Error('gated: ' + procedure);
     const cached = GM_getValue(KEYS.apiBase, '');
     const hasKey = !!getToken();
-    let allowedBases = hasKey ? CONFIG.apiBases : gatewayBases;
+    let allowedBases = hasKey ? CONFIG.apiBases : [...gatewayBases, ...api2Bases.filter((b) => !gatewayBases.includes(b))];
     const bases = cached && allowedBases.includes(cached)
       ? [cached, ...allowedBases.filter((b) => b !== cached)]
       : allowedBases;
@@ -1754,7 +1827,7 @@
     let lastErr;
     for (const base of bases) {
       try {
-        await throttle();
+        if (!opts.skipThrottle) await throttle();
         const res = await gmRequest({ method: 'GET', url: trpcUrl(base, procedure, args), headers: headersForBase(base) });
         if (res.status === 429) {
           dbg('api', 'warn', `base ${base} rate-limited (429) for ${procedure}, attempting fallback base`);
@@ -4503,6 +4576,7 @@ async function scanInventory(force) {
     const prevFeatMarketGraph = bg.querySelector('.wia-feat-market-graph')?.checked ?? CONFIG.featMarketGraph;
     const prevFeatPnlTracker = bg.querySelector('.wia-feat-pnl-tracker')?.checked ?? CONFIG.featPnlTracker;
     const prevFeatOrderRadar = bg.querySelector('.wia-feat-order-radar')?.checked ?? CONFIG.featOrderRadar;
+    const prevFeatTroopRadar = bg.querySelector('.wia-feat-troop-radar')?.checked ?? CONFIG.featTroopRadar;
     const prevPillBuff = bg.querySelector('.wia-pill-buff')?.value ?? CONFIG.pillBuffH;
     const prevPillKnife = bg.querySelector('.wia-pill-knife')?.value ?? CONFIG.pillKnifeH;
     const prevPillDebuff = bg.querySelector('.wia-pill-debuff')?.value ?? CONFIG.pillDebuffH;
@@ -4588,6 +4662,12 @@ async function scanInventory(force) {
               <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
             </div>
             <div class="wia-hint" hidden>${t('settingsFeatOrderRadarHint')}</div>
+            <div style="display: flex; align-items: center; gap: 8px; margin-top: 6px;">
+              <input type="checkbox" class="wia-feat-troop-radar" style="width: auto;" ${prevFeatTroopRadar ? 'checked' : ''} />
+              <label style="margin: 0; font-weight: normal; cursor: pointer; font-size: 11px;">${t('settingsFeatTroopRadarCheckbox')}</label>
+              <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
+            </div>
+            <div class="wia-hint" hidden>${t('settingsFeatTroopRadarHint')}</div>
           </details>
         </div>
         <div class="wia-feat-row" style="margin-top: 6px;">
@@ -4872,6 +4952,7 @@ async function scanInventory(force) {
     const featBattleCheckbox = modal.querySelector('.wia-feat-battle');
     const battleSettingsRow = modal.querySelector('.wia-battle-settings-row');
     const featOrderRadarCheckbox = modal.querySelector('.wia-feat-order-radar');
+    const featTroopRadarCheckbox = modal.querySelector('.wia-feat-troop-radar');
 
     if (featBattleCheckbox && battleSettingsRow) {
       featBattleCheckbox.onchange = () => {
@@ -4880,6 +4961,7 @@ async function scanInventory(force) {
         } else {
           battleSettingsRow.removeAttribute('open');
           if (featOrderRadarCheckbox) featOrderRadarCheckbox.checked = false;
+          if (featTroopRadarCheckbox) featTroopRadarCheckbox.checked = false;
         }
       };
     }
@@ -5051,6 +5133,11 @@ async function scanInventory(force) {
       GM_setValue(KEYS.featOrderRadar, featOrderRadar);
       CONFIG.featOrderRadar = featOrderRadar;
       if (featBattle && featOrderRadar && (isCountryPage() || isMuPage())) { applyOrderRadar(); } else { const el = document.getElementById('wia-order-radar'); if (el) el.remove(); }
+
+      const featTroopRadar = featBattle && (bg.querySelector('.wia-feat-troop-radar')?.checked ?? true);
+      GM_setValue(KEYS.featTroopRadar, featTroopRadar);
+      CONFIG.featTroopRadar = featTroopRadar;
+      if (featBattle && featTroopRadar && isMuPage()) { applyTroopRadar(); } else { const el = document.getElementById('wia-troop-radar-summary'); if (el) el.remove(); document.querySelectorAll('.wia-troop-chips').forEach(e => e.remove()); }
 
       const featPill = bg.querySelector('.wia-feat-pill').checked;
       GM_setValue(KEYS.featPillReminder, featPill);
@@ -5960,10 +6047,17 @@ function updateObserverTarget() {
         guard('orderRadar', applyOrderRadar);
         initSharedBodyObserver();
       }
+      if (CONFIG.featTroopRadar && isMuPage()) {
+        guard('troopRadar', applyTroopRadar);
+        initSharedBodyObserver();
+      }
     } else {
       teardownBattleAdvisory();
       const orderRadarEl = document.getElementById('wia-order-radar');
       if (orderRadarEl) orderRadarEl.remove();
+      const troopRadarSummary = document.getElementById('wia-troop-radar-summary');
+      if (troopRadarSummary) troopRadarSummary.remove();
+      cleanupStrayTroopRadarChips();
       observer.disconnect();
       teardownSharedBodyObserver();
     }
@@ -6173,6 +6267,9 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       }
       if (CONFIG.featOrderRadar && (isCountryPage() || isMuPage())) {
         ensureOrderRadarInjected();
+      }
+      if (CONFIG.featTroopRadar && isMuPage()) {
+        ensureTroopRadarInjected();
       }
       triggerCraftingAdvisorCheck();
     });
@@ -7158,6 +7255,572 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     globalThis.shouldCompactOrderRadar = shouldCompactOrderRadar;
     globalThis.getOrderRadarCompactLevel = getOrderRadarCompactLevel;
     globalThis.applyOrderRadar = applyOrderRadar;
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Troop Radar module (Issue #61) — Phase 1 Core Logic & Data Fetching
+  // ───────────────────────────────────────────────────────────────────────────
+  const TROOP_RADAR_TTL_MS = 4 * 60 * 1000; // 4 minutes TTL for cached member data
+  const troopRadarMemberCache = new Map();  // userId -> { at, data }
+  const troopRadarRosterCache = new Map();  // muId -> { at, roster }
+  let troopRadarLoading = false;
+
+  function classifyWarskiller(skills) {
+    if (!skills || typeof skills !== 'object') {
+      return { isWarskiller: false, warShare: 0, ecoShare: 0, warSum: 0, ecoSum: 0, totalPoints: 0, build: 'eco', emoji: '💰', label: 'Eco' };
+    }
+    const warSum = (skills.attack?.level || 0) +
+                   (skills.criticalChance?.level || 0) +
+                   (skills.criticalDamages?.level || 0) +
+                   (skills.precision?.level || 0) +
+                   (skills.armor?.level || 0) +
+                   (skills.dodge?.level || 0);
+    const ecoSum = (skills.companies?.level || 0) +
+                   (skills.management?.level || 0) +
+                   (skills.lootChance?.level || 0);
+    const totalPoints = warSum + ecoSum;
+    const warShare = totalPoints > 0 ? warSum / totalPoints : 0;
+    const ecoShare = totalPoints > 0 ? ecoSum / totalPoints : 0;
+
+    let build = 'eco';
+    let isWarskiller = false;
+    let emoji = '💰';
+    let label = 'Eco';
+
+    if (warShare >= 0.75) {
+      build = 'war';
+      isWarskiller = true;
+      emoji = '💥';
+      label = 'WAR';
+    } else if (warShare > 0.25 && ecoShare < 0.75) {
+      build = 'hybrid';
+      isWarskiller = false;
+      emoji = '⚖';
+      label = 'Hybrid';
+    } else {
+      build = 'eco';
+      isWarskiller = false;
+      emoji = '💰';
+      label = 'Eco';
+    }
+
+    return {
+      isWarskiller,
+      warShare,
+      ecoShare,
+      warSum,
+      ecoSum,
+      totalPoints,
+      build,
+      emoji,
+      label
+    };
+  }
+
+  function evaluatePillStatus(skills, health, hunger) {
+    const buffsPercent = skills?.attack?.buffsPercent || 0;
+    const debuffsPercent = skills?.attack?.debuffsPercent || 0;
+    const hpCurrent = health?.currentBarValue ?? health?.current ?? 100;
+    const hpMax = health?.total ?? 100;
+    const hungerCurrent = hunger?.currentBarValue ?? hunger?.current ?? 100;
+    const hungerMax = hunger?.total ?? 100;
+
+    let pillState = 'pill-cd'; // default: nicht bereit / CD
+    if (buffsPercent > 0) {
+      pillState = 'pill-on'; // gepillt
+    } else if (debuffsPercent > 0) {
+      pillState = 'pill-cd'; // Debuff active -> nicht bereit
+    } else if (hpCurrent >= hpMax && hungerCurrent >= hungerMax) {
+      pillState = 'pill-off'; // ungepillt & bereit → Action!
+    } else {
+      pillState = 'pill-cd'; // nicht bereit (injured/hungry)
+    }
+
+    const label = pillState === 'pill-on' ? 'gepillt' : pillState === 'pill-off' ? 'bereit' : 'nicht bereit';
+    return {
+      state: pillState,
+      label,
+      isReadyToPill: pillState === 'pill-off',
+      buffsPercent,
+      debuffsPercent,
+      hpCurrent,
+      hpMax,
+      hungerCurrent,
+      hungerMax
+    };
+  }
+
+  function createOptimisticMemberData(userId) {
+    return {
+      userId,
+      hpCurrent: 100,
+      hpMax: 100,
+      hungerCurrent: 100,
+      hungerMax: 100,
+      buffsPercent: 0,
+      debuffsPercent: 0,
+      warShare: 0,
+      isWarskiller: false,
+      build: 'eco',
+      pillState: 'pill-cd',
+      pillReady: false,
+      buffEndAt: null,
+      debuffEndAt: null,
+      isOptimistic: true,
+      updatedAt: 0
+    };
+  }
+
+  function summarizeTroops(membersArray) {
+    if (!Array.isArray(membersArray) || membersArray.length === 0) {
+      return {
+        totalMembers: 0,
+        readyCount: 0,
+        warskillerCount: 0,
+        pillCount: 0,
+        avgHpPct: 0,
+        actionableWarskillers: []
+      };
+    }
+
+    const totalMembers = membersArray.length;
+    const warskillers = membersArray.filter((m) => m.isWarskiller);
+    const warskillerCount = warskillers.length;
+    const pillCount = membersArray.filter((m) => m.pillState === 'pill-on').length;
+
+    // Kampfbereit = Warskiller + H&H >= 80% + (gepillt ODER nicht im Debuff)
+    const readyCount = membersArray.filter((m) => {
+      const hpPct = m.hpMax > 0 ? m.hpCurrent / m.hpMax : 1;
+      const hungerPct = m.hungerMax > 0 ? m.hungerCurrent / m.hungerMax : 1;
+      const isHnHOk = hpPct >= 0.8 && hungerPct >= 0.8;
+      const isPillOk = m.pillState === 'pill-on' || (m.debuffsPercent || 0) === 0;
+      return m.isWarskiller && isHnHOk && isPillOk;
+    }).length;
+
+    const hpSumPct = membersArray.reduce((acc, m) => {
+      const pct = m.hpMax > 0 ? (m.hpCurrent / m.hpMax) * 100 : 100;
+      return acc + pct;
+    }, 0);
+    const avgHpPct = Math.round(hpSumPct / totalMembers);
+
+    // Warskiller bereit zu pillen (ungepillt & H&H voll)
+    const actionableWarskillers = membersArray.filter((m) => m.isWarskiller && m.pillState === 'pill-off');
+
+    return {
+      totalMembers,
+      readyCount,
+      warskillerCount,
+      pillCount,
+      avgHpPct,
+      actionableWarskillers
+    };
+  }
+
+  async function fetchMuRoster(muId) {
+    if (!muId || typeof muId !== 'string') throw new Error('muId string required');
+    if (/^<.*>$/.test(muId.trim())) throw new Error(`Invalid placeholder muId "${muId}". Pass a real MU ID or navigate to a /mu/<id> page.`);
+    const cached = troopRadarRosterCache.get(muId);
+    if (cached && (now() - cached.at < TROOP_RADAR_TTL_MS)) {
+      return cached.roster;
+    }
+    const { payload } = await resolveApiBase('mu.getById', { muId });
+    const members = Array.isArray(payload?.members) ? payload.members : [];
+    const commanders = Array.isArray(payload?.roles?.commanders) ? payload.roles.commanders : [];
+    const roster = { muId, members, commanders };
+    troopRadarRosterCache.set(muId, { at: now(), roster });
+    return roster;
+  }
+
+  async function fetchTroopMemberData(userId, opts = {}) {
+    if (!userId) throw new Error('userId required');
+    const cached = troopRadarMemberCache.get(userId);
+    if (cached && (now() - cached.at < TROOP_RADAR_TTL_MS)) {
+      return cached.data;
+    }
+
+    try {
+      const { payload } = await resolveApiBase('user.getUserById', { userId }, opts);
+      const skills = payload?.skills || {};
+      const health = skills.health || {};
+      const hunger = skills.hunger || {};
+      const warskillerInfo = classifyWarskiller(skills);
+      const pillInfo = evaluatePillStatus(skills, health, hunger);
+
+      const username = payload?.username || payload?.user?.username || payload?.name;
+      const buffsObj = payload?.buffs || {};
+      const memberData = {
+        userId,
+        username,
+        hpCurrent: pillInfo.hpCurrent,
+        hpMax: pillInfo.hpMax,
+        hungerCurrent: pillInfo.hungerCurrent,
+        hungerMax: pillInfo.hungerMax,
+        buffsPercent: pillInfo.buffsPercent,
+        debuffsPercent: pillInfo.debuffsPercent,
+        warShare: warskillerInfo.warShare,
+        ecoShare: warskillerInfo.ecoShare,
+        isWarskiller: warskillerInfo.isWarskiller,
+        build: warskillerInfo.build,
+        buildEmoji: warskillerInfo.emoji,
+        buildLabel: warskillerInfo.label,
+        pillState: pillInfo.state,
+        pillReady: pillInfo.isReadyToPill,
+        buffEndAt: buffsObj.buffEndAt || null,
+        debuffEndAt: buffsObj.debuffEndAt || null,
+        isOptimistic: false,
+        updatedAt: now()
+      };
+      troopRadarMemberCache.set(userId, { at: now(), data: memberData });
+      return memberData;
+    } catch (e) {
+      if (cached && cached.data) {
+        return cached.data;
+      }
+      return createOptimisticMemberData(userId);
+    }
+  }
+
+  async function fetchFullTroopRadar(muId) {
+    const roster = await fetchMuRoster(muId);
+    const userIds = roster.members || [];
+
+    const membersData = userIds.map((id) => {
+      const cached = troopRadarMemberCache.get(id);
+      return cached ? cached.data : createOptimisticMemberData(id);
+    });
+
+    const summary = summarizeTroops(membersData);
+
+    const BATCH_SIZE = 25;
+    const detailsPromise = (async () => {
+      const results = [];
+      for (let i = 0; i < userIds.length; i += BATCH_SIZE) {
+        const chunk = userIds.slice(i, i + BATCH_SIZE);
+        const chunkResults = await Promise.all(chunk.map((id) => fetchTroopMemberData(id, { skipThrottle: true })));
+        results.push(...chunkResults);
+      }
+      return {
+        roster,
+        membersData: results,
+        summary: summarizeTroops(results)
+      };
+    })();
+
+    return {
+      roster,
+      membersData,
+      summary,
+      detailsPromise
+    };
+  }
+
+  function findTroopRadarHeaderAnchor() {
+    if (typeof document === 'undefined') return null;
+    const mainWin = document.getElementById('main-window') || document.body;
+    const spans = mainWin.querySelectorAll('span');
+    for (const span of spans) {
+      const txt = (span.textContent || '').trim();
+      if (txt === 'Members' || txt === 'Mitglieder') {
+        const box = span.closest('._1dnmndyaov') || span.closest('._1dnmndy8m') || span.parentElement?.parentElement;
+        if (box) return box;
+      }
+    }
+    return null;
+  }
+
+  function renderTroopRadarHeaderSummary(summary, muId) {
+    if (!summary || typeof document === 'undefined') return;
+    const anchor = findTroopRadarHeaderAnchor();
+    if (!anchor) return;
+
+    let el = document.getElementById('wia-troop-radar-summary');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'wia-troop-radar-summary';
+      el.className = 'wia-troop-radar-container';
+      anchor.parentNode.insertBefore(el, anchor);
+    }
+    el.setAttribute('data-wia-mu', muId);
+
+    const actionableCount = summary.actionableWarskillers ? summary.actionableWarskillers.length : 0;
+    let alertHtml = '';
+    if (actionableCount > 0) {
+      const formattedLinks = summary.actionableWarskillers.slice(0, 3).map((u) => {
+        const name = u.username || u.name || u.userId;
+        return `<a href="/user/${u.userId}" style="color: #fef08a; text-decoration: underline; font-weight: 600;">${name}</a>`;
+      }).join(', ');
+      const moreStr = actionableCount > 3 ? ` (+${actionableCount - 3} weitere)` : '';
+      alertHtml = `
+        <div style="background: rgba(234, 179, 8, 0.12); border: 1px solid rgba(234, 179, 8, 0.3); color: #fef08a; padding: 8px 12px; border-radius: 6px; font-size: 12px; margin-top: 10px; display: flex; align-items: center; gap: 8px;">
+          <span>⚠️ <strong>${actionableCount} Warskiller ungepillt</strong> — ${formattedLinks}${moreStr} (Leben & Hunger voll)</span>
+        </div>`;
+    }
+
+    el.innerHTML = `
+      <div style="background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 12px 14px; margin: 10px 0; font-family: system-ui, -apple-system, sans-serif;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+          <div style="font-weight: 700; color: #f8fafc; font-size: 13px; display: flex; align-items: center; gap: 6px;">
+            <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #eab308;"></span>
+            <span>Truppen-Radar</span>
+          </div>
+          <span style="border: 1px solid #7c3aed; color: #a78bfa; padding: 2px 6px; font-size: 10px; font-weight: 700; border-radius: 4px; letter-spacing: 0.5px;">PROST</span>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;">
+          <div style="background: #0d1117; border: 1px solid #21262d; border-radius: 6px; padding: 8px; text-align: center;">
+            <div style="font-size: 16px; font-weight: 700; color: #f8fafc;">${summary.readyCount}/${summary.warskillerCount}</div>
+            <div style="font-size: 9px; font-weight: 700; color: #8b949e; text-transform: uppercase; margin-top: 2px;">KAMPFBEREIT</div>
+          </div>
+          <div style="background: #0d1117; border: 1px solid #21262d; border-radius: 6px; padding: 8px; text-align: center;">
+            <div style="font-size: 16px; font-weight: 700; color: #f8fafc;">${summary.warskillerCount}</div>
+            <div style="font-size: 9px; font-weight: 700; color: #8b949e; text-transform: uppercase; margin-top: 2px;">WARSKILLER</div>
+          </div>
+          <div style="background: #0d1117; border: 1px solid #21262d; border-radius: 6px; padding: 8px; text-align: center;">
+            <div style="font-size: 16px; font-weight: 700; color: #f8fafc;">${summary.pillCount}/${summary.totalMembers}</div>
+            <div style="font-size: 9px; font-weight: 700; color: #8b949e; text-transform: uppercase; margin-top: 2px;">GEPILLT</div>
+          </div>
+          <div style="background: #0d1117; border: 1px solid #21262d; border-radius: 6px; padding: 8px; text-align: center;">
+            <div style="font-size: 16px; font-weight: 700; color: #f8fafc;">${summary.avgHpPct}%</div>
+            <div style="font-size: 9px; font-weight: 700; color: #8b949e; text-transform: uppercase; margin-top: 2px;">Ø HP</div>
+          </div>
+        </div>
+        ${alertHtml}
+      </div>`;
+  }
+
+  function formatTroopRadarTime(isoString) {
+    if (!isoString) return '';
+    try {
+      const date = new Date(isoString);
+      if (isNaN(date.getTime())) return '';
+      const hours = String(date.getHours()).padStart(2, '0');
+      const minutes = String(date.getMinutes()).padStart(2, '0');
+      return `${hours}:${minutes}`;
+    } catch (e) {
+      return '';
+    }
+  }
+
+  function renderTroopRadarMemberRows(membersData) {
+    if (typeof document === 'undefined') return;
+    const mainWin = document.getElementById('main-window');
+    if (!mainWin) return;
+
+    const dataMap = new Map();
+    if (Array.isArray(membersData)) {
+      for (const m of membersData) {
+        if (m && m.userId) dataMap.set(m.userId, m);
+      }
+    }
+
+    const allRows = mainWin.querySelectorAll('div._1dnmndynm, li._1txpadm0');
+    for (const row of allRows) {
+      const spans = Array.from(row.querySelectorAll('span'));
+      const rankSpan = spans.find((s) => /^#\d+/.test((s.textContent || '').trim()));
+      if (!rankSpan) continue;
+
+      const hasStats = row.querySelector('._1dnmndy1x1') !== null;
+      if (!hasStats) continue;
+
+      const userLink = Array.from(row.querySelectorAll('a[href*="/user/"]')).find((a) => {
+        const href = a.getAttribute('href') || '';
+        return /^\/user\/[a-f0-9]+(?:\/)?$/i.test(href);
+      });
+      if (!userLink) continue;
+
+      const href = userLink.getAttribute('href') || '';
+      const match = href.match(/\/user\/([a-f0-9]+)/i);
+      if (!match) continue;
+      const userId = match[1];
+
+      const linkText = userLink.textContent.trim();
+      const memberData = dataMap.get(userId) || createOptimisticMemberData(userId);
+      if (linkText && !memberData.username) {
+        memberData.username = linkText;
+      }
+
+      const parent = userLink.parentElement;
+      if (!parent) continue;
+
+      let chipContainer = parent.querySelector(`.wia-troop-chips[data-wia-user="${userId}"]`);
+      if (!chipContainer) {
+        chipContainer = document.createElement('div');
+        chipContainer.className = 'wia-troop-chips';
+        chipContainer.setAttribute('data-wia-user', userId);
+        chipContainer.style.cssText = 'display: inline-flex; align-items: center; gap: 6px; margin-left: 8px; font-size: 11px; vertical-align: middle; flex-wrap: wrap;';
+        parent.appendChild(chipContainer);
+      }
+
+      let buildBadge = '';
+      if (memberData.build === 'war') {
+        const pct = Math.round((memberData.warShare || 0) * 100);
+        buildBadge = `<span style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #fca5a5; padding: 2px 8px; border-radius: 12px; font-weight: 600;">💥 WAR (${pct}%)</span>`;
+      } else if (memberData.build === 'hybrid') {
+        const pct = Math.round((memberData.warShare || 0) * 100);
+        buildBadge = `<span style="background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.4); color: #c7d2fe; padding: 2px 8px; border-radius: 12px; font-weight: 600;">⚖ Hybrid (${pct}%)</span>`;
+      } else {
+        buildBadge = `<span style="background: rgba(100, 116, 139, 0.15); border: 1px solid rgba(100, 116, 139, 0.4); color: #cbd5e1; padding: 2px 8px; border-radius: 12px; font-weight: 600;">💰 Eco</span>`;
+      }
+
+      const hpPct = memberData.hpMax > 0 ? Math.round((memberData.hpCurrent / memberData.hpMax) * 100) : 100;
+      const hpColor = hpPct >= 80 ? '#22c55e' : hpPct >= 40 ? '#eab308' : '#ef4444';
+      const hpBadge = `
+        <span style="display: inline-flex; align-items: center; gap: 4px; background: rgba(15, 23, 42, 0.6); padding: 2px 8px; border-radius: 12px; border: 1px solid #334155;">
+          <span style="color: #ef4444; font-size: 10px;">❤</span>
+          <span style="width: 44px; height: 5px; background: #334155; border-radius: 3px; overflow: hidden; display: inline-block;">
+            <span style="display: block; width: ${hpPct}%; height: 100%; background: ${hpColor}; transition: width 0.2s;"></span>
+          </span>
+          <span style="font-size: 10px; font-family: monospace; color: #cbd5e1;">${Math.round(memberData.hpCurrent)}/${memberData.hpMax}</span>
+        </span>`;
+
+      let pillBadge = '';
+      if (memberData.pillState === 'pill-on') {
+        const timeStr = formatTroopRadarTime(memberData.buffEndAt);
+        pillBadge = `<span style="background: rgba(34, 197, 94, 0.15); border: 1px solid rgba(34, 197, 94, 0.4); color: #86efac; padding: 2px 8px; border-radius: 12px;">💊 Gepillt bis: ${timeStr || 'unknown'}</span>`;
+      } else if (memberData.debuffsPercent > 0) {
+        const timeStr = formatTroopRadarTime(memberData.debuffEndAt);
+        pillBadge = `<span style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #fca5a5; padding: 2px 8px; border-radius: 12px;">💊 Kann pillen ab: ${timeStr || 'unknown'}</span>`;
+      } else if (memberData.pillReady) {
+        pillBadge = `<span style="background: rgba(234, 179, 8, 0.15); border: 1px solid rgba(234, 179, 8, 0.5); color: #fef08a; padding: 2px 8px; border-radius: 12px; font-weight: 700;">💊 ungepillt · bereit</span>`;
+      } else {
+        pillBadge = `<span style="background: rgba(100, 116, 139, 0.15); border: 1px solid rgba(100, 116, 139, 0.3); color: #94a3b8; padding: 2px 8px; border-radius: 12px;">💊 ungepillt</span>`;
+      }
+
+      chipContainer.innerHTML = `${buildBadge}${hpBadge}${pillBadge}`;
+    }
+  }
+
+  function cleanupStrayTroopRadarChips() {
+    if (typeof document === 'undefined') return;
+    document.querySelectorAll('.wia-troop-chips').forEach((el) => {
+      const mainWin = document.getElementById('main-window');
+      if (!mainWin || !mainWin.contains(el)) {
+        el.remove();
+        return;
+      }
+      const row = el.closest('div._1dnmndynm, li._1txpadm0, li');
+      if (!row) {
+        el.remove();
+        return;
+      }
+      const hasRank = Array.from(row.querySelectorAll('span')).some((s) => /^#\d+/.test((s.textContent || '').trim()));
+      const hasStats = row.querySelector('._1dnmndy1x1') !== null;
+      if (!hasRank || !hasStats) {
+        el.remove();
+      }
+    });
+  }
+
+  let troopRadarActiveRequestId = 0;
+
+  async function applyTroopRadar() {
+    cleanupStrayTroopRadarChips();
+
+    if (!CONFIG.featTroopRadar) {
+      setHealth('troopRadar', 'idle', 'disabled in settings');
+      const existingSummary = document.getElementById('wia-troop-radar-summary');
+      if (existingSummary) existingSummary.remove();
+      return;
+    }
+
+    const route = getEntityFromRoute();
+    if (!route || route.type !== 'mu' || !route.rawId) {
+      setHealth('troopRadar', 'idle', 'not on MU page');
+      const existingSummary = document.getElementById('wia-troop-radar-summary');
+      if (existingSummary) existingSummary.remove();
+      return;
+    }
+
+    if (troopRadarLoading) return;
+    troopRadarLoading = true;
+
+    const muId = route.rawId;
+    const reqId = ++troopRadarActiveRequestId;
+
+    try {
+      const fullData = await fetchFullTroopRadar(muId);
+      if (reqId !== troopRadarActiveRequestId) {
+        troopRadarLoading = false;
+        return;
+      }
+
+      renderTroopRadarHeaderSummary(fullData.summary, muId);
+      renderTroopRadarMemberRows(fullData.membersData);
+
+      setHealth('troopRadar', 'ok', `${fullData.membersData.length} members rendered`);
+
+      troopRadarLoading = false;
+
+      fullData.detailsPromise.then((liveFull) => {
+        if (reqId !== troopRadarActiveRequestId) return;
+        renderTroopRadarHeaderSummary(liveFull.summary, muId);
+        renderTroopRadarMemberRows(liveFull.membersData);
+        setHealth('troopRadar', 'ok', `${liveFull.membersData.length} members updated`);
+      }).catch((e) => {
+        dbg('troopRadar', 'warn', 'detailsPromise error: ' + e.message);
+      });
+
+    } catch (e) {
+      dbg('troopRadar', 'error', 'applyTroopRadar failed: ' + e.message);
+      setHealth('troopRadar', 'fail', e.message);
+      troopRadarLoading = false;
+    }
+  }
+
+  function ensureTroopRadarInjected() {
+    if (!CONFIG.featTroopRadar || !isMuPage() || typeof document === 'undefined') return;
+    if (troopRadarLoading) return;
+
+    const anchor = findTroopRadarHeaderAnchor();
+    if (!anchor) return;
+
+    const summaryExists = document.getElementById('wia-troop-radar-summary') !== null;
+    const mainWin = document.getElementById('main-window') || document.body;
+    const allRows = mainWin.querySelectorAll('div._1dnmndynm, li._1txpadm0');
+
+    let missingChips = false;
+    let hasValidRows = false;
+
+    for (const row of allRows) {
+      const spans = Array.from(row.querySelectorAll('span'));
+      const hasRank = spans.some((s) => /^#\d+/.test((s.textContent || '').trim()));
+      const hasStats = row.querySelector('._1dnmndy1x1') !== null;
+      if (!hasRank || !hasStats) continue;
+
+      const userLink = Array.from(row.querySelectorAll('a[href*="/user/"]')).find((a) => {
+        const href = a.getAttribute('href') || '';
+        return /^\/user\/[a-f0-9]+(?:\/)?$/i.test(href);
+      });
+      if (!userLink) continue;
+
+      hasValidRows = true;
+
+      const parent = userLink.parentElement;
+      if (parent && !parent.querySelector('.wia-troop-chips')) {
+        missingChips = true;
+        break;
+      }
+    }
+
+    if (!summaryExists || (hasValidRows && missingChips)) {
+      guard('troopRadar', applyTroopRadar);
+    }
+  }
+
+  if (CONFIG.debug || typeof process !== 'undefined') {
+    globalThis.classifyWarskiller = classifyWarskiller;
+    globalThis.evaluatePillStatus = evaluatePillStatus;
+    globalThis.createOptimisticMemberData = createOptimisticMemberData;
+    globalThis.summarizeTroops = summarizeTroops;
+    globalThis.fetchMuRoster = fetchMuRoster;
+    globalThis.fetchTroopMemberData = fetchTroopMemberData;
+    globalThis.fetchFullTroopRadar = fetchFullTroopRadar;
+    globalThis.renderTroopRadarHeaderSummary = renderTroopRadarHeaderSummary;
+    globalThis.renderTroopRadarMemberRows = renderTroopRadarMemberRows;
+    globalThis.applyTroopRadar = applyTroopRadar;
+    globalThis.ensureTroopRadarInjected = ensureTroopRadarInjected;
+    globalThis.formatTroopRadarTime = formatTroopRadarTime;
+    globalThis.troopRadarMemberCache = troopRadarMemberCache;
+    globalThis.troopRadarRosterCache = troopRadarRosterCache;
   }
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -12756,6 +13419,7 @@ function checkInventoryDeltaWear() {
     CONFIG.featNotes = GM_getValue(KEYS.featNotes, false);
     CONFIG.featBattleAdvisor = GM_getValue(KEYS.featBattleAdvisor, false);
     CONFIG.featOrderRadar = GM_getValue(KEYS.featOrderRadar, true);
+    CONFIG.featTroopRadar = GM_getValue(KEYS.featTroopRadar, true);
     CONFIG.alliedCountryCodes = GM_getValue(KEYS.alliedCountryCodes, CONFIG.alliedCountryCodes);
     CONFIG.featPillReminder = GM_getValue(KEYS.featPillReminder, false);
     CONFIG.featPillNotifHnH = GM_getValue(KEYS.featPillNotifHnH, false);
@@ -12796,6 +13460,12 @@ function checkInventoryDeltaWear() {
         initSharedBodyObserver();
       } else setHealth('orderRadar', 'idle', 'not on country or MU page');
     } else setHealth('orderRadar', 'idle', 'disabled in settings');
+    if (CONFIG.featTroopRadar) {
+      if (isMuPage()) {
+        guard('troopRadar', applyTroopRadar);
+        initSharedBodyObserver();
+      } else setHealth('troopRadar', 'idle', 'not on MU page');
+    } else setHealth('troopRadar', 'idle', 'disabled in settings');
     if (CONFIG.featPillReminder) guard('pillReminder', initPillReminder); else setHealth('pillReminder', 'idle', 'disabled in settings');
     if (CONFIG.featMuHealDim) applyMuHealDimSoon(); else setHealth('muHealDim', 'idle', 'disabled in settings');
     if (CONFIG.featMarketGraph) guard('marketGraph', initMarketGraph); else setHealth('marketGraph', 'idle', 'disabled in settings');
