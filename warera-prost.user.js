@@ -499,6 +499,7 @@
         updateAvailableTitle: '⚠ Update available (v{ver})',
         updateAvailableBody: 'A newer PROST version (v{ver}) is available. Update now — outdated versions may contain code that violates game rules.',
         directUpdateLink: 'Direct Update',
+        updateAvailableBodyShort: 'New version available.',
         updateConfirmText: 'A newer version of PROST (v{ver}) is available!\n\nCurrent version: v{current}\n\nWould you like to install the update now?',
         updateUpToDateText: 'PROST is up to date (v{current}).',
         gearTooltipTitle: 'Inventory Advisor-Settings',
@@ -781,6 +782,7 @@
         updateAvailableTitle: '⚠ Update verfügbar (v{ver})',
         updateAvailableBody: 'Eine neuere PROST-Version (v{ver}) ist verfügbar. Aktualisiere jetzt — veraltete Versionen können Code enthalten, der gegen Spielregeln verstößt.',
         directUpdateLink: 'Direkt-Update',
+        updateAvailableBodyShort: 'Neue Version verfügbar.',
         updateConfirmText: 'Eine neuere Version von PROST (v{ver}) ist verfügbar!\n\nAktuelle Version: v{current}\n\nMöchtest du das Update jetzt direkt installieren?',
         updateUpToDateText: 'PROST ist auf dem neuesten Stand (v{current}).',
         gearTooltipTitle: 'Inventory Advisor-Einstellungen',
@@ -4595,13 +4597,26 @@ async function scanInventory(force) {
       if (remote && isNewer(remote, current)) {
         const cleanRemote = String(remote).replace(/[^\w.-]/g, '');
         warnBanner.style.display = 'block';
-        warnBanner.innerHTML = `<strong>${t('updateAvailableTitle', { ver: cleanRemote })}</strong><br/><span style="font-size: 11px;">${t('updateAvailableBody', { ver: cleanRemote })} <a href="https://update.greasyfork.org/scripts/583766/PROST.user.js" target="_blank" class="wia-direct-update-link" style="color: #58a6ff; text-decoration: underline; font-weight: bold;">[${t('directUpdateLink')}]</a> oder <a href="https://greasyfork.org/de/scripts/583766-prost" target="_blank" style="color: #8b949e; text-decoration: underline;">GreasyFork</a></span>`;
-        const directLink = warnBanner.querySelector('.wia-direct-update-link');
-        if (directLink) {
-          directLink.onclick = () => {
+        warnBanner.innerHTML = `
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%;">
+            <div style="flex: 1; min-width: 0; text-align: left;">
+              <strong>${t('updateAvailableTitle', { ver: cleanRemote })}</strong>
+              <div style="font-size: 11px; font-weight: normal; margin-top: 2px; line-height: 1.3;">
+                ${t('updateAvailableBodyShort')}
+                <a href="https://greasyfork.org/de/scripts/583766-prost" target="_blank" style="color: #ffce91; text-decoration: underline; margin-left: 4px;">Changelog</a>
+              </div>
+            </div>
+            <button type="button" class="wia-direct-update-btn" style="flex: 0 0 auto; font-size: 12px; padding: 6px 12px; border-radius: 4px; display: inline-flex; align-items: center; gap: 6px; height: 30px; font-weight: bold; cursor: pointer; background: #238636; border: 1px solid #2ea043; color: #fff; line-height: 1; box-shadow: 0 1px 3px rgba(0,0,0,.4);">
+              🔄 ${t('directUpdateLink')}
+            </button>
+          </div>`;
+        const directBtn = warnBanner.querySelector('.wia-direct-update-btn');
+        if (directBtn) {
+          directBtn.onclick = () => {
             if (typeof sessionStorage !== 'undefined') {
               sessionStorage.setItem('wia-update-pending', 'true');
             }
+            window.open('https://update.greasyfork.org/scripts/583766/PROST.user.js', '_blank');
           };
         }
       } else {
