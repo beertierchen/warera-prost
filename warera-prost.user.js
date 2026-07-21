@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         PROST
+// @name         TEST PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.9.9
+// @version      0.9.10-unstable
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -1140,7 +1140,10 @@
           if (newer) {
             const yes = confirm(t('updateConfirmText', { ver: data.version, current }));
             if (yes) {
-              window.location.href = 'https://update.greasyfork.org/scripts/583766/PROST.user.js';
+              if (typeof sessionStorage !== 'undefined') {
+                sessionStorage.setItem('wia-update-pending', 'true');
+              }
+              window.open('https://update.greasyfork.org/scripts/583766/PROST.user.js', '_blank');
             }
           } else {
             alert(t('updateUpToDateText', { current }));
@@ -4592,7 +4595,7 @@ async function scanInventory(force) {
       if (remote && isNewer(remote, current)) {
         const cleanRemote = String(remote).replace(/[^\w.-]/g, '');
         warnBanner.style.display = 'block';
-        warnBanner.innerHTML = `<strong>${t('updateAvailableTitle', { ver: cleanRemote })}</strong><br/><span style="font-size: 11px;">${t('updateAvailableBody', { ver: cleanRemote })} <a href="https://update.greasyfork.org/scripts/583766/PROST.user.js" target="_blank" style="color: #58a6ff; text-decoration: underline; font-weight: bold;">[${t('directUpdateLink')}]</a> oder <a href="https://greasyfork.org/de/scripts/583766-prost" target="_blank" style="color: #8b949e; text-decoration: underline;">GreasyFork</a></span>`;
+        warnBanner.innerHTML = `<strong>${t('updateAvailableTitle', { ver: cleanRemote })}</strong><br/><span style="font-size: 11px;">${t('updateAvailableBody', { ver: cleanRemote })} <a href="https://update.greasyfork.org/scripts/583766/PROST.user.js" target="_blank" onclick="if (typeof sessionStorage !== 'undefined') { sessionStorage.setItem('wia-update-pending', 'true'); }" style="color: #58a6ff; text-decoration: underline; font-weight: bold;">[${t('directUpdateLink')}]</a> oder <a href="https://greasyfork.org/de/scripts/583766-prost" target="_blank" style="color: #8b949e; text-decoration: underline;">GreasyFork</a></span>`;
       } else {
         warnBanner.style.display = 'none';
         warnBanner.innerHTML = '';
@@ -13418,6 +13421,20 @@ function checkInventoryDeltaWear() {
   }
 
   function start() {
+    if (typeof sessionStorage !== 'undefined') {
+      if (sessionStorage.getItem('wia-update-pending') === 'true') {
+        sessionStorage.removeItem('wia-update-pending');
+      }
+    }
+    if (typeof window !== 'undefined') {
+      window.addEventListener('focus', () => {
+        if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('wia-update-pending') === 'true') {
+          sessionStorage.removeItem('wia-update-pending');
+          window.location.reload();
+        }
+      });
+    }
+
     migrateTransactionsCache();
     // One-time migration to clear stale gated procedures from keyless bug
     if (!GM_getValue(KEYS.gatedResetV090, false)) {
