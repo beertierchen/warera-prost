@@ -4595,7 +4595,15 @@ async function scanInventory(force) {
       if (remote && isNewer(remote, current)) {
         const cleanRemote = String(remote).replace(/[^\w.-]/g, '');
         warnBanner.style.display = 'block';
-        warnBanner.innerHTML = `<strong>${t('updateAvailableTitle', { ver: cleanRemote })}</strong><br/><span style="font-size: 11px;">${t('updateAvailableBody', { ver: cleanRemote })} <a href="https://update.greasyfork.org/scripts/583766/PROST.user.js" target="_blank" onclick="if (typeof sessionStorage !== 'undefined') { sessionStorage.setItem('wia-update-pending', 'true'); }" style="color: #58a6ff; text-decoration: underline; font-weight: bold;">[${t('directUpdateLink')}]</a> oder <a href="https://greasyfork.org/de/scripts/583766-prost" target="_blank" style="color: #8b949e; text-decoration: underline;">GreasyFork</a></span>`;
+        warnBanner.innerHTML = `<strong>${t('updateAvailableTitle', { ver: cleanRemote })}</strong><br/><span style="font-size: 11px;">${t('updateAvailableBody', { ver: cleanRemote })} <a href="https://update.greasyfork.org/scripts/583766/PROST.user.js" target="_blank" class="wia-direct-update-link" style="color: #58a6ff; text-decoration: underline; font-weight: bold;">[${t('directUpdateLink')}]</a> oder <a href="https://greasyfork.org/de/scripts/583766-prost" target="_blank" style="color: #8b949e; text-decoration: underline;">GreasyFork</a></span>`;
+        const directLink = warnBanner.querySelector('.wia-direct-update-link');
+        if (directLink) {
+          directLink.onclick = () => {
+            if (typeof sessionStorage !== 'undefined') {
+              sessionStorage.setItem('wia-update-pending', 'true');
+            }
+          };
+        }
       } else {
         warnBanner.style.display = 'none';
         warnBanner.innerHTML = '';
@@ -13427,12 +13435,20 @@ function checkInventoryDeltaWear() {
       }
     }
     if (typeof window !== 'undefined') {
-      window.addEventListener('focus', () => {
+      const handleReloadOnFocus = () => {
         if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('wia-update-pending') === 'true') {
           sessionStorage.removeItem('wia-update-pending');
           window.location.reload();
         }
-      });
+      };
+      window.addEventListener('focus', handleReloadOnFocus);
+      if (typeof document !== 'undefined') {
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') {
+            handleReloadOnFocus();
+          }
+        });
+      }
     }
 
     migrateTransactionsCache();
