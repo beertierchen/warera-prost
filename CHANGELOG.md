@@ -1,5 +1,21 @@
 # CHANGELOG
 
+## 2026-07-21 | Feature: Direkt-Update-Verlinkung, Alert-Glow & Dynamic Update Icons (v0.9.9)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`
+
+**Änderungen (Deutsch):**
+- **Direkt-Update-Links**: Im Einstellungs-Update-Banner gibt es jetzt einen direkten Link `[Direkt-Update]`, der sofort die Tampermonkey-Aktualisierung öffnet.
+- **Auffälliger Update-Glow**: Bei einem verfügbaren Update pulsiert der Einstellungs-Zahnradbutton auffällig blau (`@keyframes wia-glow`).
+- **Dynamisches Update-Symbol**: Das Zahnradsymbol `⚙` ändert sich bei einem Update automatisch zum Aktualisierungs-Icon `🔄`.
+- **Verbesserte manuelle Suche**: Die manuelle Update-Suche fragt nun per Bestätigungsdialog, ob das Update direkt eingespielt werden soll, und leitet bei Klick auf OK direkt weiter.
+
+**Changes (English):**
+- **Direct Update Links**: The settings update banner now includes a direct `[Direct Update]` link that opens the Tampermonkey update installer page immediately.
+- **Prominent Update Glow**: The settings gear button glows with a soft, pulsing blue animation when an update is available.
+- **Dynamic Update Symbol**: Swaps the gear icon `⚙` for a sync symbol `🔄` to visually flag available releases.
+- **Interactive Manual Check**: Manual update checks now use a confirm dialog prompting to install immediately, redirecting to the installer upon agreement.
+
 ## 2026-07-21 | Feature: Truppen-Radar für Militäreinheiten (v0.9.8)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/test-troop-radar.js`, `docs/wiki/`

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.9.8
+// @version      0.9.9
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -498,6 +498,9 @@
         menuCheckUpdates: 'Check for updates',
         updateAvailableTitle: '⚠ Update available (v{ver})',
         updateAvailableBody: 'A newer PROST version (v{ver}) is available. Update now — outdated versions may contain code that violates game rules.',
+        directUpdateLink: 'Direct Update',
+        updateConfirmText: 'A newer version of PROST (v{ver}) is available!\n\nCurrent version: v{current}\n\nWould you like to install the update now?',
+        updateUpToDateText: 'PROST is up to date (v{current}).',
         gearTooltipTitle: 'Inventory Advisor-Settings',
         gearTooltipScrapPrice: 'Scrap price: {price}/u ({age})',
         gearTooltipItemPrices: 'Item prices: {count} cached ({age})',
@@ -776,7 +779,10 @@
         menuClearRescan: 'Cache leeren + neu scannen',
         menuCheckUpdates: 'Nach Updates suchen',
         updateAvailableTitle: '⚠ Update verfügbar (v{ver})',
-        updateAvailableBody: 'Eine neuere PROST-Version (v{ver}) is verfügbar. Aktualisiere jetzt — veraltete Versionen können Code enthalten, der gegen Spielregeln verstößt.',
+        updateAvailableBody: 'Eine neuere PROST-Version (v{ver}) ist verfügbar. Aktualisiere jetzt — veraltete Versionen können Code enthalten, der gegen Spielregeln verstößt.',
+        directUpdateLink: 'Direkt-Update',
+        updateConfirmText: 'Eine neuere Version von PROST (v{ver}) ist verfügbar!\n\nAktuelle Version: v{current}\n\nMöchtest du das Update jetzt direkt installieren?',
+        updateUpToDateText: 'PROST ist auf dem neuesten Stand (v{current}).',
         gearTooltipTitle: 'Inventory Advisor-Einstellungen',
         gearTooltipScrapPrice: 'Schrottpreis: {price}/Einh. ({age})',
         gearTooltipItemPrices: 'Item-Preise: {count} im Cache ({age})',
@@ -1132,9 +1138,12 @@
         const newer = isNewer(data.version, current);
         if (manual) {
           if (newer) {
-            alert(`A newer version of PROST (v${data.version}) is available!\n\nCurrent version: v${current}\n\nPlease update from GreasyFork.`);
+            const yes = confirm(t('updateConfirmText', { ver: data.version, current }));
+            if (yes) {
+              window.location.href = 'https://update.greasyfork.org/scripts/583766/PROST.user.js';
+            }
           } else {
-            alert(`PROST is up to date (v${current}).`);
+            alert(t('updateUpToDateText', { current }));
           }
         }
         if (newer && settingsModalBg && document.body.contains(settingsModalBg)) {
@@ -3979,6 +3988,20 @@ async function scanInventory(force) {
         width: 12px; height: 12px; border-radius: 50%;
         border: 2px solid #161b22; background: #8b949e;
       }
+      .wia-gear-update-alert {
+        animation: wia-glow 1.5s infinite alternate;
+        border-color: #58a6ff !important;
+      }
+      @keyframes wia-glow {
+        from {
+          box-shadow: 0 0 4px rgba(88, 166, 255, 0.3);
+          background: #21262d;
+        }
+        to {
+          box-shadow: 0 0 14px rgba(88, 166, 255, 0.8);
+          background: #1f3a60;
+        }
+      }
       .wia-data {
         margin: 10px 0; padding: 8px 10px; border-radius: 6px;
         background: #0d1117; border: 1px solid #30363d; color: #c9d1d9;
@@ -4526,6 +4549,20 @@ async function scanInventory(force) {
     const s = cacheStatus();
     const color = isRateLimited() ? '#f85149' : s.stale ? '#d29922' : '#3fb950';
     dot.style.background = color;
+
+    const icon = gear.querySelector('.wia-gear-icon');
+    const remote = GM_getValue(KEYS.latestKnownVersion, '');
+    const current = SCRIPT_VERSION;
+    const updateAvailable = remote && isNewer(remote, current);
+
+    if (updateAvailable) {
+      if (icon) icon.textContent = '🔄';
+      gear.classList.add('wia-gear-update-alert');
+    } else {
+      if (icon) icon.textContent = '⚙';
+      gear.classList.remove('wia-gear-update-alert');
+    }
+
     const titleLines = [
       t('gearTooltipTitle'),
       t('gearTooltipScrapPrice', { price: fmt(s.scrapPrice), age: ageLabel(s.scrapFetchedAt) }),
@@ -4555,7 +4592,7 @@ async function scanInventory(force) {
       if (remote && isNewer(remote, current)) {
         const cleanRemote = String(remote).replace(/[^\w.-]/g, '');
         warnBanner.style.display = 'block';
-        warnBanner.innerHTML = `<strong>${t('updateAvailableTitle', { ver: cleanRemote })}</strong><br/><span style="font-size: 11px;">${t('updateAvailableBody', { ver: cleanRemote })} <a href="https://greasyfork.org/de/scripts/583766-prost" target="_blank" style="color: #58a6ff; text-decoration: underline; font-weight: bold;">GreasyFork</a></span>`;
+        warnBanner.innerHTML = `<strong>${t('updateAvailableTitle', { ver: cleanRemote })}</strong><br/><span style="font-size: 11px;">${t('updateAvailableBody', { ver: cleanRemote })} <a href="https://update.greasyfork.org/scripts/583766/PROST.user.js" target="_blank" style="color: #58a6ff; text-decoration: underline; font-weight: bold;">[${t('directUpdateLink')}]</a> oder <a href="https://greasyfork.org/de/scripts/583766-prost" target="_blank" style="color: #8b949e; text-decoration: underline;">GreasyFork</a></span>`;
       } else {
         warnBanner.style.display = 'none';
         warnBanner.innerHTML = '';
@@ -5258,7 +5295,10 @@ async function scanInventory(force) {
     if (document.querySelector('.wia-gear')) return;
     const gear = document.createElement('button');
     gear.className = 'wia-gear';
-    gear.textContent = '⚙';
+    const icon = document.createElement('span');
+    icon.className = 'wia-gear-icon';
+    icon.textContent = '⚙';
+    gear.appendChild(icon);
     gear.title = t('gearTooltipTitle');
     gear.onclick = openSettings;
     const dot = document.createElement('span'); // live freshness indicator
