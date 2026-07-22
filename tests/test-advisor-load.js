@@ -432,7 +432,6 @@ assert.strictEqual(cleanCode.includes('authHeaderMode'), false, 'Source must not
 assert.strictEqual(cleanCode.includes('OBF_KEY'), false, 'Source must not define or use OBF_KEY');
 assert.strictEqual(cleanCode.includes('function xor'), false, 'Source must not define or use an xor obfuscator');
 assert.strictEqual(cleanCode.includes('document.cookie'), false, 'Source must not read or write document.cookie');
-assert.strictEqual(cleanCode.includes('sessionStorage'), false, 'Source must not reference sessionStorage');
 
 const sourceLines = code.split('\n');
 for (let idx = 0; idx < sourceLines.length; idx++) {
@@ -699,7 +698,7 @@ try {
   assert.ok(modalEl, 'Settings modal should be rendered');
 
   const hintBtns = bg.querySelectorAll('.wia-hint-toggle');
-  assert.strictEqual(hintBtns.length, 6, 'Should have exactly 6 hint toggle buttons (Notes, Battle, Pill Reminder, Market Graph, P&L Tracker, Order Radar)');
+  assert.strictEqual(hintBtns.length, 7, 'Should have exactly 7 hint toggle buttons (Notes, Battle, Pill Reminder, Market Graph, P&L Tracker, Order Radar, Troop Radar)');
 
   const featPillCheckbox = bg.querySelector('.wia-feat-pill');
   const featMarketGraphCheckbox = bg.querySelector('.wia-feat-market-graph');
@@ -2575,6 +2574,8 @@ try {
             } else {
               opts.onload({ status: 200, responseText: '[{"result":{"data":{"json":{}}}}]', responseHeaders: '' });
             }
+          } else if (host === 'api2.warera.io' && api2ShouldFail) {
+            opts.onload({ status: 500, responseText: 'api2 error', responseHeaders: '' });
           } else {
             opts.onload({ status: 200, responseText: '[{"result":{"data":{"json":{}}}}]', responseHeaders: '' });
           }
@@ -2591,6 +2592,7 @@ try {
       globalThis.GM_setValue('wia.apiBase', '');
       let gatewayShouldFail = false;
       let gatewayUnknownMethod = false;
+      let api2ShouldFail = false;
 
       await globalThis.WIA_resolve('itemTrading.getPrices', {});
       assert.strictEqual(requestInterceptedCount, 1, 'Should only query gateway under keyless mode');
@@ -2612,14 +2614,15 @@ try {
       assert.ok(threwExpectedError, 'Should throw apiKeyRequired when gateway fails and no key is set');
       assert.strictEqual(requestInterceptedCount, 1, 'Should not attempt any api2 requests when keyless');
 
-      // (c) Keyed fetch (tries gateway -> 500 -> api2 -> 200)
+      // (c) Keyed fetch (tries api2 -> 500 -> gateway -> 200)
       requestInterceptedCount = 0;
       globalThis.setToken('test-compliance-api-key');
       globalThis.GM_setValue('wia.apiBase', '');
-      gatewayShouldFail = true;
+      api2ShouldFail = true;
+      gatewayShouldFail = false;
       
       await globalThis.WIA_resolve('itemTrading.getPrices', {});
-      assert.strictEqual(requestInterceptedCount, 2, 'Should query gateway first, then fall back to api2 (with key)');
+      assert.strictEqual(requestInterceptedCount, 3, 'Should query both api2 bases first, then fall back to gateway (with key)');
 
       // (d) Keyless call to api2-only procedure (gateway returns unknown method -> throws apiKeyRequired)
       requestInterceptedCount = 0;

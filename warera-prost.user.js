@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.9.10
+// @version      0.9.11
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -1245,6 +1245,40 @@
     lines.push(`Rate Limited Until: ${GM_getValue(KEYS.rateLimitedUntil, 0)} (now: ${now()})`);
     lines.push(`NTFY Rate Limited Until: ${GM_getValue(KEYS.ntfyRateLimitedUntil, 0)}`);
     lines.push(``);
+    lines.push(`=== API Observability & Monitoring ===`);
+    lines.push(`Total Requests: ${ApiMonitor.metrics.totalRequests}`);
+    lines.push(`Successes: ${ApiMonitor.metrics.totalSuccesses} | Failures: ${ApiMonitor.metrics.totalFailures}`);
+    lines.push(`Rate Limit Trips: ${ApiMonitor.metrics.rateLimitTrips} | Gated Blocks: ${ApiMonitor.metrics.gatedRequests} | Blocked Requests: ${ApiMonitor.metrics.blockedRequests}`);
+    lines.push(`Throttling Wait Time: ${ApiMonitor.metrics.totalWaitTimeMs}ms (${ApiMonitor.metrics.waitCount} calls delayed)`);
+    lines.push(`Current Tokens - Official: ${officialBucket.tokens.toFixed(2)} / ${officialBucket.maxTokens} | Gateway: ${gatewayBucket.tokens.toFixed(2)} / ${gatewayBucket.maxTokens}`);
+    lines.push(``);
+    lines.push(`=== API Procedures ===`);
+    for (const [proc, meta] of Object.entries(ApiMonitor.metrics.procedures)) {
+      const successRate = meta.calls > 0 ? ((meta.successes / meta.calls) * 100).toFixed(1) : '0.0';
+      const lastCallAgoSec = meta.lastCallAt > 0 ? ((Date.now() - meta.lastCallAt) / 1000).toFixed(1) : 'never';
+      const errDist = Object.entries(meta.errorsByStatus).map(([st, cnt]) => `${st}:${cnt}`).join(', ') || 'none';
+      lines.push(`- ${proc}: ${meta.calls} calls (${meta.successes} ok, ${meta.failures} err, ${successRate}% ok)`);
+      lines.push(`  Last call: ${lastCallAgoSec}s ago | Last Error: "${meta.lastError || 'none'}" | Error distribution: ${errDist}`);
+    }
+    lines.push(``);
+    lines.push(`=== Recent API Call History (Last 30) ===`);
+    const recent = ApiMonitor.metrics.recentCalls.slice(-30);
+    for (const call of recent) {
+      const timeStr = new Date(call.t).toISOString().split('T')[1].replace('Z', '');
+      const waitStr = call.waitMs > 0 ? ` [waited ${call.waitMs}ms]` : '';
+      const durStr = call.duration !== null ? ` in ${call.duration}ms` : '';
+      const errStr = call.error ? ` - error: ${call.error}` : '';
+      lines.push(`[${timeStr}] ${call.method} ${call.procedure} -> ${call.status}${durStr}${waitStr}${errStr}`);
+    }
+    lines.push(``);
+    lines.push(`=== Recent API Error Intervals (Last 20) ===`);
+    const errors = ApiMonitor.metrics.recentErrors;
+    for (const err of errors) {
+      const timeStr = new Date(err.t).toISOString().split('T')[1].replace('Z', '');
+      const intervalStr = err.timeSinceLastErr !== null ? ` (+${(err.timeSinceLastErr / 1000).toFixed(1)}s since last error)` : ' (first error)';
+      lines.push(`[${timeStr}] ${err.procedure} -> ${err.status} (${err.error})${intervalStr}`);
+    }
+    lines.push(``);
     lines.push(`=== Feature Health Registry ===`);
     for (const [id, h] of Object.entries(Health)) {
       lines.push(`[${id}] status=${h.status} info="${h.info || ''}" lastRun=${h.lastRun ? new Date(h.lastRun).toISOString() : 'never'}`);
@@ -1333,6 +1367,22 @@
         return id ? runProbe(id) : runProbes();
       },
       logs(n = 50) { return Debug.buf.slice(-n); },
+      apiObservability() {
+        console.log("=== API Observability ===");
+        console.log(`Requests: ${ApiMonitor.metrics.totalRequests} (Success: ${ApiMonitor.metrics.totalSuccesses}, Failure: ${ApiMonitor.metrics.totalFailures})`);
+        console.log(`Blocked: ${ApiMonitor.metrics.blockedRequests} (Gated: ${ApiMonitor.metrics.gatedRequests}, Rate-limited: ${ApiMonitor.metrics.rateLimitTrips})`);
+        console.log(`Throttling Wait Time: ${ApiMonitor.metrics.totalWaitTimeMs}ms across ${ApiMonitor.metrics.waitCount} delayed calls`);
+        console.log(`Tokens - Official: ${officialBucket.tokens.toFixed(2)} / ${officialBucket.maxTokens} | Gateway: ${gatewayBucket.tokens.toFixed(2)} / ${gatewayBucket.maxTokens}`);
+        console.table(ApiMonitor.metrics.procedures);
+        return {
+          metrics: ApiMonitor.metrics,
+          officialBucket,
+          gatewayBucket,
+          dumpLog() {
+            return exportDebugLog();
+          }
+        };
+      },
       troopRadar: {
         classify: (skills) => typeof classifyWarskiller === 'function' ? classifyWarskiller(skills) : null,
         evaluatePill: (skills, health, hunger) => typeof evaluatePillStatus === 'function' ? evaluatePillStatus(skills, health, hunger) : null,
@@ -1811,41 +1861,270 @@
     return parsed;
   }
 
-  // Serialize through a single chain so parallel callers (Promise.all of
-  // prices + scrap) are genuinely spaced by minRequestIntervalMs, not racing
-  // on a shared lastRequestAt timestamp.
-  let throttleChain = Promise.resolve();
-  let nextSlot = 0;
-  function throttle() {
-    const run = throttleChain.then(() => {
-      const wait = Math.max(0, nextSlot - now());
-      nextSlot = Math.max(now(), nextSlot) + CONFIG.minRequestIntervalMs;
-      return wait > 0 ? new Promise((r) => setTimeout(r, wait)) : undefined;
+  function unwrapTrpcBatch(text) {
+    const parsed = JSON.parse(text);
+    if (!Array.isArray(parsed)) {
+      throw new Error('trpc batch: expected array response');
+    }
+    return parsed.map((entry) => {
+      if (entry && entry.error) {
+        return { error: new Error('trpc: ' + (entry.error.json?.message || entry.error.message || 'error')) };
+      }
+      const data = entry && entry.result && entry.result.data;
+      if (data !== undefined && data !== null) {
+        return { payload: (typeof data === 'object' && 'json' in data) ? data.json : data };
+      }
+      if (entry && entry.result !== undefined && entry.result !== null) {
+        return { payload: entry.result };
+      }
+      return { payload: entry };
     });
-    // keep the chain alive even if a link rejects
-    throttleChain = run.catch(() => {});
-    return run;
+  }
+
+  // ── API Observability & Monitoring ──
+  const ApiMonitor = {
+    metrics: {
+      totalRequests: 0,
+      totalSuccesses: 0,
+      totalFailures: 0,
+      rateLimitTrips: 0,
+      gatedRequests: 0,
+      blockedRequests: 0,
+      totalWaitTimeMs: 0,
+      waitCount: 0,
+      procedures: {}, // procedure -> { calls: 0, successes: 0, failures: 0, lastCallAt: 0, lastError: '', errorsByStatus: {} }
+      recentCalls: [], // ring buffer of last 50 requests
+      recentErrors: [], // ring buffer of last 20 failures
+    },
+
+    trackCall(procedure, method, args) {
+      this.metrics.totalRequests++;
+      if (!this.metrics.procedures[procedure]) {
+        this.metrics.procedures[procedure] = { calls: 0, successes: 0, failures: 0, lastCallAt: 0, lastError: '', errorsByStatus: {} };
+      }
+      this.metrics.procedures[procedure].calls++;
+      this.metrics.procedures[procedure].lastCallAt = Date.now();
+
+      const callEntry = {
+        t: Date.now(),
+        procedure,
+        method,
+        status: null,
+        duration: null,
+        error: null,
+        waitMs: 0,
+        blocked: false
+      };
+      this.metrics.recentCalls.push(callEntry);
+      if (this.metrics.recentCalls.length > 50) this.metrics.recentCalls.shift();
+      return callEntry;
+    },
+
+    trackWait(callEntry, ms) {
+      if (ms > 0) {
+        this.metrics.waitCount++;
+        this.metrics.totalWaitTimeMs += ms;
+        if (callEntry) callEntry.waitMs = ms;
+      }
+    },
+
+    trackBlocked(procedure, reason) {
+      this.metrics.totalRequests++;
+      this.metrics.totalFailures++;
+      this.metrics.blockedRequests++;
+      if (reason === 'Gated') {
+        this.metrics.gatedRequests++;
+      }
+      if (!this.metrics.procedures[procedure]) {
+        this.metrics.procedures[procedure] = { calls: 0, successes: 0, failures: 0, lastCallAt: 0, lastError: '', errorsByStatus: {} };
+      }
+      const p = this.metrics.procedures[procedure];
+      p.calls++;
+      p.failures++;
+      p.lastCallAt = Date.now();
+      p.lastError = reason;
+
+      const callEntry = {
+        t: Date.now(),
+        procedure,
+        method: 'BLOCKED',
+        status: reason,
+        duration: 0,
+        error: reason,
+        waitMs: 0,
+        blocked: true
+      };
+      this.metrics.recentCalls.push(callEntry);
+      if (this.metrics.recentCalls.length > 50) this.metrics.recentCalls.shift();
+    },
+
+    trackRateLimitTrip() {
+      this.metrics.rateLimitTrips++;
+    },
+
+    trackResult(callEntry, res, duration, err) {
+      if (!callEntry) return;
+      callEntry.duration = duration;
+      if (res && res.status >= 200 && res.status < 300) {
+        this.metrics.totalSuccesses++;
+        const p = this.metrics.procedures[callEntry.procedure];
+        if (p) p.successes++;
+        callEntry.status = res.status;
+      } else {
+        this.metrics.totalFailures++;
+        const status = res ? res.status : 'ERR';
+        const errMsg = err ? err.message || String(err) : 'HTTP ' + status;
+
+        const p = this.metrics.procedures[callEntry.procedure];
+        if (p) {
+          p.failures++;
+          p.lastError = errMsg;
+          p.errorsByStatus[status] = (p.errorsByStatus[status] || 0) + 1;
+        }
+
+        callEntry.status = status;
+        callEntry.error = errMsg;
+
+        const lastErr = this.metrics.recentErrors[this.metrics.recentErrors.length - 1];
+        const nowMs = Date.now();
+        const timeSinceLastErr = lastErr ? nowMs - lastErr.t : null;
+
+        const errEntry = {
+          t: nowMs,
+          procedure: callEntry.procedure,
+          status,
+          error: errMsg,
+          timeSinceLastErr
+        };
+        this.metrics.recentErrors.push(errEntry);
+        if (this.metrics.recentErrors.length > 20) this.metrics.recentErrors.shift();
+      }
+    }
+  };
+
+  // ── Token Bucket Rate Limiter for Official API ──
+  let officialBucket = {
+    tokens: 10,
+    maxTokens: 10,
+    refillRate: 100 / (60 * 1000), // default to anonymous 100 rpm
+    lastRefill: Date.now()
+  };
+
+  function updateBucketRate() {
+    const hasKey = !!getToken();
+    const limitPerMin = hasKey ? 200 : 100;
+    officialBucket.maxTokens = hasKey ? 15 : 8;
+    officialBucket.refillRate = limitPerMin / (60 * 1000);
+    officialBucket.tokens = Math.min(officialBucket.tokens, officialBucket.maxTokens);
+  }
+
+  async function acquireOfficialToken() {
+    updateBucketRate();
+    const nowMs = Date.now();
+    const elapsed = nowMs - officialBucket.lastRefill;
+    officialBucket.tokens = Math.min(officialBucket.maxTokens, officialBucket.tokens + elapsed * officialBucket.refillRate);
+    officialBucket.lastRefill = nowMs;
+
+    if (officialBucket.tokens >= 1) {
+      officialBucket.tokens -= 1;
+      return 0;
+    }
+
+    const needed = 1 - officialBucket.tokens;
+    const waitMs = needed / officialBucket.refillRate;
+    officialBucket.tokens = 0;
+    officialBucket.lastRefill = nowMs + waitMs;
+
+    return new Promise((resolve) => setTimeout(resolve, waitMs));
+  }
+
+  // ── Token Bucket Rate Limiter for Gateway API ──
+  let gatewayBucket = {
+    tokens: 10,
+    maxTokens: 10,
+    refillRate: 100 / (60 * 1000), // constant 100 rpm limit for gateway
+    lastRefill: Date.now()
+  };
+
+  async function acquireGatewayToken() {
+    const nowMs = Date.now();
+    const elapsed = nowMs - gatewayBucket.lastRefill;
+    gatewayBucket.tokens = Math.min(gatewayBucket.maxTokens, gatewayBucket.tokens + elapsed * gatewayBucket.refillRate);
+    gatewayBucket.lastRefill = nowMs;
+
+    if (gatewayBucket.tokens >= 1) {
+      gatewayBucket.tokens -= 1;
+      return 0;
+    }
+
+    const needed = 1 - gatewayBucket.tokens;
+    const waitMs = needed / gatewayBucket.refillRate;
+    gatewayBucket.tokens = 0;
+    gatewayBucket.lastRefill = nowMs + waitMs;
+
+    return new Promise((resolve) => setTimeout(resolve, waitMs));
+  }
+
+  function isGateway(base) {
+    try {
+      return new URL(base).hostname === 'gateway.warerastats.io';
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function resolveBases(opts, hasKey, cached) {
+    const allowedBases = opts.gatewayOnly
+      ? gatewayBases
+      : (hasKey ? [...api2Bases, ...gatewayBases] : gatewayBases);
+
+    if (hasKey && !opts.gatewayOnly) {
+      const cachedApi2 = api2Bases.includes(cached) ? cached : null;
+      if (cachedApi2) {
+        return [cachedApi2, ...api2Bases.filter(b => b !== cachedApi2), ...gatewayBases];
+      }
+      return [...api2Bases, ...gatewayBases];
+    }
+
+    return cached && allowedBases.includes(cached)
+      ? [cached, ...allowedBases.filter((b) => b !== cached)]
+      : allowedBases;
   }
 
   // Probe configured bases once, remember the one that works.
   async function resolveApiBase(procedure, args, opts = {}) {
-    if (isRateLimited()) throw new Error('429');
-    if (isProcedureGated(procedure)) throw new Error('gated: ' + procedure);
+    if (isRateLimited()) {
+      ApiMonitor.trackBlocked(procedure, 'RateLimited');
+      throw new Error('429');
+    }
+    if (isProcedureGated(procedure)) {
+      ApiMonitor.trackBlocked(procedure, 'Gated');
+      throw new Error('gated: ' + procedure);
+    }
     const cached = GM_getValue(KEYS.apiBase, '');
     const hasKey = !!getToken();
-    let allowedBases = hasKey ? CONFIG.apiBases : [...gatewayBases, ...api2Bases.filter((b) => !gatewayBases.includes(b))];
-    const bases = cached && allowedBases.includes(cached)
-      ? [cached, ...allowedBases.filter((b) => b !== cached)]
-      : allowedBases;
+    const bases = resolveBases(opts, hasKey, cached);
 
+    const callEntry = ApiMonitor.trackCall(procedure, 'GET', args);
+    const startTime = Date.now();
     let lastErr;
+    let res;
     for (const base of bases) {
       try {
-        if (!opts.skipThrottle) await throttle();
-        const res = await gmRequest({ method: 'GET', url: trpcUrl(base, procedure, args), headers: headersForBase(base) });
+        if (!opts.skipThrottle) {
+          const throttleStart = Date.now();
+          if (isGateway(base)) {
+            await acquireGatewayToken();
+          } else {
+            await acquireOfficialToken();
+          }
+          ApiMonitor.trackWait(callEntry, Date.now() - throttleStart);
+        }
+        res = await gmRequest({ method: 'GET', url: trpcUrl(base, procedure, args), headers: headersForBase(base) });
         if (res.status === 429) {
           dbg('api', 'warn', `base ${base} rate-limited (429) for ${procedure}, attempting fallback base`);
           tripRateLimit();
+          ApiMonitor.trackRateLimitTrip();
           lastErr = new Error('429');
           continue;
         }
@@ -1857,14 +2136,16 @@
         if (res.status >= 200 && res.status < 300) {
           GM_setValue(KEYS.apiBase, base);
           dbg('api', 'debug', `resolveApiBase ${procedure} succeeded on ${base}`);
+          ApiMonitor.trackResult(callEntry, res, Date.now() - startTime);
           return { base, payload: unwrapTrpc(res.text) };
         }
-        lastErr = new Error('HTTP ' + res.status);
+        throw new Error('HTTP ' + res.status);
       } catch (e) {
         lastErr = e;
         dbg('api', 'warn', `resolveApiBase ${procedure} failed on ${base}: ${e.message}`);
       }
     }
+    ApiMonitor.trackResult(callEntry, res, Date.now() - startTime, lastErr);
     if (lastErr && (lastErr.message === '401' || lastErr.message === '403')) {
       gateProcedure(procedure);
     }
@@ -1874,27 +2155,41 @@
     throw lastErr || new Error('all API bases failed');
   }
 
-  async function resolveApiPost(procedure, args) {
-    if (isRateLimited()) throw new Error('429');
-    if (isProcedureGated(procedure)) throw new Error('gated: ' + procedure);
+  async function resolveApiPost(procedure, args, opts = {}) {
+    if (isRateLimited()) {
+      ApiMonitor.trackBlocked(procedure, 'RateLimited');
+      throw new Error('429');
+    }
+    if (isProcedureGated(procedure)) {
+      ApiMonitor.trackBlocked(procedure, 'Gated');
+      throw new Error('gated: ' + procedure);
+    }
     const cached = GM_getValue(KEYS.apiBase, '');
     const hasKey = !!getToken();
-    let allowedBases = hasKey ? CONFIG.apiBases : gatewayBases;
-    const bases = cached && allowedBases.includes(cached)
-      ? [cached, ...allowedBases.filter((b) => b !== cached)]
-      : allowedBases;
+    const bases = resolveBases(opts, hasKey, cached);
 
+    const callEntry = ApiMonitor.trackCall(procedure, 'POST', args);
+    const startTime = Date.now();
     let lastErr;
+    let res;
     for (const base of bases) {
       try {
-        await throttle();
+        if (!opts.skipThrottle) {
+          const throttleStart = Date.now();
+          if (isGateway(base)) {
+            await acquireGatewayToken();
+          } else {
+            await acquireOfficialToken();
+          }
+          ApiMonitor.trackWait(callEntry, Date.now() - throttleStart);
+        }
         const url = `${base}/${encodeURIComponent(procedure)}`;
         const headers = {
           ...headersForBase(base),
           'Content-Type': 'application/json',
           'accept': '*/*'
         };
-        const res = await gmRequest({
+        res = await gmRequest({
           method: 'POST',
           url,
           headers,
@@ -1903,6 +2198,7 @@
         if (res.status === 429) {
           dbg('api', 'warn', `base ${base} rate-limited (429) for ${procedure}, attempting fallback base`);
           tripRateLimit();
+          ApiMonitor.trackRateLimitTrip();
           lastErr = new Error('429');
           continue;
         }
@@ -1914,13 +2210,114 @@
         if (res.status >= 200 && res.status < 300) {
           GM_setValue(KEYS.apiBase, base);
           dbg('api', 'debug', `resolveApiPost ${procedure} succeeded on ${base}`);
+          ApiMonitor.trackResult(callEntry, res, Date.now() - startTime);
           return { base, payload: unwrapTrpc(res.text) };
         }
-        lastErr = new Error('HTTP ' + res.status);
+        throw new Error('HTTP ' + res.status);
       } catch (e) {
         lastErr = e;
         dbg('api', 'warn', `resolveApiPost ${procedure} failed on ${base}: ${e.message}`);
       }
+    }
+    ApiMonitor.trackResult(callEntry, res, Date.now() - startTime, lastErr);
+    if (lastErr && (lastErr.message === '401' || lastErr.message === '403')) {
+      gateProcedure(procedure);
+    }
+    if (!hasKey && api2Bases.length > 0) {
+      throw new Error('apiKeyRequired: ' + procedure);
+    }
+    throw lastErr || new Error('all API bases failed');
+  }
+
+  async function resolveApiBatch(procedure, batchArgs, opts = {}) {
+    if (!batchArgs || batchArgs.length === 0) return [];
+
+    if (batchArgs.length === 1) {
+      const { payload } = await resolveApiBase(procedure, batchArgs[0], opts);
+      return [{ payload }];
+    }
+
+    if (isRateLimited()) {
+      ApiMonitor.trackBlocked(procedure + ' (Batch)', 'RateLimited');
+      throw new Error('429');
+    }
+    if (isProcedureGated(procedure)) {
+      ApiMonitor.trackBlocked(procedure + ' (Batch)', 'Gated');
+      throw new Error('gated: ' + procedure);
+    }
+    const cached = GM_getValue(KEYS.apiBase, '');
+    const hasKey = !!getToken();
+    const bases = resolveBases(opts, hasKey, cached);
+
+    let lastErr;
+    let res;
+    for (const base of bases) {
+      if (!isGateway(base)) {
+        try {
+          dbg('api', 'debug', `resolveApiBatch: splitting batch of size ${batchArgs.length} for non-batch base ${base}`);
+          const promises = batchArgs.map(async (args) => {
+            try {
+              const { payload } = await resolveApiBase(procedure, args, opts);
+              return { payload };
+            } catch (err) {
+              return { error: err };
+            }
+          });
+          const results = await Promise.all(promises);
+          const allFailed = results.every(r => r.error);
+          if (allFailed && batchArgs.length > 0) {
+            lastErr = results[0].error;
+            continue;
+          }
+          return results;
+        } catch (e) {
+          lastErr = e;
+          continue;
+        }
+      }
+
+      // Gateway batch request path
+      const procNames = Array(batchArgs.length).fill(procedure).join(',');
+      const inputObj = {};
+      batchArgs.forEach((args, idx) => {
+        inputObj[idx] = args === undefined ? {} : args;
+      });
+      const batchInput = encodeURIComponent(JSON.stringify(inputObj));
+
+      const callEntry = ApiMonitor.trackCall(procedure + ` (Batch x${batchArgs.length})`, 'GET', batchArgs);
+      const startTime = Date.now();
+      try {
+        if (!opts.skipThrottle) {
+          const throttleStart = Date.now();
+          await acquireGatewayToken();
+          ApiMonitor.trackWait(callEntry, Date.now() - throttleStart);
+        }
+        const url = `${base}/${encodeURIComponent(procNames)}?input=${batchInput}`;
+        res = await gmRequest({ method: 'GET', url, headers: headersForBase(base) });
+        if (res.status === 429) {
+          dbg('api', 'warn', `base ${base} rate-limited (429) for batch ${procedure}, attempting fallback base`);
+          tripRateLimit();
+          ApiMonitor.trackRateLimitTrip();
+          lastErr = new Error('429');
+          continue;
+        }
+        if (res.status === 401 || res.status === 403) {
+          dbg('api', 'warn', `base ${base} returned ${res.status} for batch ${procedure}, attempting gateway fallback`);
+          lastErr = new Error(String(res.status));
+          continue;
+        }
+        if (res.status >= 200 && res.status < 300) {
+          GM_setValue(KEYS.apiBase, base);
+          dbg('api', 'debug', `resolveApiBatch ${procedure} (x${batchArgs.length}) succeeded on ${base}`);
+          ApiMonitor.trackResult(callEntry, res, Date.now() - startTime);
+          return unwrapTrpcBatch(res.text);
+        }
+        throw new Error('HTTP ' + res.status);
+      } catch (e) {
+        lastErr = e;
+        dbg('api', 'warn', `resolveApiBatch ${procedure} (x${batchArgs.length}) failed on ${base}: ${e.message}`);
+      }
+      ApiMonitor.trackResult(callEntry, res, Date.now() - startTime, lastErr);
     }
     if (lastErr && (lastErr.message === '401' || lastErr.message === '403')) {
       gateProcedure(procedure);
@@ -2063,26 +2460,11 @@
 
     transactionsInFlight[code] = (async () => {
       try {
-        await throttle();
-        const url = 'https://gateway.warerastats.io/trpc/transaction.getPaginatedTransactions';
-        const body = JSON.stringify({
+        const { payload } = await resolveApiPost('transaction.getPaginatedTransactions', {
           limit: 100,
           itemCode: code
-        });
-        const res = await gmRequest({
-          method: 'POST',
-          url,
-          headers: {
-            'Content-Type': 'application/json',
-            'X-API-Key': 'prost-userscript'
-          },
-          data: body
-        });
-        if (res.status === 429) { tripRateLimit(); return cached ? cached.data : null; }
-        if (res.status < 200 || res.status >= 300) return cached ? cached.data : null;
-
-        const data = JSON.parse(res.text);
-        const items = data?.result?.data?.items || [];
+        }, { gatewayOnly: true });
+        const items = payload?.items || [];
 
         const type = getTypeFromCode(code);
         const mapped = items.map(tx => {
@@ -6286,6 +6668,9 @@ function updateObserverTarget() {
     document.querySelector('#defender-hit-button')?.classList.remove('wia-battle-primary', 'wia-battle-muted');
     document.querySelector('#attacker-hit-button')?.classList.remove('wia-battle-primary', 'wia-battle-muted');
     document.querySelectorAll('[data-wia-injected]').forEach(el => el.remove());
+    setHealth('battleAdvisor', 'idle', 'disabled in settings');
+    setHealth('orderRadar', 'idle', 'disabled in settings');
+    setHealth('troopRadar', 'idle', 'disabled in settings');
   }
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -6381,6 +6766,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     clearTimeout(notesScanTimer);
     notesScanTimer = null;
     teardownSharedBodyObserver();
+    setHealth('notes', 'idle', 'disabled in settings');
   }
 
   function scheduleNotesScan() {
@@ -7546,6 +7932,100 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     }
   }
 
+  async function fetchTroopMemberDataBatch(userIds, opts = {}) {
+    if (!Array.isArray(userIds) || userIds.length === 0) return [];
+
+    const results = Array(userIds.length).fill(null);
+    const uncachedIds = [];
+    const uncachedIndices = [];
+
+    userIds.forEach((userId, index) => {
+      const cached = troopRadarMemberCache.get(userId);
+      if (cached && (now() - cached.at < TROOP_RADAR_TTL_MS)) {
+        results[index] = cached.data;
+      } else {
+        uncachedIds.push(userId);
+        uncachedIndices.push(index);
+      }
+    });
+
+    if (uncachedIds.length > 0) {
+      const BATCH_CHUNK_SIZE = 8;
+      const promises = [];
+
+      for (let offset = 0; offset < uncachedIds.length; offset += BATCH_CHUNK_SIZE) {
+        const chunkIds = uncachedIds.slice(offset, offset + BATCH_CHUNK_SIZE);
+        const chunkIndices = uncachedIndices.slice(offset, offset + BATCH_CHUNK_SIZE);
+
+        promises.push((async () => {
+          try {
+            const batchArgs = chunkIds.map((userId) => ({ userId }));
+            const batchResults = await resolveApiBatch('user.getUserById', batchArgs, opts);
+
+            batchResults.forEach((res, i) => {
+              const userId = chunkIds[i];
+              const origIndex = chunkIndices[i];
+
+              if (res.error) {
+                const cached = troopRadarMemberCache.get(userId);
+                results[origIndex] = (cached && cached.data) ? cached.data : createOptimisticMemberData(userId);
+                return;
+              }
+
+              const payload = res.payload;
+              const skills = payload?.skills || {};
+              const health = skills.health || {};
+              const hunger = skills.hunger || {};
+              const warskillerInfo = classifyWarskiller(skills);
+              const pillInfo = evaluatePillStatus(skills, health, hunger);
+
+              const username = payload?.username || payload?.user?.username || payload?.name;
+              const buffsObj = payload?.buffs || {};
+              const memberData = {
+                userId,
+                username,
+                hpCurrent: pillInfo.hpCurrent,
+                hpMax: pillInfo.hpMax,
+                hungerCurrent: pillInfo.hungerCurrent,
+                hungerMax: pillInfo.hungerMax,
+                buffsPercent: pillInfo.buffsPercent,
+                debuffsPercent: pillInfo.debuffsPercent,
+                warShare: warskillerInfo.warShare,
+                ecoShare: warskillerInfo.ecoShare,
+                isWarskiller: warskillerInfo.isWarskiller,
+                build: warskillerInfo.build,
+                buildEmoji: warskillerInfo.emoji,
+                buildLabel: warskillerInfo.label,
+                pillState: pillInfo.state,
+                pillReady: pillInfo.isReadyToPill,
+                buffEndAt: buffsObj.buffEndAt || null,
+                debuffEndAt: buffsObj.debuffEndAt || null,
+                isOptimistic: false,
+                updatedAt: now()
+              };
+
+              troopRadarMemberCache.set(userId, { at: now(), data: memberData });
+              results[origIndex] = memberData;
+            });
+          } catch (e) {
+            dbg('troopRadar', 'warn', `batch chunk fetch failed: ${e.message}`);
+            chunkIds.forEach((userId, i) => {
+              const origIndex = chunkIndices[i];
+              if (results[origIndex] === null) {
+                const cached = troopRadarMemberCache.get(userId);
+                results[origIndex] = (cached && cached.data) ? cached.data : createOptimisticMemberData(userId);
+              }
+            });
+          }
+        })());
+      }
+
+      await Promise.all(promises);
+    }
+
+    return results;
+  }
+
   async function fetchFullTroopRadar(muId) {
     const roster = await fetchMuRoster(muId);
     const userIds = roster.members || [];
@@ -7557,14 +8037,8 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
 
     const summary = summarizeTroops(membersData);
 
-    const BATCH_SIZE = 25;
     const detailsPromise = (async () => {
-      const results = [];
-      for (let i = 0; i < userIds.length; i += BATCH_SIZE) {
-        const chunk = userIds.slice(i, i + BATCH_SIZE);
-        const chunkResults = await Promise.all(chunk.map((id) => fetchTroopMemberData(id, { skipThrottle: true })));
-        results.push(...chunkResults);
-      }
+      const results = await fetchTroopMemberDataBatch(userIds, { skipThrottle: true });
       return {
         roster,
         membersData: results,
@@ -7777,6 +8251,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
   }
 
   let troopRadarActiveRequestId = 0;
+  let troopRadarActiveMuId = null;
 
   async function applyTroopRadar() {
     cleanupStrayTroopRadarChips();
@@ -7785,6 +8260,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       setHealth('troopRadar', 'idle', 'disabled in settings');
       const existingSummary = document.getElementById('wia-troop-radar-summary');
       if (existingSummary) existingSummary.remove();
+      troopRadarActiveMuId = null;
       return;
     }
 
@@ -7793,19 +8269,20 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       setHealth('troopRadar', 'idle', 'not on MU page');
       const existingSummary = document.getElementById('wia-troop-radar-summary');
       if (existingSummary) existingSummary.remove();
+      troopRadarActiveMuId = null;
       return;
     }
 
-    if (troopRadarLoading) return;
-    troopRadarLoading = true;
-
     const muId = route.rawId;
+    if (troopRadarLoading && troopRadarActiveMuId === muId) return;
+
+    troopRadarLoading = true;
+    troopRadarActiveMuId = muId;
     const reqId = ++troopRadarActiveRequestId;
 
     try {
       const fullData = await fetchFullTroopRadar(muId);
       if (reqId !== troopRadarActiveRequestId) {
-        troopRadarLoading = false;
         return;
       }
 
@@ -7814,27 +8291,33 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
 
       setHealth('troopRadar', 'ok', `${fullData.membersData.length} members rendered`);
 
-      troopRadarLoading = false;
-
       fullData.detailsPromise.then((liveFull) => {
         if (reqId !== troopRadarActiveRequestId) return;
         renderTroopRadarHeaderSummary(liveFull.summary, muId);
         renderTroopRadarMemberRows(liveFull.membersData);
         setHealth('troopRadar', 'ok', `${liveFull.membersData.length} members updated`);
+        troopRadarLoading = false;
       }).catch((e) => {
         dbg('troopRadar', 'warn', 'detailsPromise error: ' + e.message);
+        if (reqId === troopRadarActiveRequestId) {
+          troopRadarLoading = false;
+        }
       });
 
     } catch (e) {
       dbg('troopRadar', 'error', 'applyTroopRadar failed: ' + e.message);
       setHealth('troopRadar', 'fail', e.message);
-      troopRadarLoading = false;
+      if (reqId === troopRadarActiveRequestId) {
+        troopRadarLoading = false;
+      }
     }
   }
 
   function ensureTroopRadarInjected() {
     if (!CONFIG.featTroopRadar || !isMuPage() || typeof document === 'undefined') return;
-    if (troopRadarLoading) return;
+    const route = getEntityFromRoute();
+    const routeMuId = route?.rawId;
+    if (troopRadarLoading && troopRadarActiveMuId === routeMuId) return;
 
     const anchor = findTroopRadarHeaderAnchor();
     if (!anchor) return;
@@ -7964,6 +8447,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     pillColdStartDone = false;
     removePillBadge();
     removeCocaineHighlights();
+    setHealth('pillReminder', 'idle', 'disabled in settings');
     removeHnHBudget();
   }
 
@@ -9260,30 +9744,15 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
 
     resourceTxsInFlight[cacheKey] = (async () => {
       try {
-        const url = 'https://gateway.warerastats.io/trpc/transaction.getPaginatedTransactions';
-        const body = JSON.stringify({
+        const { payload } = await resolveApiPost('transaction.getPaginatedTransactions', {
           limit: 100,
           itemCode: code,
           transactionType: 'trading',
           cursor: cursor || undefined
-        });
-        const res = await gmRequest({
-          method: 'POST',
-          url,
-          headers: {
-            'Content-Type': 'application/json',
-            'X-API-Key': 'prost-userscript'
-          },
-          data: body
-        });
-        if (res.status === 429) { tripRateLimit(); return null; }
-        if (res.status < 200 || res.status >= 300) return null;
-
-        const json = JSON.parse(res.text);
-        const data = json?.result?.data || {};
+        }, { gatewayOnly: true });
         return {
-          items: data.items || [],
-          nextCursor: data.nextCursor || null
+          items: payload?.items || [],
+          nextCursor: payload?.nextCursor || null
         };
       } catch (e) {
         reportError('marketGraph', e, 'fetchResourceTransactions failed for ' + code);
@@ -10048,6 +10517,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     const toggles = document.querySelectorAll('.wia-mkt-toggle-row');
     toggles.forEach(el => el.remove());
     teardownSharedBodyObserver();
+    setHealth('marketGraph', 'idle', 'disabled in settings');
   }
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -10852,7 +11322,6 @@ function processTransactionsList(items, userId) {
     }
     try {
       await guard('pnl', async () => {
-        const url = 'https://gateway.warerastats.io/trpc/transaction.getPaginatedTransactions';
         // The feed returns only the newest 100 per page. Between 30s polls a player +
         // their employees can produce >100 tx (wages spam), so paginate until we reach
         // already-processed territory (or a page cap). Dedup makes overlap harmless.
@@ -10862,15 +11331,9 @@ function processTransactionsList(items, userId) {
         let prevFirstId = null;
         const all = [];
         for (let page = 0; page < MAX_PAGES; page++) {
-          const body = JSON.stringify(cursor ? { limit: 100, userId, cursor } : { limit: 100, userId });
-          const res = await gmRequest({
-            method: 'POST', url,
-            headers: { 'Content-Type': 'application/json', 'X-API-Key': 'prost-userscript' },
-            data: body
-          });
-          if (res.status < 200 || res.status >= 300) break;
-          const data = JSON.parse(res.text)?.result?.data;
-          const items = data?.items || [];
+          const args = cursor ? { limit: 100, userId, cursor } : { limit: 100, userId };
+          const { payload } = await resolveApiPost('transaction.getPaginatedTransactions', args, { gatewayOnly: true });
+          const items = payload?.items || [];
           if (!items.length) break;
           const firstId = normalizeDbId(items[0]._id || items[0].id);
           if (firstId && firstId === prevFirstId) break; // cursor didn't advance → stop
@@ -10878,7 +11341,7 @@ function processTransactionsList(items, userId) {
           all.push(...items);
           // Reached txs we've already processed → fully caught up, stop paginating.
           if (items.some(it => seenSet.has(normalizeDbId(it._id || it.id)))) break;
-          cursor = data?.nextCursor;
+          cursor = payload?.nextCursor;
           if (!cursor || items.length < 100) break;
         }
         if (all.length) processTransactionsList(all, userId);
@@ -12080,6 +12543,7 @@ function checkInventoryDeltaWear() {
       pnlGoldObserverTarget = null;
     }
     teardownPnlUi();
+    setHealth('pnl', 'idle', 'disabled in settings');
   }
     function scanEquipmentDurability() {
   const cards = (globalThis.findItemCards || findItemCards)(false);

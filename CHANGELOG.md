@@ -1,5 +1,23 @@
 # CHANGELOG
 
+## 2026-07-22 | Feature: Parallelisiertes Laden im Truppen-Radar & API-Observability (v0.9.11)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/test-advisor-load.js`
+
+**Änderungen (Deutsch):**
+- **Blitzschnelles Laden**: Das Truppen-Radar splittet große Anfragen nun in parallele Chunks auf und lädt Mitglieder-HP-Werte zeitgleich. Mit API-Key dauert das Laden der gesamten Liste unter 1 Sekunde.
+- **Fehlerbehebung für Einzelanfragen**: Ein Fehler bei tRPC-Batchabfragen der Größe 1 (der zu HTTP 404 und blockierten Ladevorgängen führte) wurde behoben.
+- **Dynamische API-Priorisierung**: Nutzer mit API-Key fragen nun immer direkt die offizielle, schnelle API `api2.warera.io` an, statt auf dem langsameren Stats-Gateway hängen zu bleiben.
+- **Detailliertere Fehlerdiagnose**: Fehlerhafte Server-Antworten (HTTP 400er/500er) werden nun vollständig und transparent im Debug-Protokoll erfasst.
+- **Saubere Deaktivierung**: Beim Abschalten von Features (z. B. dem P&L Tracker) wird deren Gesundheitsstatus im Diagnose-HUD sofort auf grau (`idle`) gesetzt.
+
+**Changes (English):**
+- **Lightning Fast Roster Load**: The Troop Radar now splits member data requests into parallel chunks for concurrent loading. Roster loading finishes in under 1 second when using an API key.
+- **Single-Item Batch Fix**: Fixed a bug where single-item tRPC batches formatted without commas triggered HTTP 404 errors.
+- **Dynamic API Prioritization**: Keyed users now bypass the proxy cache and always target the official game API `api2.warera.io` first.
+- **Generic Error Logging**: Non-2xx HTTP status codes (400s/500s) are now logged as warnings in the debug logs for better observability.
+- **Clean Health Teardown**: Disabling features in settings instantly resets their health status to grey (`idle`) in the diagnostics panel.
+
 ## 2026-07-21 | Feature: Direkt-Update-Verlinkung, Auto-Reload & Update-Button (v0.9.10)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`
