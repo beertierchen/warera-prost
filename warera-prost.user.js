@@ -550,6 +550,11 @@
         troopRadarPillOn: 'pilled',
         troopRadarPillOff: 'ready to pill',
         troopRadarPillCd: 'not ready',
+        troopRadarDamagePotential: 'Damage Pot.',
+        troopRadarDmgComputed: '{done}/{total} calc.',
+        troopRadarModeTag: 'Day',
+        troopRadarModeLive: 'Live',
+        troopRadarModeLiveSoon: 'soon',
         settingsFeatTroopRadarCheckbox: 'Troop-Radar (MU Member List & Header)',
         settingsFeatTroopRadarHint: 'Displays member combat readiness (HP, pill status, skill orientation) in MU member lists and header.'
       },
@@ -833,6 +838,11 @@
         troopRadarPillOn: 'gepillt',
         troopRadarPillOff: 'bereit zu pillen',
         troopRadarPillCd: 'nicht bereit',
+        troopRadarDamagePotential: 'Schadenspot.',
+        troopRadarDmgComputed: '{done}/{total} ber.',
+        troopRadarModeTag: 'Tag',
+        troopRadarModeLive: 'Live',
+        troopRadarModeLiveSoon: 'bald',
         settingsFeatTroopRadarCheckbox: 'Truppen-Radar (MU-Member-Liste & Header)',
         settingsFeatTroopRadarHint: 'Zeigt Kampfbereitschaft (HP, Pillen-Status, Skill-Klasse) in MU-Mitgliederlisten und Header an.'
       }
@@ -4943,8 +4953,38 @@ async function scanInventory(force) {
       .wia-tour-prompt-body  { margin: 0 0 10px; color: #8b949e; font-size: 12px; }
       .wia-tour-prompt-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
       .wia-tour-prompt-never { background: none; border: 0; color: #6e7681; font-size: 11px; cursor: pointer; padding: 4px 2px; text-decoration: underline; }
-      .wia-tour-prompt-never:hover { color: #8b949e; }
       .wia-tour-paste { margin: 0 0 10px; }
+
+      /* ── Troop Radar Schadenspotential tile ── */
+      .wia-dmg-tile {
+        all: unset; box-sizing: border-box; cursor: pointer; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; border-radius: 6px; padding: 6px 8px 8px;
+        text-align: center; position: relative; transition: border-color .18s, background .18s, box-shadow .18s;
+      }
+      .wia-dmg-tile[data-mode="tag"] {
+        --acc: #f0a54a;
+        border: 1px solid #3a2d18;
+        background: linear-gradient(180deg, #17130b, #0d1117);
+      }
+      .wia-dmg-tile[data-mode="live"] {
+        --acc: #4fd1e0;
+        border: 1px solid #123037;
+        background: linear-gradient(180deg, #0a1a1e, #0d1117);
+      }
+      .wia-dmg-tile:hover {
+        box-shadow: 0 0 0 1px var(--acc), 0 4px 14px rgba(0,0,0,.35);
+      }
+      .wia-dmg-tile:focus-visible {
+        outline: 2px solid var(--acc); outline-offset: 2px;
+      }
+      .wia-dmg-tile .chip {
+        display: inline-flex; align-items: center; gap: 3px; font-size: 8px; font-weight: 800;
+        letter-spacing: .05em; text-transform: uppercase; color: var(--acc); margin-bottom: 2px;
+      }
+      .wia-dmg-tile .chip .caret { opacity: .7; font-size: 9px; }
+      .wia-dmg-tile .num { font-size: 16px; font-weight: 800; color: var(--acc); font-variant-numeric: tabular-nums; line-height: 1.05; }
+      .wia-dmg-tile .lab { font-size: 9px; font-weight: 700; color: var(--acc); opacity: .85; text-transform: uppercase; margin-top: 1px; letter-spacing: .02em; }
+      .wia-dmg-tile .sublab { font-size: 8px; color: #8b949e; margin-top: 3px; font-variant-numeric: tabular-nums; }
     `);
   }
 
@@ -7792,6 +7832,8 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
   const troopRadarMemberCache = new Map();  // userId -> { at, data }
   const troopRadarRosterCache = new Map();  // muId -> { at, roster }
   let troopRadarLoading = false;
+  let troopRadarDamageMode = 'tag';
+  let troopRadarLastSummary = null;
 
   function classifyWarskiller(skills) {
     if (!skills || typeof skills !== 'object') {
@@ -8263,6 +8305,8 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
 
   function renderTroopRadarHeaderSummary(summary, muId) {
     if (!summary || typeof document === 'undefined') return;
+    troopRadarLastSummary = summary;
+
     const anchor = findTroopRadarHeaderAnchor();
     if (!anchor) return;
 
@@ -8276,17 +8320,41 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     el.setAttribute('data-wia-mu', muId);
 
     const actionableCount = summary.actionableWarskillers ? summary.actionableWarskillers.length : 0;
+    
+    const mode = troopRadarDamageMode;
+    const isTag = mode === 'tag';
+    const accentColor = isTag ? '#f0a54a' : '#4fd1e0';
+    const alertBg = isTag ? 'rgba(234, 179, 8, 0.12)' : 'rgba(79, 209, 224, 0.10)';
+    const alertBorder = isTag ? '1px solid rgba(234, 179, 8, 0.3)' : '1px solid rgba(79, 209, 224, 0.28)';
+    const alertColor = isTag ? '#fef08a' : '#a8ecf4';
+
     let alertHtml = '';
     if (actionableCount > 0) {
       const formattedLinks = summary.actionableWarskillers.slice(0, 3).map((u) => {
         const name = u.username || u.name || u.userId;
-        return `<a href="/user/${u.userId}" style="color: #fef08a; text-decoration: underline; font-weight: 600;">${name}</a>`;
+        return `<a href="/user/${u.userId}" style="color: inherit; text-decoration: underline; font-weight: 600;">${name}</a>`;
       }).join(', ');
       const moreStr = actionableCount > 3 ? ` (+${actionableCount - 3} weitere)` : '';
       alertHtml = `
-        <div style="background: rgba(234, 179, 8, 0.12); border: 1px solid rgba(234, 179, 8, 0.3); color: #fef08a; padding: 8px 12px; border-radius: 6px; font-size: 12px; margin-top: 10px; display: flex; align-items: center; gap: 8px;">
+        <div style="background: ${alertBg}; border: ${alertBorder}; color: ${alertColor}; padding: 8px 12px; border-radius: 6px; font-size: 12px; margin-top: 10px; display: flex; align-items: center; gap: 8px;">
           <span>⚠️ <strong>${actionableCount} Warskiller ungepillt</strong> — ${formattedLinks}${moreStr} (Leben & Hunger voll)</span>
         </div>`;
+    }
+
+    const chipIcon = isTag ? '⚡' : '🔴';
+    const chipText = isTag ? t('troopRadarModeTag') : t('troopRadarModeLive');
+    const displayNum = fmtDamage(summary.damagePotential);
+    const labelText = t('troopRadarDamagePotential');
+    
+    let sublabelText = '';
+    if (isTag) {
+      if (summary.damageComputedCount < summary.damageTotalCount) {
+        sublabelText = t('troopRadarDmgComputed', { done: summary.damageComputedCount, total: summary.damageTotalCount });
+      } else {
+        sublabelText = 'Blau · Pille';
+      }
+    } else {
+      sublabelText = t('troopRadarModeLiveSoon');
     }
 
     el.innerHTML = `
@@ -8303,10 +8371,14 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
             <div style="font-size: 16px; font-weight: 700; color: #f8fafc;">${summary.readyCount}/${summary.warskillerCount}</div>
             <div style="font-size: 9px; font-weight: 700; color: #8b949e; text-transform: uppercase; margin-top: 2px;">KAMPFBEREIT</div>
           </div>
-          <div style="background: #0d1117; border: 1px solid #21262d; border-radius: 6px; padding: 8px; text-align: center;">
-            <div style="font-size: 16px; font-weight: 700; color: #f8fafc;">${summary.warskillerCount}</div>
-            <div style="font-size: 9px; font-weight: 700; color: #8b949e; text-transform: uppercase; margin-top: 2px;">WARSKILLER</div>
-          </div>
+          
+          <button class="wia-dmg-tile" id="wia-troop-dmg-tile" data-mode="${mode}" aria-label="Schadenspotential — Modus umschalten">
+            <span class="chip"><span class="ico">${chipIcon}</span><span class="mname">${chipText}</span><span class="caret">⇄</span></span>
+            <span class="num">${displayNum}</span>
+            <span class="lab">${labelText}</span>
+            <span class="sublab">${sublabelText}</span>
+          </button>
+          
           <div style="background: #0d1117; border: 1px solid #21262d; border-radius: 6px; padding: 8px; text-align: center;">
             <div style="font-size: 16px; font-weight: 700; color: #f8fafc;">${summary.pillCount}/${summary.totalMembers}</div>
             <div style="font-size: 9px; font-weight: 700; color: #8b949e; text-transform: uppercase; margin-top: 2px;">GEPILLT</div>
@@ -8318,6 +8390,14 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
         </div>
         ${alertHtml}
       </div>`;
+
+    const tile = el.querySelector('#wia-troop-dmg-tile');
+    if (tile) {
+      tile.addEventListener('click', () => {
+        troopRadarDamageMode = troopRadarDamageMode === 'tag' ? 'live' : 'tag';
+        renderTroopRadarHeaderSummary(troopRadarLastSummary, muId);
+      });
+    }
   }
 
   function formatTroopRadarTime(isoString) {
