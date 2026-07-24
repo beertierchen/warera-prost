@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## 2026-07-24 | Feature: Schadenspotential-Kachel & Bezugsgrößen-Labels (v0.10.0)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`
+
+**Änderungen (Deutsch):**
+- **Schadenspotential-Kachel**: Ersetzt die doppelte Warskiller-Kachel im Truppen-Radar-Header durch eine neue Kachel für das Schadenspotential. Sie zeigt das addierte Tagespotenzial aller Warskiller der Militäreinheit.
+- **Interaktiver Modus-Wechsel**: Die Schadenspotential-Kachel kann angeklickt werden, um flexibel zwischen dem Tagespotenzial (Tag) und einer Live-Vorschau (Live folgt in einem späteren Update) umzuschalten.
+- **Zusatz-Labels für Header-Kacheln**: Jede Header-Kachel hat nun eine kleine Beschriftung erhalten, um die jeweilige Nenner-Gruppe der Zähler (Warskiller vs. aktive Mitglieder) klarer darzustellen.
+
+**Changes (English):**
+- **Damage Potential Tile**: Replaces the redundant Warskiller tile in the Troop Radar header with a new tile displaying the aggregated daily damage potential of all warskillers in the Military Unit.
+- **Interactive Mode Toggle**: Click the damage potential tile to switch between the daily potential (Day) and a Live preview (Live mode is coming in a future update).
+- **Denominator Labels**: Added small descriptive labels under all summary header tiles to make the target group (warskillers vs. active members) transparent.
+
 ## 2026-07-24 | Feature: Deterministischer Order-Radar-Anker & Inaktive MU-Mitglieder ausblenden (v0.9.12)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/test-troop-radar.js`

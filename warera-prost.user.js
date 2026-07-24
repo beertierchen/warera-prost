@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         TEST PROST
+// @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.10.0-unstable
+// @version      0.10.0
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -232,8 +232,8 @@
     },
 
     PILL_BUFF_PCT: 60,
-    AMMO_GREEN_PCT: 10, // UNVERIFIED: confirm green vs other ammo
-    FOOD_PCT_STEAK: 0.5, // UNVERIFIED: read steak food-% in-game; placeholder e.g. 0.5
+    AMMO_GREEN_PCT: 10,
+    FOOD_PCT_STEAK: 0.5,
     BASELINE_TIER: 3,
 
     featPillReminder: false,
