@@ -8077,6 +8077,91 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     return { dailyDmg, degraded: false };
   }
 
+  function hoursUntilDailyReset(now) {
+    const nowDate = new Date(now);
+    const resetToday = new Date(nowDate);
+    resetToday.setHours(CONFIG.DAILY_RESET_HOUR ?? 2, 0, 0, 0);
+    let nextReset = resetToday;
+    if (nowDate >= resetToday) {
+      nextReset = new Date(resetToday.getTime() + 24 * 60 * 60 * 1000);
+    }
+    return Math.max(0, (nextReset.getTime() - nowDate.getTime()) / (1000 * 60 * 60));
+  }
+
+  function computeLiveDamagePotential(member, now) {
+    const rawDmg = computeDamagePotential(member, { equip: 'realFloored' });
+    if (rawDmg.degraded) {
+      return { liveDmg: 0, degraded: true };
+    }
+
+    const nowDate = new Date(now);
+    let effectiveStart = nowDate;
+    if (member.debuffEndAt) {
+      const debuffDate = new Date(member.debuffEndAt);
+      if (debuffDate > effectiveStart) {
+        effectiveStart = debuffDate;
+      }
+    }
+
+    const resetToday = new Date(nowDate);
+    resetToday.setHours(CONFIG.DAILY_RESET_HOUR ?? 2, 0, 0, 0);
+    let nextReset = resetToday;
+    if (nowDate >= resetToday) {
+      nextReset = new Date(resetToday.getTime() + 24 * 60 * 60 * 1000);
+    }
+
+    const usableHours = Math.max(0, (nextReset.getTime() - effectiveStart.getTime()) / (1000 * 60 * 60));
+    
+    const c = member.combat || {};
+    const healthRegen = c.healthRegen ?? 0;
+    const hpCurrent = member.hpCurrent ?? 100;
+    const hpMax = member.hpMax ?? 100;
+
+    const throughput = hpCurrent + healthRegen * usableHours;
+    const fracH = Math.min(Math.max(throughput / (1.8 * hpMax), 0), 1);
+    const liveDmg = rawDmg.dailyDmg * fracH;
+
+    return {
+      liveDmg,
+      degraded: false,
+      usableHours,
+      fracH
+    };
+  }
+
+  function sumLiveDamage(members, now) {
+    const activeWarskillers = Array.isArray(members)
+      ? members.filter(m => m.isActive !== false && m.isWarskiller)
+      : [];
+
+    let liveSum = 0;
+    let computedCount = 0;
+    let totalCount = activeWarskillers.length;
+    let weeklyDamageSum = 0;
+    let weeklyDamageCount = 0;
+
+    activeWarskillers.forEach(m => {
+      const res = computeLiveDamagePotential(m, now);
+      if (!res.degraded) {
+        liveSum += res.liveDmg;
+        computedCount++;
+      }
+      if (m.combat && m.combat.weeklyDamage !== null && m.combat.weeklyDamage !== undefined && !isNaN(m.combat.weeklyDamage)) {
+        weeklyDamageSum += m.combat.weeklyDamage;
+        weeklyDamageCount++;
+      }
+    });
+
+    const observed = weeklyDamageCount > 0 ? (weeklyDamageSum / 7) : 0;
+
+    return {
+      live: liveSum,
+      computed: computedCount,
+      total: totalCount,
+      observed
+    };
+  }
+
   function summarizeTroops(membersArray) {
     const activeMembers = Array.isArray(membersArray)
       ? membersArray.filter(m => m.isActive !== false)
@@ -8752,6 +8837,9 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     globalThis.evaluatePillStatus = evaluatePillStatus;
     globalThis.createOptimisticMemberData = createOptimisticMemberData;
     globalThis.computeDamagePotential = computeDamagePotential;
+    globalThis.hoursUntilDailyReset = hoursUntilDailyReset;
+    globalThis.computeLiveDamagePotential = computeLiveDamagePotential;
+    globalThis.sumLiveDamage = sumLiveDamage;
     globalThis.summarizeTroops = summarizeTroops;
     globalThis.fetchMuRoster = fetchMuRoster;
     globalThis.fetchTroopMemberData = fetchTroopMemberData;
