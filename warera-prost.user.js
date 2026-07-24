@@ -7882,7 +7882,18 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       debuffEndAt: null,
       isOptimistic: true,
       updatedAt: 0,
-      isActive: true
+      isActive: true,
+      combat: {
+        attackValue: null,
+        rank: null,
+        precisionValue: null,
+        critChanceValue: null,
+        critDmgValue: null,
+        armorValue: null,
+        dodgeValue: null,
+        healthMax: null,
+        hungerMax: null
+      }
     };
   }
 
@@ -7967,6 +7978,18 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
 
       const username = payload?.username || payload?.user?.username || payload?.name;
       const buffsObj = payload?.buffs || {};
+      const combat = {
+        attackValue: skills.attack?.value ?? null,
+        rank: skills.attack?.militaryRankPercent ?? null,
+        precisionValue: skills.precision?.value ?? null,
+        critChanceValue: skills.criticalChance?.value ?? null,
+        critDmgValue: skills.criticalDamages?.value ?? null,
+        armorValue: skills.armor?.value ?? null,
+        dodgeValue: skills.dodge?.value ?? null,
+        healthMax: health.value ?? null,
+        hungerMax: hunger.value ?? null
+      };
+
       const memberData = {
         userId,
         username,
@@ -7988,7 +8011,8 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
         debuffEndAt: buffsObj.debuffEndAt || null,
         isOptimistic: false,
         updatedAt: now(),
-        isActive: payload?.isActive !== false
+        isActive: payload?.isActive !== false,
+        combat
       };
       troopRadarMemberCache.set(userId, { at: now(), data: memberData });
       return memberData;
@@ -8047,8 +8071,20 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
               const warskillerInfo = classifyWarskiller(skills);
               const pillInfo = evaluatePillStatus(skills, health, hunger);
 
-              const username = payload?.username || payload?.user?.username || payload?.name;
+               const username = payload?.username || payload?.user?.username || payload?.name;
               const buffsObj = payload?.buffs || {};
+              const combat = {
+                attackValue: skills.attack?.value ?? null,
+                rank: skills.attack?.militaryRankPercent ?? null,
+                precisionValue: skills.precision?.value ?? null,
+                critChanceValue: skills.criticalChance?.value ?? null,
+                critDmgValue: skills.criticalDamages?.value ?? null,
+                armorValue: skills.armor?.value ?? null,
+                dodgeValue: skills.dodge?.value ?? null,
+                healthMax: health.value ?? null,
+                hungerMax: hunger.value ?? null
+              };
+
               const memberData = {
                 userId,
                 username,
@@ -8070,7 +8106,8 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
                 debuffEndAt: buffsObj.debuffEndAt || null,
                 isOptimistic: false,
                 updatedAt: now(),
-                isActive: payload?.isActive !== false
+                isActive: payload?.isActive !== false,
+                combat
               };
 
               troopRadarMemberCache.set(userId, { at: now(), data: memberData });
