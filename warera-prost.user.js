@@ -1405,6 +1405,49 @@
         fetchRoster: (muId) => typeof fetchMuRoster === 'function' ? fetchMuRoster(muId) : null,
         fetchMember: (userId) => typeof fetchTroopMemberData === 'function' ? fetchTroopMemberData(userId) : null,
         fetch: (muId) => typeof fetchFullTroopRadar === 'function' ? fetchFullTroopRadar(muId) : null,
+        damage: async (explicitId) => {
+          if (typeof fetchFullTroopRadar !== 'function') return 'troopRadar not loaded';
+          let muId = explicitId;
+          if (!muId || muId === '<muId>' || (typeof muId === 'string' && muId.includes('<'))) {
+            const route = typeof getEntityFromRoute === 'function' ? getEntityFromRoute() : null;
+            if (route && route.type === 'mu') {
+              muId = route.rawId;
+            } else {
+              console.warn('[PROST:troopRadar] No MU ID provided or auto-detected.');
+              return 'Missing MU ID';
+            }
+          }
+          try {
+            const res = await fetchFullTroopRadar(muId);
+            const full = await res.detailsPromise;
+            const warskillers = full.membersData.filter(m => m.isWarskiller);
+            console.log(`=== Troop Radar Damage Potential Breakdown for MU: ${muId} ===`);
+            console.log(`Total Warskillers: ${warskillers.length}`);
+            warskillers.forEach(m => {
+              const { dailyDmg, degraded } = computeDamagePotential(m);
+              const c = m.combat || {};
+              console.log(`- Player: ${m.username || m.userId} (${m.userId})`);
+              console.log(`  degraded: ${degraded}`);
+              console.log(`  dailyDmg: ${dailyDmg.toFixed(1)}`);
+              console.log(`  inputs:`, {
+                attackValue: c.attackValue,
+                rank: c.rank,
+                precisionValue: c.precisionValue,
+                critChanceValue: c.critChanceValue,
+                critDmgValue: c.critDmgValue,
+                armorValue: c.armorValue,
+                dodgeValue: c.dodgeValue,
+                healthMax: c.healthMax,
+                hungerMax: c.hungerMax
+              });
+            });
+            console.log(`Summary Aggregate:`, full.summary);
+            return full.summary;
+          } catch (err) {
+            console.error('[PROST:troopRadar] damage breakdown failed:', err);
+            return { error: err.message };
+          }
+        },
         test: async (explicitId) => {
           if (typeof fetchFullTroopRadar !== 'function') return 'troopRadar not loaded';
           let muId = explicitId;
@@ -8567,13 +8610,28 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       renderTroopRadarHeaderSummary(fullData.summary, muId);
       renderTroopRadarMemberRows(fullData.membersData);
 
-      setHealth('troopRadar', 'ok', `${fullData.membersData.length} members rendered`);
+      const sum = fullData.summary.damagePotential;
+      const total = fullData.summary.damageTotalCount;
+      const done = fullData.summary.damageComputedCount;
+      if (total > 0 && (done === 0 || !isFinite(sum))) {
+        setHealth('troopRadar', 'warn', `degraded: ${done}/${total} computed, sum=${sum}`);
+      } else {
+        setHealth('troopRadar', 'ok', `${fullData.membersData.length} members rendered`);
+      }
 
       fullData.detailsPromise.then((liveFull) => {
         if (reqId !== troopRadarActiveRequestId) return;
         renderTroopRadarHeaderSummary(liveFull.summary, muId);
         renderTroopRadarMemberRows(liveFull.membersData);
-        setHealth('troopRadar', 'ok', `${liveFull.membersData.length} members updated`);
+        
+        const lSum = liveFull.summary.damagePotential;
+        const lTotal = liveFull.summary.damageTotalCount;
+        const lDone = liveFull.summary.damageComputedCount;
+        if (lTotal > 0 && (lDone === 0 || !isFinite(lSum))) {
+          setHealth('troopRadar', 'warn', `degraded: ${lDone}/${lTotal} computed, sum=${lSum}`);
+        } else {
+          setHealth('troopRadar', 'ok', `${liveFull.membersData.length} members updated`);
+        }
         troopRadarLoading = false;
       }).catch((e) => {
         dbg('troopRadar', 'warn', 'detailsPromise error: ' + e.message);
