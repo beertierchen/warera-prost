@@ -7964,7 +7964,10 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
         warskillerCount: 0,
         pillCount: 0,
         avgHpPct: 0,
-        actionableWarskillers: []
+        actionableWarskillers: [],
+        damagePotential: 0,
+        damageComputedCount: 0,
+        damageTotalCount: 0
       };
     }
 
@@ -7991,13 +7994,28 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     // Warskiller bereit zu pillen (ungepillt & H&H voll)
     const actionableWarskillers = activeMembers.filter((m) => m.isWarskiller && m.pillState === 'pill-off');
 
+    let damagePotential = 0;
+    let damageComputedCount = 0;
+    const damageTotalCount = warskillers.length;
+
+    warskillers.forEach((m) => {
+      const { dailyDmg, degraded } = computeDamagePotential(m);
+      damagePotential += dailyDmg;
+      if (!degraded) {
+        damageComputedCount++;
+      }
+    });
+
     return {
       totalMembers,
       readyCount,
       warskillerCount,
       pillCount,
       avgHpPct,
-      actionableWarskillers
+      actionableWarskillers,
+      damagePotential,
+      damageComputedCount,
+      damageTotalCount
     };
   }
 
