@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## 2026-07-24 | Feature: Deterministischer Order-Radar-Anker & Inaktive MU-Mitglieder ausblenden (v0.9.12)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/test-troop-radar.js`
+
+**Änderungen (Deutsch):**
+- **Präzise Order-Radar-Platzierung**: Das Order-Radar wird jetzt immer am korrekten Land- oder MU-Header angedockt, selbst wenn auf einer Seite mehrere Header (z. B. MU BierBataillon und Land Germany) untereinander gestapelt sind.
+- **Inaktive MU-Mitglieder filtern**: Inaktive Mitglieder erhalten keine Troop-Radar-Badges mehr und verzerren nicht mehr die Durchschnittswerte (HP, Kampfkraft, Warskiller, etc.) in der Übersichtskarte, bleiben jedoch in der nativen Spiel-Mitgliederliste sichtbar.
+- **Endlosschleife behoben**: Ein Fehler wurde behoben, durch den das Fehlen von Badges bei inaktiven Mitgliedern zu einer endlosen Neuladeschleife und somit zum Browser-Absturz führte.
+
+**Changes (English):**
+- **Precise Order-Radar Anchoring**: The Order-Radar is now always mounted to the correct entity header, preventing misplacement when multiple headers (e.g. MU and Country) are stacked on the same page.
+- **Exclude Inactive MU Members**: Inactive members are now excluded from the Troop Radar stats summary and do not show additional indicator chips. They remain visible in the native list.
+- **Infinite Reload Loop Fix**: Fixed a bug where skipping chips for inactive members caused an infinite UI rendering reload loop that crashed the browser.
+
 ## 2026-07-22 | Feature: Parallelisiertes Laden im Truppen-Radar & API-Observability (v0.9.11)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/test-advisor-load.js`

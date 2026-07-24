@@ -129,15 +129,19 @@ const sampleMembers = [
   // Warskiller #3: injured -> not ready
   { userId: 'u3', isWarskiller: true, pillState: 'pill-cd', hpCurrent: 50, hpMax: 100, hungerCurrent: 100, hungerMax: 100 },
   // Eco #1: pilled, 100% HP
-  { userId: 'u4', isWarskiller: false, pillState: 'pill-on', hpCurrent: 100, hpMax: 100, hungerCurrent: 100, hungerMax: 100 }
+  { userId: 'u4', isWarskiller: false, pillState: 'pill-on', hpCurrent: 100, hpMax: 100, hungerCurrent: 100, hungerMax: 100 },
+  // Inactive Warskiller: pilled, 100% HP -> should be excluded from stats
+  { userId: 'u5', isWarskiller: true, pillState: 'pill-on', hpCurrent: 100, hpMax: 100, hungerCurrent: 100, hungerMax: 100, isActive: false },
+  // Inactive Eco: unpilled -> should be excluded from stats
+  { userId: 'u6', isWarskiller: false, pillState: 'pill-off', hpCurrent: 100, hpMax: 100, hungerCurrent: 100, hungerMax: 100, isActive: false }
 ];
 
 const summary = globalThis.summarizeTroops(sampleMembers);
-assert.strictEqual(summary.totalMembers, 4);
-assert.strictEqual(summary.warskillerCount, 3);
-assert.strictEqual(summary.pillCount, 2);
-assert.strictEqual(summary.readyCount, 2, 'u1 (pilled) and u2 (pillable) are ready Warskillers');
-assert.strictEqual(summary.avgHpPct, 88);
+assert.strictEqual(summary.totalMembers, 4, 'Inactive members must not be counted in totalMembers');
+assert.strictEqual(summary.warskillerCount, 3, 'Inactive warskillers must not be counted in warskillerCount');
+assert.strictEqual(summary.pillCount, 2, 'Inactive pilled members must not be counted in pillCount');
+assert.strictEqual(summary.readyCount, 2, 'u1 (pilled) and u2 (pillable) are ready Warskillers (excluding u5)');
+assert.strictEqual(summary.avgHpPct, 88, 'Average HP must only include active members');
 assert.strictEqual(summary.actionableWarskillers.length, 1);
 assert.strictEqual(summary.actionableWarskillers[0].userId, 'u2');
 

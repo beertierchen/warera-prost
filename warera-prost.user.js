@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.9.11
+// @version      0.9.12
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -1520,7 +1520,7 @@
       const strip = document.getElementById('wia-order-radar');
       if (strip) return ['ok', ''];
       if (typeof orderRadarLastOrders !== 'undefined' && orderRadarLastOrders && orderRadarLastOrders.length === 0) return ['idle', 'no active orders for this entity'];
-      const anchor = typeof findEntityBannerAnchor === 'function' ? findEntityBannerAnchor() : null;
+      const anchor = typeof findEntityBannerAnchor === 'function' ? findEntityBannerAnchor(route) : null;
       if (!anchor) return ['fail', 'header banner container not found'];
       return ['warn', 'radar not injected yet'];
     },
@@ -7092,23 +7092,80 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
   // exclude) the banner root that also wraps those tabs, so the strip sits on the image.
   const ORDER_RADAR_TAB_SEL = 'a[href$="/laws"], a[href$="/wars"], a[href$="/regions"], a[href$="/members"], a[href$="/citizens"], a[href$="/applications"], a[href$="/donations"], a[href$="/contracts"]';
 
-  // Anchor = the banner "visual layer": the largest ancestor of the /headerv4/ header
-  // image that is banner-sized but does NOT also contain the sub-nav tab row. Hashed class
-  // names are unstable across game builds, so we key off the stable header image + tab links.
-  function findEntityBannerAnchor() {
-    const img = document.querySelector('img[src*="/headerv4/"]');
-    if (!img) return null;
-    let el = img.parentElement;
-    let layer = null;
-    while (el && el !== document.body) {
-      if (el.offsetWidth >= 300 && el.offsetHeight >= 120) {
-        if (el.querySelector(ORDER_RADAR_TAB_SEL)) break; // reached the root that wraps the tabs
-        layer = el;                                       // banner-sized, tabs not inside → keep
-      }
-      if (el.tagName === 'MAIN' || el.id === 'app') break;
-      el = el.parentElement;
+  function scoreBannerForRoute(layer, route) {
+    const { type, rawId } = route;
+    const text = (layer.textContent || '').trim().toLowerCase();
+    const rawIdLower = String(rawId || '').toLowerCase();
+    let score = 0;
+
+    const links = Array.from(layer.querySelectorAll('a'));
+
+    if (type === 'country') {
+      const hasCountryLink = links.some(a => {
+        const href = (a.getAttribute('href') || '').toLowerCase();
+        const linkText = (a.textContent || '').toLowerCase();
+        return href.includes(`/country/${rawIdLower}`) || linkText.includes(rawIdLower);
+      });
+      if (hasCountryLink) score += 15;
+
+      const isCountryLabel = text.includes('land') || text.includes('country');
+      if (isCountryLabel) score += 20;
+
+      const isMu = text.includes('military unit') || text.includes('militäreinheit') ||
+                   text.includes('members') || text.includes('mitglieder') ||
+                   text.includes('commanders') || text.includes('kommandanten');
+      if (isMu) score -= 50;
+
+    } else if (type === 'mu') {
+      const hasMuLink = links.some(a => {
+        const href = (a.getAttribute('href') || '').toLowerCase();
+        return href.includes(`/mu/${rawIdLower}`);
+      });
+      if (hasMuLink) score += 20;
+
+      const isMuLabel = text.includes('military unit') || text.includes('militäreinheit');
+      if (isMuLabel) score += 20;
+
+      const hasMuIndicators = text.includes('members') || text.includes('mitglieder') ||
+                              text.includes('commanders') || text.includes('kommandanten');
+      if (hasMuIndicators) score += 10;
     }
-    return layer;
+
+    return score;
+  }
+
+  function findEntityBannerAnchor(route) {
+    const activeRoute = route || getEntityFromRoute();
+    if (!activeRoute) return null;
+
+    const images = document.querySelectorAll('img[src*="/headerv4/"]');
+    if (images.length === 0) return null;
+
+    let bestAnchor = null;
+    let bestScore = -9999;
+
+    for (const img of images) {
+      let el = img.parentElement;
+      let layer = null;
+      while (el && el !== document.body) {
+        if (el.offsetWidth >= 300 && el.offsetHeight >= 120) {
+          if (el.querySelector(ORDER_RADAR_TAB_SEL)) break;
+          layer = el;
+        }
+        if (el.tagName === 'MAIN' || el.id === 'app') break;
+        el = el.parentElement;
+      }
+
+      if (layer) {
+        const score = scoreBannerForRoute(layer, activeRoute);
+        if (score > bestScore) {
+          bestScore = score;
+          bestAnchor = layer;
+        }
+      }
+    }
+
+    return bestScore > 0 ? bestAnchor : null;
   }
 
   const orderRadarCache = new Map(); // entityKey -> { at, orders }
@@ -7484,7 +7541,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
         return;
       }
     }
-    if (orderRadarLastEntity === key && orderRadarLastOrders.length && findEntityBannerAnchor()) {
+    if (orderRadarLastEntity === key && orderRadarLastOrders.length && findEntityBannerAnchor(route)) {
       renderOrderRadarUI(orderRadarLastOrders);
       if (document.getElementById('wia-order-radar')) {
         setHealth('orderRadar', 'ok', `${orderRadarLastOrders.length} orders rendered`);
@@ -7504,7 +7561,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       return;
     }
 
-    const container = findEntityBannerAnchor();
+    const container = findEntityBannerAnchor(route);
     if (!container) return;
     const windowWidth = getMainBannerWindowWidth();
     const level = getOrderRadarCompactLevel(windowWidth);
@@ -7656,7 +7713,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
         return;
       }
 
-      let container = findEntityBannerAnchor();
+      let container = findEntityBannerAnchor(route);
       if (!container) {
         setHealth('orderRadar', 'warn', 'header container mounting');
         scheduleOrderRadar();
@@ -7675,7 +7732,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       }).catch(() => {});
 
       // Re-find the anchor: React may have re-rendered the banner during the await.
-      const anchor = findEntityBannerAnchor();
+      const anchor = findEntityBannerAnchor(route);
       const injected = document.getElementById('wia-order-radar');
       const isVisible = injected && (injected.offsetParent !== null || injected.getBoundingClientRect().height > 0);
       const isInsideBanner = anchor && anchor.contains(injected);
@@ -7819,12 +7876,17 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       buffEndAt: null,
       debuffEndAt: null,
       isOptimistic: true,
-      updatedAt: 0
+      updatedAt: 0,
+      isActive: true
     };
   }
 
   function summarizeTroops(membersArray) {
-    if (!Array.isArray(membersArray) || membersArray.length === 0) {
+    const activeMembers = Array.isArray(membersArray)
+      ? membersArray.filter(m => m.isActive !== false)
+      : [];
+
+    if (activeMembers.length === 0) {
       return {
         totalMembers: 0,
         readyCount: 0,
@@ -7835,13 +7897,13 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       };
     }
 
-    const totalMembers = membersArray.length;
-    const warskillers = membersArray.filter((m) => m.isWarskiller);
+    const totalMembers = activeMembers.length;
+    const warskillers = activeMembers.filter((m) => m.isWarskiller);
     const warskillerCount = warskillers.length;
-    const pillCount = membersArray.filter((m) => m.pillState === 'pill-on').length;
+    const pillCount = activeMembers.filter((m) => m.pillState === 'pill-on').length;
 
     // Kampfbereit = Warskiller + H&H >= 80% + (gepillt ODER nicht im Debuff)
-    const readyCount = membersArray.filter((m) => {
+    const readyCount = activeMembers.filter((m) => {
       const hpPct = m.hpMax > 0 ? m.hpCurrent / m.hpMax : 1;
       const hungerPct = m.hungerMax > 0 ? m.hungerCurrent / m.hungerMax : 1;
       const isHnHOk = hpPct >= 0.8 && hungerPct >= 0.8;
@@ -7849,14 +7911,14 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       return m.isWarskiller && isHnHOk && isPillOk;
     }).length;
 
-    const hpSumPct = membersArray.reduce((acc, m) => {
+    const hpSumPct = activeMembers.reduce((acc, m) => {
       const pct = m.hpMax > 0 ? (m.hpCurrent / m.hpMax) * 100 : 100;
       return acc + pct;
     }, 0);
     const avgHpPct = Math.round(hpSumPct / totalMembers);
 
     // Warskiller bereit zu pillen (ungepillt & H&H voll)
-    const actionableWarskillers = membersArray.filter((m) => m.isWarskiller && m.pillState === 'pill-off');
+    const actionableWarskillers = activeMembers.filter((m) => m.isWarskiller && m.pillState === 'pill-off');
 
     return {
       totalMembers,
@@ -7920,7 +7982,8 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
         buffEndAt: buffsObj.buffEndAt || null,
         debuffEndAt: buffsObj.debuffEndAt || null,
         isOptimistic: false,
-        updatedAt: now()
+        updatedAt: now(),
+        isActive: payload?.isActive !== false
       };
       troopRadarMemberCache.set(userId, { at: now(), data: memberData });
       return memberData;
@@ -8001,7 +8064,8 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
                 buffEndAt: buffsObj.buffEndAt || null,
                 debuffEndAt: buffsObj.debuffEndAt || null,
                 isOptimistic: false,
-                updatedAt: now()
+                updatedAt: now(),
+                isActive: payload?.isActive !== false
               };
 
               troopRadarMemberCache.set(userId, { at: now(), data: memberData });
@@ -8182,6 +8246,11 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       if (!parent) continue;
 
       let chipContainer = parent.querySelector(`.wia-troop-chips[data-wia-user="${userId}"]`);
+      if (memberData.isActive === false) {
+        if (chipContainer) chipContainer.remove();
+        continue;
+      }
+
       if (!chipContainer) {
         chipContainer = document.createElement('div');
         chipContainer.className = 'wia-troop-chips';
@@ -8345,6 +8414,15 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
 
       const parent = userLink.parentElement;
       if (parent && !parent.querySelector('.wia-troop-chips')) {
+        const href = userLink.getAttribute('href') || '';
+        const match = href.match(/\/user\/([a-f0-9]+)/i);
+        if (match) {
+          const userId = match[1];
+          const cached = troopRadarMemberCache.get(userId);
+          if (cached && cached.data && cached.data.isActive === false) {
+            continue;
+          }
+        }
         missingChips = true;
         break;
       }
