@@ -21,7 +21,7 @@
     "game-helper"
   ],
   "scripts": {
-    "test": "node tests/test-advisor-load.js && node tests/tour-prompt.test.js && node tests/tour-layout.test.js"
+    "test": "node tests/test-advisor-load.js && node tests/test-troop-radar.js && node tests/tour-prompt.test.js && node tests/tour-layout.test.js"
   },
   "private": false,
   "devDependencies": {

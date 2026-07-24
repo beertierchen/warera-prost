@@ -206,3 +206,4 @@ assert.strictEqual(globalThis.formatTroopRadarTime(null), '');
 assert.strictEqual(globalThis.formatTroopRadarTime('invalid-date'), '');
 
 console.log('All Troop-Radar Phase 1 tests passed successfully!');
+process.exit(0);
