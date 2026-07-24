@@ -8011,7 +8011,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     };
   }
 
-  function computeDamagePotential(member) {
+  function computeDamagePotential(member, opts = {}) {
     if (!member || !member.combat) {
       return { dailyDmg: 0, degraded: true };
     }
@@ -8043,17 +8043,26 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     const blueArmor      = mid(CONFIG.statRangesByTier.chest[T]) + mid(CONFIG.statRangesByTier.pants[T]);
     const blueDodge      = mid(CONFIG.statRangesByTier.boots[T]);
 
+    // Choose equipment contributions based on mode
+    const isReal = opts.equip === 'realFloored';
+    const effWeaponDmg  = isReal ? Math.max(c.weaponDmgReal ?? 0, blueWeaponDmg)   : blueWeaponDmg;
+    const effWeaponCrit = isReal ? Math.max(c.critChanceWeapon ?? 0, blueWeaponCrit) : blueWeaponCrit;
+    const effPrecision  = isReal ? Math.max(c.precisionEquip ?? 0, bluePrecision)   : bluePrecision;
+    const effCritDmg    = isReal ? Math.max(c.critDmgEquip ?? 0, blueCritDmg)       : blueCritDmg;
+    const effArmor      = isReal ? Math.max(c.armorEquip ?? 0, blueArmor)           : blueArmor;
+    const effDodge      = isReal ? Math.max(c.dodgeEquip ?? 0, blueDodge)           : blueDodge;
+
     const PILL_BUFF_PCT = CONFIG.PILL_BUFF_PCT ?? 60;
     const AMMO_GREEN_PCT = CONFIG.AMMO_GREEN_PCT ?? 10;
     const FOOD_PCT_STEAK = CONFIG.FOOD_PCT_STEAK ?? 0.5;
 
-    // Formulas
-    const Schaden = (c.attackValue + blueWeaponDmg) * (1 + AMMO_GREEN_PCT / 100) * (1 + PILL_BUFF_PCT / 100) * (1 + c.rank / 100);
-    const Precision = Math.min(c.precisionValue + bluePrecision, 100) / 100;
-    const CritChance = Math.min(c.critChanceValue + blueWeaponCrit, 100) / 100;
-    const CritDmg = (c.critDmgValue + blueCritDmg) / 100;
-    const Armor = c.armorValue + blueArmor;
-    const Dodge = c.dodgeValue + blueDodge;
+    // Formulas using effective contributions
+    const Schaden = (c.attackValue + effWeaponDmg) * (1 + AMMO_GREEN_PCT / 100) * (1 + PILL_BUFF_PCT / 100) * (1 + c.rank / 100);
+    const Precision = Math.min(c.precisionValue + effPrecision, 100) / 100;
+    const CritChance = Math.min(c.critChanceValue + effWeaponCrit, 100) / 100;
+    const CritDmg = (c.critDmgValue + effCritDmg) / 100;
+    const Armor = c.armorValue + effArmor;
+    const Dodge = c.dodgeValue + effDodge;
     const HealthBar = c.healthMax;
     const HungerBar = c.hungerMax;
 
