@@ -7997,7 +7997,16 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
         armorValue: null,
         dodgeValue: null,
         healthMax: null,
-        hungerMax: null
+        hungerMax: null,
+        weaponDmgReal: null,
+        precisionEquip: null,
+        critChanceWeapon: null,
+        critDmgEquip: null,
+        armorEquip: null,
+        dodgeEquip: null,
+        healthRegen: null,
+        hungerRegen: null,
+        weeklyDamage: null
       }
     };
   }
@@ -8167,7 +8176,16 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
         armorValue: skills.armor?.value ?? null,
         dodgeValue: skills.dodge?.value ?? null,
         healthMax: health.value ?? null,
-        hungerMax: hunger.value ?? null
+        hungerMax: hunger.value ?? null,
+        weaponDmgReal: skills.attack?.weapon ?? null,
+        precisionEquip: skills.precision?.equipment ?? null,
+        critChanceWeapon: skills.criticalChance?.weapon ?? null,
+        critDmgEquip: skills.criticalDamages?.equipment ?? null,
+        armorEquip: skills.armor?.equipment ?? null,
+        dodgeEquip: skills.dodge?.equipment ?? null,
+        healthRegen: skills.health?.hourlyBarRegen ?? null,
+        hungerRegen: skills.hunger?.hourlyBarRegen ?? null,
+        weeklyDamage: payload?.rankings?.weeklyUserDamages?.value ?? null
       };
 
       const memberData = {
@@ -8262,7 +8280,16 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
                 armorValue: skills.armor?.value ?? null,
                 dodgeValue: skills.dodge?.value ?? null,
                 healthMax: health.value ?? null,
-                hungerMax: hunger.value ?? null
+                hungerMax: hunger.value ?? null,
+                weaponDmgReal: skills.attack?.weapon ?? null,
+                precisionEquip: skills.precision?.equipment ?? null,
+                critChanceWeapon: skills.criticalChance?.weapon ?? null,
+                critDmgEquip: skills.criticalDamages?.equipment ?? null,
+                armorEquip: skills.armor?.equipment ?? null,
+                dodgeEquip: skills.dodge?.equipment ?? null,
+                healthRegen: skills.health?.hourlyBarRegen ?? null,
+                hungerRegen: skills.hunger?.hourlyBarRegen ?? null,
+                weeklyDamage: payload?.rankings?.weeklyUserDamages?.value ?? null
               };
 
               const memberData = {
