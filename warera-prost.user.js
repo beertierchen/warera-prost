@@ -3536,6 +3536,20 @@
     const raw = Number(n).toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
     return getLocale() === 'de' ? raw.replace('.', ',') : raw;
   }
+  function fmtDamage(n) {
+    if (n == null || isNaN(n)) return '?';
+    let res = '';
+    if (n >= 1e9) {
+      res = (n / 1e9).toFixed(1).replace(/\.0$/, '') + 'Mrd';
+    } else if (n >= 1e6) {
+      res = (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+    } else if (n >= 1e3) {
+      res = (n / 1e3).toFixed(1).replace(/\.0$/, '') + 'k';
+    } else {
+      res = Math.round(n).toString();
+    }
+    return getLocale() === 'de' ? res.replace('.', ',') : res;
+  }
 
   // "5 min ago" / "just now" / "never" for a stored fetchedAt timestamp.
   function ageLabel(timestamp) {
@@ -8562,6 +8576,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     globalThis.applyTroopRadar = applyTroopRadar;
     globalThis.ensureTroopRadarInjected = ensureTroopRadarInjected;
     globalThis.formatTroopRadarTime = formatTroopRadarTime;
+    globalThis.fmtDamage = fmtDamage;
     globalThis.troopRadarMemberCache = troopRadarMemberCache;
     globalThis.troopRadarRosterCache = troopRadarRosterCache;
   }
