@@ -7883,6 +7883,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
   let troopRadarLoading = false;
   let troopRadarDamageMode = 'tag';
   let troopRadarLastSummary = null;
+  let troopRadarLastMembers = [];
 
   function classifyWarskiller(skills) {
     if (!skills || typeof skills !== 'object') {
@@ -8475,9 +8476,12 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     return null;
   }
 
-  function renderTroopRadarHeaderSummary(summary, muId) {
+  function renderTroopRadarHeaderSummary(summary, muId, members) {
     if (!summary || typeof document === 'undefined') return;
     troopRadarLastSummary = summary;
+    if (Array.isArray(members)) {
+      troopRadarLastMembers = members;
+    }
 
     const anchor = findTroopRadarHeaderAnchor();
     if (!anchor) return;
@@ -8515,18 +8519,22 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
 
     const chipIcon = isTag ? '⚡' : '🔴';
     const chipText = isTag ? t('troopRadarModeTag') : t('troopRadarModeLive');
-    const displayNum = fmtDamage(summary.damagePotential);
     const labelText = t('troopRadarDamagePotential');
-    
+
+    let displayNum = '';
     let sublabelText = '';
+
     if (isTag) {
+      displayNum = fmtDamage(summary.damagePotential);
       if (summary.damageComputedCount < summary.damageTotalCount) {
         sublabelText = t('troopRadarDmgComputed', { done: summary.damageComputedCount, total: summary.damageTotalCount });
       } else {
         sublabelText = 'Blau · Pille';
       }
     } else {
-      sublabelText = t('troopRadarModeLiveSoon');
+      const liveRes = sumLiveDamage(troopRadarLastMembers, new Date());
+      displayNum = fmtDamage(liveRes.live);
+      sublabelText = t('troopRadarLiveUntil', { time: '02:00' }) + ' · ' + t('troopRadarLiveObserved', { val: fmtDamage(liveRes.observed) });
     }
 
     el.innerHTML = `
@@ -8570,7 +8578,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     if (tile) {
       tile.addEventListener('click', () => {
         troopRadarDamageMode = troopRadarDamageMode === 'tag' ? 'live' : 'tag';
-        renderTroopRadarHeaderSummary(troopRadarLastSummary, muId);
+        renderTroopRadarHeaderSummary(troopRadarLastSummary, muId, troopRadarLastMembers);
       });
     }
   }
@@ -8739,7 +8747,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
         return;
       }
 
-      renderTroopRadarHeaderSummary(fullData.summary, muId);
+      renderTroopRadarHeaderSummary(fullData.summary, muId, fullData.membersData);
       renderTroopRadarMemberRows(fullData.membersData);
 
       const sum = fullData.summary.damagePotential;
@@ -8753,7 +8761,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
 
       fullData.detailsPromise.then((liveFull) => {
         if (reqId !== troopRadarActiveRequestId) return;
-        renderTroopRadarHeaderSummary(liveFull.summary, muId);
+        renderTroopRadarHeaderSummary(liveFull.summary, muId, liveFull.membersData);
         renderTroopRadarMemberRows(liveFull.membersData);
         
         const lSum = liveFull.summary.damagePotential;
