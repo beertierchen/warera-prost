@@ -1373,7 +1373,7 @@
     return (PAGE_WINDOW && PAGE_WINDOW.location && PAGE_WINDOW.location.pathname) || location.pathname;
   }
   if (PAGE_WINDOW) {
-    PAGE_WINDOW.PROST = PAGE_WINDOW.WIA = {
+    PAGE_WINDOW.PROST = PAGE_WINDOW.WIA = PAGE_WINDOW.PROST_DEBUG = {
       debug: setDebug,
       health() {
         if (typeof runProbes === 'function') runProbes();   // refresh before showing
@@ -5589,8 +5589,9 @@ async function scanInventory(force) {
     if (dmgPrintBtn) {
       dmgPrintBtn.onclick = (e) => {
         e.preventDefault();
-        if (typeof PROST_DEBUG?.troopRadar?.damage === 'function') {
-          PROST_DEBUG.troopRadar.damage();
+        const pDebug = (PAGE_WINDOW && PAGE_WINDOW.PROST_DEBUG) || (typeof PROST_DEBUG !== 'undefined' ? PROST_DEBUG : null);
+        if (pDebug && pDebug.troopRadar && typeof pDebug.troopRadar.damage === 'function') {
+          pDebug.troopRadar.damage();
         } else {
           console.warn('[PROST:troopRadar] damage debug hook not available.');
         }
