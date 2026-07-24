@@ -555,6 +555,8 @@
         troopRadarModeTag: 'Day',
         troopRadarModeLive: 'Live',
         troopRadarModeLiveSoon: 'soon',
+        troopRadarSubWarskiller: 'of warskillers',
+        troopRadarSubActive: 'of active members',
         settingsFeatTroopRadarCheckbox: 'Troop-Radar (MU Member List & Header)',
         settingsFeatTroopRadarHint: 'Displays member combat readiness (HP, pill status, skill orientation) in MU member lists and header.'
       },
@@ -843,6 +845,8 @@
         troopRadarModeTag: 'Tag',
         troopRadarModeLive: 'Live',
         troopRadarModeLiveSoon: 'bald',
+        troopRadarSubWarskiller: 'von Warskillern',
+        troopRadarSubActive: 'von aktiven Mitgliedern',
         settingsFeatTroopRadarCheckbox: 'Truppen-Radar (MU-Member-Liste & Header)',
         settingsFeatTroopRadarHint: 'Zeigt Kampfbereitschaft (HP, Pillen-Status, Skill-Klasse) in MU-Mitgliederlisten und Header an.'
       }
@@ -8413,9 +8417,10 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
           <span style="border: 1px solid #7c3aed; color: #a78bfa; padding: 2px 6px; font-size: 10px; font-weight: 700; border-radius: 4px; letter-spacing: 0.5px;">PROST</span>
         </div>
         <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;">
-          <div style="background: #0d1117; border: 1px solid #21262d; border-radius: 6px; padding: 8px; text-align: center;">
-            <div style="font-size: 16px; font-weight: 700; color: #f8fafc;">${summary.readyCount}/${summary.warskillerCount}</div>
-            <div style="font-size: 9px; font-weight: 700; color: #8b949e; text-transform: uppercase; margin-top: 2px;">KAMPFBEREIT</div>
+          <div style="background: #0d1117; border: 1px solid #21262d; border-radius: 6px; padding: 8px; text-align: center; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+            <div style="font-size: 16px; font-weight: 700; color: #f8fafc; font-variant-numeric: tabular-nums; line-height: 1.05;">${summary.readyCount}/${summary.warskillerCount}</div>
+            <div style="font-size: 9px; font-weight: 700; color: #8b949e; text-transform: uppercase; margin-top: 1px; letter-spacing: 0.02em;">KAMPFBEREIT</div>
+            <div style="font-size: 8px; color: #6e7681; margin-top: 3px; font-variant-numeric: tabular-nums; min-height: 1em;">${t('troopRadarSubWarskiller')}</div>
           </div>
           
           <button class="wia-dmg-tile" id="wia-troop-dmg-tile" data-mode="${mode}" aria-label="Schadenspotential — Modus umschalten">
@@ -8425,13 +8430,15 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
             <span class="sublab">${sublabelText}</span>
           </button>
           
-          <div style="background: #0d1117; border: 1px solid #21262d; border-radius: 6px; padding: 8px; text-align: center;">
-            <div style="font-size: 16px; font-weight: 700; color: #f8fafc;">${summary.pillCount}/${summary.totalMembers}</div>
-            <div style="font-size: 9px; font-weight: 700; color: #8b949e; text-transform: uppercase; margin-top: 2px;">GEPILLT</div>
+          <div style="background: #0d1117; border: 1px solid #21262d; border-radius: 6px; padding: 8px; text-align: center; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+            <div style="font-size: 16px; font-weight: 700; color: #f8fafc; font-variant-numeric: tabular-nums; line-height: 1.05;">${summary.pillCount}/${summary.totalMembers}</div>
+            <div style="font-size: 9px; font-weight: 700; color: #8b949e; text-transform: uppercase; margin-top: 1px; letter-spacing: 0.02em;">GEPILLT</div>
+            <div style="font-size: 8px; color: #6e7681; margin-top: 3px; font-variant-numeric: tabular-nums; min-height: 1em;">${t('troopRadarSubActive')}</div>
           </div>
-          <div style="background: #0d1117; border: 1px solid #21262d; border-radius: 6px; padding: 8px; text-align: center;">
-            <div style="font-size: 16px; font-weight: 700; color: #f8fafc;">${summary.avgHpPct}%</div>
-            <div style="font-size: 9px; font-weight: 700; color: #8b949e; text-transform: uppercase; margin-top: 2px;">Ø HP</div>
+          <div style="background: #0d1117; border: 1px solid #21262d; border-radius: 6px; padding: 8px; text-align: center; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+            <div style="font-size: 16px; font-weight: 700; color: #f8fafc; font-variant-numeric: tabular-nums; line-height: 1.05;">${summary.avgHpPct}%</div>
+            <div style="font-size: 9px; font-weight: 700; color: #8b949e; text-transform: uppercase; margin-top: 1px; letter-spacing: 0.02em;">Ø HP</div>
+            <div style="font-size: 8px; color: #6e7681; margin-top: 3px; font-variant-numeric: tabular-nums; min-height: 1em;">${t('troopRadarSubActive')}</div>
           </div>
         </div>
         ${alertHtml}
