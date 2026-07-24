@@ -4996,6 +4996,7 @@ async function scanInventory(force) {
       .wia-tour-prompt-body  { margin: 0 0 10px; color: #8b949e; font-size: 12px; }
       .wia-tour-prompt-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
       .wia-tour-prompt-never { background: none; border: 0; color: #6e7681; font-size: 11px; cursor: pointer; padding: 4px 2px; text-decoration: underline; }
+      .wia-tour-prompt-never:hover { color: #8b949e; }
       .wia-tour-paste { margin: 0 0 10px; }
 
       /* ── Troop Radar Schadenspotential tile ── */
