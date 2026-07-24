@@ -490,14 +490,41 @@ const mixedRoster = [
       healthRegen: 10,
       weeklyDamage: 280000
     }
+  },
+  // Warskiller 3: reset skills 2.5 days ago, weekly damage 25,000 -> observed average 10,000
+  {
+    isWarskiller: true,
+    isActive: true,
+    hpCurrent: 160,
+    hpMax: 160,
+    combat: {
+      attackValue: 300,
+      rank: 10,
+      precisionValue: 80,
+      critChanceValue: 40,
+      critDmgValue: 220,
+      armorValue: 18,
+      dodgeValue: 16,
+      healthMax: 160,
+      hungerMax: 8,
+      healthRegen: 100, // fracH will be 1
+      weaponDmgReal: null,
+      precisionEquip: null,
+      critChanceWeapon: null,
+      critDmgEquip: null,
+      armorEquip: null,
+      dodgeEquip: null,
+      weeklyDamage: 25000,
+      lastSkillsResetAt: '2026-07-22T10:30:00'
+    }
   }
 ];
 
 const sumRes = globalThis.sumLiveDamage(mixedRoster, nowTime);
-assert.strictEqual(sumRes.total, 2, 'Should have 2 warskillers in total count');
-assert.strictEqual(sumRes.computed, 1, 'Should have 1 computed warskiller');
-assert.ok(Math.abs(sumRes.live - 864213.84) < 1, 'Sum live damage should equal the non-degraded warskiller potential');
-assert.strictEqual(sumRes.observed, 10000, 'Observed average should sum only the warskiller weekly damage / 7');
+assert.strictEqual(sumRes.total, 3, 'Should have 3 warskillers in total count');
+assert.strictEqual(sumRes.computed, 2, 'Should have 2 computed warskillers');
+assert.ok(Math.abs(sumRes.live - 2 * 864213.85) < 1, 'Sum live damage should sum the non-degraded warskillers potential');
+assert.strictEqual(sumRes.observed, 20000, 'Observed average should adjust denominators using lastSkillsResetAt');
 
 console.log('All Troop-Radar Phase 1, 2, and 3 tests passed successfully!');
 process.exit(0);

@@ -8040,7 +8040,8 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
         dodgeEquip: null,
         healthRegen: null,
         hungerRegen: null,
-        weeklyDamage: null
+        weeklyDamage: null,
+        lastSkillsResetAt: null
       }
     };
   }
@@ -8171,8 +8172,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     let liveSum = 0;
     let computedCount = 0;
     let totalCount = activeWarskillers.length;
-    let weeklyDamageSum = 0;
-    let weeklyDamageCount = 0;
+    let observedSum = 0;
 
     activeWarskillers.forEach(m => {
       const res = computeLiveDamagePotential(m, now);
@@ -8180,19 +8180,28 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
         liveSum += res.liveDmg;
         computedCount++;
       }
-      if (m.combat && m.combat.weeklyDamage !== null && m.combat.weeklyDamage !== undefined && !isNaN(m.combat.weeklyDamage)) {
-        weeklyDamageSum += m.combat.weeklyDamage;
-        weeklyDamageCount++;
+      const c = m.combat || {};
+      if (c.weeklyDamage !== null && c.weeklyDamage !== undefined && !isNaN(c.weeklyDamage)) {
+        let denominator = 7;
+        if (c.lastSkillsResetAt) {
+          const resetDate = new Date(c.lastSkillsResetAt);
+          if (!isNaN(resetDate.getTime())) {
+            const diffMs = new Date(now).getTime() - resetDate.getTime();
+            const daysSinceReset = diffMs / (1000 * 60 * 60 * 24);
+            if (daysSinceReset > 0 && daysSinceReset < 7) {
+              denominator = Math.max(1, daysSinceReset);
+            }
+          }
+        }
+        observedSum += (c.weeklyDamage / denominator);
       }
     });
-
-    const observed = weeklyDamageCount > 0 ? (weeklyDamageSum / 7) : 0;
 
     return {
       live: liveSum,
       computed: computedCount,
       total: totalCount,
-      observed
+      observed: observedSum
     };
   }
 
@@ -8313,7 +8322,8 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
         dodgeEquip: skills.dodge?.equipment ?? null,
         healthRegen: skills.health?.hourlyBarRegen ?? null,
         hungerRegen: skills.hunger?.hourlyBarRegen ?? null,
-        weeklyDamage: payload?.rankings?.weeklyUserDamages?.value ?? null
+        weeklyDamage: payload?.rankings?.weeklyUserDamages?.value ?? null,
+        lastSkillsResetAt: payload?.lastSkillsResetAt || payload?.user?.lastSkillsResetAt || null
       };
 
       const memberData = {
@@ -8417,7 +8427,8 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
                 dodgeEquip: skills.dodge?.equipment ?? null,
                 healthRegen: skills.health?.hourlyBarRegen ?? null,
                 hungerRegen: skills.hunger?.hourlyBarRegen ?? null,
-                weeklyDamage: payload?.rankings?.weeklyUserDamages?.value ?? null
+                weeklyDamage: payload?.rankings?.weeklyUserDamages?.value ?? null,
+                lastSkillsResetAt: payload?.lastSkillsResetAt || payload?.user?.lastSkillsResetAt || null
               };
 
               const memberData = {
