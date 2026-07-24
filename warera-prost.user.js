@@ -8522,6 +8522,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
           'Real floored': formatDmg(realRes.dailyDmg),
           'Live (Rest)': formatDmg(liveRes.liveDmg),
           'Observed Avg': formatDmg(obsAvg),
+          'Reset At': c.lastSkillsResetAt || 'null',
           'Hours Left': liveRes.usableHours !== undefined ? liveRes.usableHours.toFixed(2) : 'N/A',
           'fracH': liveRes.fracH !== undefined ? (liveRes.fracH * 100).toFixed(1) + '%' : 'N/A',
           'Wpn': getGearSource(c.weaponDmgReal, blueWeaponDmg),
