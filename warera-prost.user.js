@@ -8019,13 +8019,15 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       }
     }
 
-    // Midpoints
-    const blueWeaponDmg = 80.5;
-    const blueWeaponCrit = 13;
-    const bluePrecision = 13;
-    const blueCritDmg = 40.5;
-    const blueArmor = 26;
-    const blueDodge = 13;
+    // Midpoints derived from CONFIG maps
+    const T = CONFIG.BASELINE_TIER;
+    const mid = (r) => (r.min + r.max) / 2;
+    const blueWeaponDmg  = mid(CONFIG.weaponRanges[T].dmg);
+    const blueWeaponCrit = mid(CONFIG.weaponRanges[T].crit);
+    const bluePrecision  = mid(CONFIG.statRangesByTier.gloves[T]);
+    const blueCritDmg    = mid(CONFIG.statRangesByTier.helmet[T]);
+    const blueArmor      = mid(CONFIG.statRangesByTier.chest[T]) + mid(CONFIG.statRangesByTier.pants[T]);
+    const blueDodge      = mid(CONFIG.statRangesByTier.boots[T]);
 
     const PILL_BUFF_PCT = CONFIG.PILL_BUFF_PCT ?? 60;
     const AMMO_GREEN_PCT = CONFIG.AMMO_GREEN_PCT ?? 10;
