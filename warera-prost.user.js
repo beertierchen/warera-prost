@@ -8246,7 +8246,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
               const warskillerInfo = classifyWarskiller(skills);
               const pillInfo = evaluatePillStatus(skills, health, hunger);
 
-               const username = payload?.username || payload?.user?.username || payload?.name;
+              const username = payload?.username || payload?.user?.username || payload?.name;
               const buffsObj = payload?.buffs || {};
               const combat = {
                 attackValue: skills.attack?.value ?? null,
