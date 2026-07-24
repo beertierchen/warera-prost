@@ -8476,58 +8476,76 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       const res = await fetchFullTroopRadar(muId);
       const full = await res.detailsPromise;
       const warskillers = full.membersData.filter(m => m.isWarskiller);
-      console.log(`=== Troop Radar Damage Potential Breakdown for MU: ${muId} ===`);
-      console.log(`Total Warskillers: ${warskillers.length}`);
       
       const tDate = new Date();
       const liveSummary = sumLiveDamage(full.membersData, tDate);
 
-      warskillers.forEach(m => {
+      const tableRows = warskillers.map(m => {
         const tagRes = computeDamagePotential(m, { equip: 'blue' });
         const realRes = computeDamagePotential(m, { equip: 'realFloored' });
         const liveRes = computeLiveDamagePotential(m, tDate);
         const c = m.combat || {};
         
-        const equipSource = {
-          weapon: c.weaponDmgReal !== null ? (c.weaponDmgReal > 80.5 ? 'real' : 'blue-floor') : 'none (blue-floor)',
-          precision: c.precisionEquip !== null ? (c.precisionEquip > 13 ? 'real' : 'blue-floor') : 'none (blue-floor)',
-          critChance: c.critChanceWeapon !== null ? (c.critChanceWeapon > 13 ? 'real' : 'blue-floor') : 'none (blue-floor)',
-          critDmg: c.critDmgEquip !== null ? (c.critDmgEquip > 40.5 ? 'real' : 'blue-floor') : 'none (blue-floor)',
-          armor: c.armorEquip !== null ? (c.armorEquip > 26 ? 'real' : 'blue-floor') : 'none (blue-floor)',
-          dodge: c.dodgeEquip !== null ? (c.dodgeEquip > 13 ? 'real' : 'blue-floor') : 'none (blue-floor)'
+        let denominator = 7;
+        if (c.lastSkillsResetAt) {
+          const resetDate = new Date(c.lastSkillsResetAt);
+          if (!isNaN(resetDate.getTime())) {
+            const diffMs = tDate.getTime() - resetDate.getTime();
+            const daysSinceReset = diffMs / (1000 * 60 * 60 * 24);
+            if (daysSinceReset > 0 && daysSinceReset < 7) {
+              denominator = Math.max(1, daysSinceReset);
+            }
+          }
+        }
+        const obsAvg = c.weeklyDamage !== null && c.weeklyDamage !== undefined ? (c.weeklyDamage / denominator) : null;
+
+        const formatDmg = (val) => val !== null && val !== undefined ? (val / 1000000).toFixed(2) + 'M' : 'N/A';
+
+        const mid = (r) => (r.min + r.max) / 2;
+        const T = CONFIG.BASELINE_TIER ?? 3;
+        const blueWeaponDmg  = mid(CONFIG.weaponRanges[T].dmg);
+        const blueWeaponCrit = mid(CONFIG.weaponRanges[T].crit);
+        const bluePrecision  = mid(CONFIG.statRangesByTier.gloves[T]);
+        const blueCritDmg    = mid(CONFIG.statRangesByTier.helmet[T]);
+        const blueArmor      = mid(CONFIG.statRangesByTier.chest[T]) + mid(CONFIG.statRangesByTier.pants[T]);
+        const blueDodge      = mid(CONFIG.statRangesByTier.boots[T]);
+
+        const getGearSource = (realVal, baseline) => {
+          if (realVal === null || realVal === undefined) return 'blue';
+          return realVal > baseline ? 'real' : 'blue';
         };
 
-        console.log(`- Player: ${m.username || m.userId} (${m.userId})`);
-        console.log(`  degraded: ${liveRes.degraded}`);
-        console.log(`  Tag potential (Blue): ${tagRes.dailyDmg.toFixed(1)}`);
-        console.log(`  Real floored potential: ${realRes.dailyDmg.toFixed(1)}`);
-        console.log(`  Live potential (now): ${liveRes.liveDmg.toFixed(1)}`);
-        console.log(`  usableHours: ${liveRes.usableHours?.toFixed(2) ?? 'N/A'}`);
-        console.log(`  fracH: ${liveRes.fracH?.toFixed(4) ?? 'N/A'}`);
-        console.log(`  observed weekly / 7: ${c.weeklyDamage !== null ? (c.weeklyDamage / 7).toFixed(1) : 'N/A'}`);
-        console.log(`  equipment source:`, equipSource);
-        console.log(`  inputs:`, {
-          attackValue: c.attackValue,
-          rank: c.rank,
-          precisionValue: c.precisionValue,
-          critChanceValue: c.critChanceValue,
-          critDmgValue: c.critDmgValue,
-          armorValue: c.armorValue,
-          dodgeValue: c.dodgeValue,
-          healthMax: c.healthMax,
-          hungerMax: c.hungerMax,
-          healthRegen: c.healthRegen,
-          hungerRegen: c.hungerRegen,
-          debuffEndAt: m.debuffEndAt
-        });
+        return {
+          'Spieler': m.username || m.userId,
+          'Degraded': liveRes.degraded,
+          'Tag (Blue)': formatDmg(tagRes.dailyDmg),
+          'Real floored': formatDmg(realRes.dailyDmg),
+          'Live (Rest)': formatDmg(liveRes.liveDmg),
+          'Observed Avg': formatDmg(obsAvg),
+          'Hours Left': liveRes.usableHours !== undefined ? liveRes.usableHours.toFixed(2) : 'N/A',
+          'fracH': liveRes.fracH !== undefined ? (liveRes.fracH * 100).toFixed(1) + '%' : 'N/A',
+          'Wpn': getGearSource(c.weaponDmgReal, blueWeaponDmg),
+          'Prec': getGearSource(c.precisionEquip, bluePrecision),
+          'Crit': getGearSource(c.critChanceWeapon, blueWeaponCrit),
+          'Helm': getGearSource(c.critDmgEquip, blueCritDmg),
+          'Chest/Pants': getGearSource(c.armorEquip, blueArmor),
+          'Boots': getGearSource(c.dodgeEquip, blueDodge)
+        };
       });
+
+      console.log(`=== Troop Radar Damage Potential Breakdown for MU: ${muId} ===`);
+      console.log(`Total active Warskillers: ${warskillers.length}`);
+      console.table(tableRows);
+
       console.log(`=== Summary Aggregates ===`);
-      console.log(`Tag Aggregate potential:`, full.summary.damagePotential);
-      console.log(`Live Aggregate potential:`, liveSummary.live);
-      console.log(`Observed Aggregate average:`, liveSummary.observed);
+      console.log(`Tag Aggregate potential:  ${(full.summary.damagePotential / 1000000).toFixed(2)}M`);
+      console.log(`Live Aggregate potential: ${(liveSummary.live / 1000000).toFixed(2)}M`);
+      console.log(`Observed Daily average:  ${(liveSummary.observed / 1000000).toFixed(2)}M`);
+
       return {
         tagSummary: full.summary,
-        liveSummary
+        liveSummary,
+        tableRows
       };
     } catch (err) {
       console.error('[PROST:troopRadar] damage breakdown failed:', err);
