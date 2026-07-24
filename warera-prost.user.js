@@ -7897,6 +7897,61 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     };
   }
 
+  function computeDamagePotential(member) {
+    if (!member || !member.combat) {
+      return { dailyDmg: 0, degraded: true };
+    }
+    const c = member.combat;
+    const required = [
+      c.attackValue,
+      c.rank,
+      c.precisionValue,
+      c.critChanceValue,
+      c.critDmgValue,
+      c.armorValue,
+      c.dodgeValue,
+      c.healthMax,
+      c.hungerMax
+    ];
+    for (const val of required) {
+      if (val === null || val === undefined || isNaN(val)) {
+        return { dailyDmg: 0, degraded: true };
+      }
+    }
+
+    // Midpoints
+    const blueWeaponDmg = 80.5;
+    const blueWeaponCrit = 13;
+    const bluePrecision = 13;
+    const blueCritDmg = 40.5;
+    const blueArmor = 26;
+    const blueDodge = 13;
+
+    const PILL_BUFF_PCT = CONFIG.PILL_BUFF_PCT ?? 60;
+    const AMMO_GREEN_PCT = CONFIG.AMMO_GREEN_PCT ?? 10;
+    const FOOD_PCT_STEAK = CONFIG.FOOD_PCT_STEAK ?? 0.5;
+
+    // Formulas
+    const Schaden = (c.attackValue + blueWeaponDmg) * (1 + AMMO_GREEN_PCT / 100) * (1 + PILL_BUFF_PCT / 100) * (1 + c.rank / 100);
+    const Precision = Math.min(c.precisionValue + bluePrecision, 100) / 100;
+    const CritChance = Math.min(c.critChanceValue + blueWeaponCrit, 100) / 100;
+    const CritDmg = (c.critDmgValue + blueCritDmg) / 100;
+    const Armor = c.armorValue + blueArmor;
+    const Dodge = c.dodgeValue + blueDodge;
+    const HealthBar = c.healthMax;
+    const HungerBar = c.hungerMax;
+
+    const dailyDmg = 1.8 * Schaden * HealthBar * (1 + HungerBar * FOOD_PCT_STEAK)
+                   * (0.5 + 0.5 * Precision + Precision * CritChance * CritDmg)
+                   * (0.1 + (Armor + Dodge) / 400 + (Armor * Dodge) / 16000);
+
+    if (isNaN(dailyDmg) || !isFinite(dailyDmg)) {
+      return { dailyDmg: 0, degraded: true };
+    }
+
+    return { dailyDmg, degraded: false };
+  }
+
   function summarizeTroops(membersArray) {
     const activeMembers = Array.isArray(membersArray)
       ? membersArray.filter(m => m.isActive !== false)
@@ -8479,6 +8534,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     globalThis.classifyWarskiller = classifyWarskiller;
     globalThis.evaluatePillStatus = evaluatePillStatus;
     globalThis.createOptimisticMemberData = createOptimisticMemberData;
+    globalThis.computeDamagePotential = computeDamagePotential;
     globalThis.summarizeTroops = summarizeTroops;
     globalThis.fetchMuRoster = fetchMuRoster;
     globalThis.fetchTroopMemberData = fetchTroopMemberData;
