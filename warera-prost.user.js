@@ -5400,6 +5400,7 @@ async function scanInventory(force) {
             <button type="button" class="wia-debug-export-btn" style="margin: 6px 4px; font-size: 11px; padding: 3px 8px; cursor: pointer; color: #10b981; background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.2); border-radius: 3px;">📋 Debug-Log kopieren</button>
             <button type="button" class="wia-pnl-print-btn" style="margin: 6px 4px; font-size: 11px; padding: 3px 8px; cursor: pointer; color: #58a6ff; background: rgba(88,166,255,0.1); border: 1px solid rgba(88,166,255,0.2); border-radius: 3px;">P&L Kassenzettel (Konsole)</button>
             <button type="button" class="wia-skins-dump-btn" style="margin: 6px 4px; font-size: 11px; padding: 3px 8px; cursor: pointer; color: #ff9800; background: rgba(255,152,0,0.1); border: 1px solid rgba(255,152,0,0.2); border-radius: 3px;">Skins Dump (Konsole)</button>
+            <button type="button" class="wia-dmg-print-btn" style="margin: 6px 4px; font-size: 11px; padding: 3px 8px; cursor: pointer; color: #f0a54a; background: rgba(240,165,74,0.1); border: 1px solid rgba(240,165,74,0.2); border-radius: 3px;">Troop Damage (Konsole)</button>
             <div class="wia-health-panel"></div>
           </details>
           <details class="wia-test-notif-details" style="margin-top: 6px;">
@@ -5583,6 +5584,17 @@ async function scanInventory(force) {
     const skinsDumpBtn = modal.querySelector('.wia-skins-dump-btn');
     if (skinsDumpBtn) {
       skinsDumpBtn.onclick = (e) => { e.preventDefault(); dumpSkinsToConsole(); };
+    }
+    const dmgPrintBtn = modal.querySelector('.wia-dmg-print-btn');
+    if (dmgPrintBtn) {
+      dmgPrintBtn.onclick = (e) => {
+        e.preventDefault();
+        if (typeof PROST_DEBUG?.troopRadar?.damage === 'function') {
+          PROST_DEBUG.troopRadar.damage();
+        } else {
+          console.warn('[PROST:troopRadar] damage debug hook not available.');
+        }
+      };
     }
 
     const testBountyBtn = modal.querySelector('.wia-test-notif-bounty');
