@@ -1,18 +1,24 @@
 # CHANGELOG
 
-## 2026-07-24 | Feature: Schadenspotential-Kachel & Bezugsgrößen-Labels (v0.10.0)
+## 2026-07-24 | Feature: Truppen-Radar Schadenspotenzial (Tag & Live) & Bezugsgrößen-Labels (v0.10.0)
 
-**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/test-troop-radar.js`
 
 **Änderungen (Deutsch):**
-- **Schadenspotential-Kachel**: Ersetzt die doppelte Warskiller-Kachel im Truppen-Radar-Header durch eine neue Kachel für das Schadenspotential. Sie zeigt das addierte Tagespotenzial aller Warskiller der Militäreinheit.
-- **Interaktiver Modus-Wechsel**: Die Schadenspotential-Kachel kann angeklickt werden, um flexibel zwischen dem Tagespotenzial (Tag) und einer Live-Vorschau (Live folgt in einem späteren Update) umzuschalten.
-- **Zusatz-Labels für Header-Kacheln**: Jede Header-Kachel hat nun eine kleine Beschriftung erhalten, um die jeweilige Nenner-Gruppe der Zähler (Warskiller vs. aktive Mitglieder) klarer darzustellen.
+- **Schadenspotential-Kachel**: Ersetzt die redundante Zwillings-Warskiller-Kachel im Truppen-Radar-Header durch eine neue Kachel für das Schadenspotenzial.
+- **Interaktiver Modus-Wechsel (Tag ⇄ Live)**: Durch Anklicken der Schadenspotenzial-Kachel kann flexibel zwischen dem vollen theoretischen Tagespotenzial (Tag) und dem verbleibenden Live-Potenzial für den heutigen Tag (Live) gewechselt werden.
+- **Live-Berechnung & Ausrüstungs-Bypass**: Der Live-Modus berechnet das verbleibende Potenzial der Warskiller bis zum Reset um 02:00 Uhr basierend auf ihren HP- und Regenerationswerten. Reale Ausrüstungswerte werden aus der API ausgelesen und verwendet (nach unten auf T3 blau abgesichert).
+- **Intelligente Skill-Reset-Gewichtung**: Bei Spielern, die vor weniger als 7 Tagen ihre Skillung zurückgesetzt haben (z.B. von Eco zu Warskill), wird die Schadensdurchschnitts-Bezugsgröße anteilig auf die Tage seit dem Reset herunterskaliert, statt stur durch 7 zu teilen.
+- **Zusatz-Labels für Header-Kacheln**: Unter den summary Kacheln wurden Beschriftungen hinzugefügt, um die jeweilige Nenner-Gruppe (Warskiller vs. aktive Mitglieder) transparent zu machen.
+- **Fehlersuche per Knopfdruck**: Unter Einstellungen > Feature-Health / Diagnose gibt es nun den Button "Troop Damage (Konsole)", welcher eine detaillierte, sortierbare Tabelle aller Warskiller und deren Berechnungs-Inputs in die Browserkonsole loggt.
 
 **Changes (English):**
-- **Damage Potential Tile**: Replaces the redundant Warskiller tile in the Troop Radar header with a new tile displaying the aggregated daily damage potential of all warskillers in the Military Unit.
-- **Interactive Mode Toggle**: Click the damage potential tile to switch between the daily potential (Day) and a Live preview (Live mode is coming in a future update).
-- **Denominator Labels**: Added small descriptive labels under all summary header tiles to make the target group (warskillers vs. active members) transparent.
+- **Damage Potential Tile**: Replaces the redundant duplicate Warskiller summary tile in the Troop Radar header with a new tile displaying aggregated damage potential.
+- **Interactive Mode Toggle (Day ⇄ Live)**: Click the damage potential tile to switch between the full theoretical daily potential (Day) and the remaining live potential for today (Live).
+- **Live Computations & Real Equipment**: Live mode calculates remaining damage potential until the 02:00 reset using active player HP and regeneration. Real equipment values are fetched from the API and used (floored to blue T3 baseline).
+- **Dynamic Skill Reset Scaling**: For players who reset their skills within the last 7 days, observed daily average values are dynamically scaled by days-since-reset instead of dividing by 7.
+- **Denominator Labels**: Added descriptive sub-labels under all summary header tiles for target group transparency.
+- **Diagnostics Button**: Added a "Troop Damage (Konsole)" button under Settings > Feature-Health / Diagnostics to output a detailed, sortable table of all warskillers' calculation inputs to the browser console.
 
 ## 2026-07-24 | Feature: Deterministischer Order-Radar-Anker & Inaktive MU-Mitglieder ausblenden (v0.9.12)
 
