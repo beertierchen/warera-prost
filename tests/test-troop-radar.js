@@ -205,5 +205,74 @@ assert.match(timeStr, /^\d{2}:\d{2}$/, 'Should format to HH:MM format');
 assert.strictEqual(globalThis.formatTroopRadarTime(null), '');
 assert.strictEqual(globalThis.formatTroopRadarTime('invalid-date'), '');
 
-console.log('All Troop-Radar Phase 1 tests passed successfully!');
+// Test 7: computeDamagePotential happy path & expected value check
+console.log('Test 7: Testing computeDamagePotential happy path...');
+const testMember = {
+  isWarskiller: true,
+  combat: {
+    attackValue: 300,
+    rank: 10,
+    precisionValue: 80,
+    critChanceValue: 40,
+    critDmgValue: 220,
+    armorValue: 18,
+    dodgeValue: 16,
+    healthMax: 160,
+    hungerMax: 8
+  }
+};
+const dmgResult = globalThis.computeDamagePotential(testMember);
+assert.strictEqual(dmgResult.degraded, false, 'Should not be degraded');
+const ratio = dmgResult.dailyDmg / 864213.842897337;
+assert.ok(ratio >= 0.995 && ratio <= 1.005, `Daily damage should be within 0.5% of expected 864213.84 (got: ${dmgResult.dailyDmg})`);
+
+// Test 8: NaN-guard degraded checks
+console.log('Test 8: Testing computeDamagePotential NaN-guards...');
+const degradedMember = {
+  isWarskiller: true,
+  combat: {
+    attackValue: null,
+    rank: 10,
+    precisionValue: 80,
+    critChanceValue: 40,
+    critDmgValue: 220,
+    armorValue: 18,
+    dodgeValue: 16,
+    healthMax: 160,
+    hungerMax: 8
+  }
+};
+const degradedResult = globalThis.computeDamagePotential(degradedMember);
+assert.strictEqual(degradedResult.dailyDmg, 0, 'Degraded daily damage must be 0');
+assert.strictEqual(degradedResult.degraded, true, 'Should be flagged as degraded');
+
+// Test 9: summarizeTroops damage potential aggregation
+console.log('Test 9: Testing summarizeTroops damage potential aggregates...');
+const roster = [
+  { isWarskiller: true, isActive: true, combat: { attackValue: 300, rank: 10, precisionValue: 80, critChanceValue: 40, critDmgValue: 220, armorValue: 18, dodgeValue: 16, healthMax: 160, hungerMax: 8 } },
+  { isWarskiller: true, isActive: true, combat: { attackValue: null, rank: 10, precisionValue: 80, critChanceValue: 40, critDmgValue: 220, armorValue: 18, dodgeValue: 16, healthMax: 160, hungerMax: 8 } },
+  { isWarskiller: false, isActive: true, combat: { attackValue: 300, rank: 10, precisionValue: 80, critChanceValue: 40, critDmgValue: 220, armorValue: 18, dodgeValue: 16, healthMax: 160, hungerMax: 8 } },
+  { isWarskiller: true, isActive: false, combat: { attackValue: 300, rank: 10, precisionValue: 80, critChanceValue: 40, critDmgValue: 220, armorValue: 18, dodgeValue: 16, healthMax: 160, hungerMax: 8 } }
+];
+const troopSummary = globalThis.summarizeTroops(roster);
+assert.strictEqual(troopSummary.damageTotalCount, 2, 'Should count 2 active warskillers');
+assert.strictEqual(troopSummary.damageComputedCount, 1, 'Only 1 warskiller has non-degraded stats');
+assert.ok(troopSummary.damagePotential > 0 && Math.abs(troopSummary.damagePotential - 864213.84) < 1000, `Aggregated potential should sum only the valid warskiller`);
+
+// Test 10: fmtDamage formatting and localization
+console.log('Test 10: Testing fmtDamage formatting...');
+globalThis.CONFIG.locale = null;
+global.window.__WIA_LOCALE__ = 'en';
+assert.strictEqual(globalThis.fmtDamage(950), '950');
+assert.strictEqual(globalThis.fmtDamage(12700), '12.7k');
+assert.strictEqual(globalThis.fmtDamage(48200000), '48.2M');
+assert.strictEqual(globalThis.fmtDamage(1200000000), '1.2Mrd');
+
+global.window.__WIA_LOCALE__ = 'de';
+assert.strictEqual(globalThis.fmtDamage(950), '950');
+assert.strictEqual(globalThis.fmtDamage(12700), '12,7k');
+assert.strictEqual(globalThis.fmtDamage(48200000), '48,2M');
+assert.strictEqual(globalThis.fmtDamage(1200000000), '1,2Mrd');
+
+console.log('All Troop-Radar Phase 1 and 2 tests passed successfully!');
 process.exit(0);
