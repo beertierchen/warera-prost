@@ -1428,12 +1428,34 @@
             const warskillers = full.membersData.filter(m => m.isWarskiller);
             console.log(`=== Troop Radar Damage Potential Breakdown for MU: ${muId} ===`);
             console.log(`Total Warskillers: ${warskillers.length}`);
+            
+            const tDate = new Date();
+            const liveSummary = sumLiveDamage(full.membersData, tDate);
+
             warskillers.forEach(m => {
-              const { dailyDmg, degraded } = computeDamagePotential(m);
+              const tagRes = computeDamagePotential(m, { equip: 'blue' });
+              const realRes = computeDamagePotential(m, { equip: 'realFloored' });
+              const liveRes = computeLiveDamagePotential(m, tDate);
               const c = m.combat || {};
+              
+              const equipSource = {
+                weapon: c.weaponDmgReal !== null ? (c.weaponDmgReal > 80.5 ? 'real' : 'blue-floor') : 'none (blue-floor)',
+                precision: c.precisionEquip !== null ? (c.precisionEquip > 13 ? 'real' : 'blue-floor') : 'none (blue-floor)',
+                critChance: c.critChanceWeapon !== null ? (c.critChanceWeapon > 13 ? 'real' : 'blue-floor') : 'none (blue-floor)',
+                critDmg: c.critDmgEquip !== null ? (c.critDmgEquip > 40.5 ? 'real' : 'blue-floor') : 'none (blue-floor)',
+                armor: c.armorEquip !== null ? (c.armorEquip > 26 ? 'real' : 'blue-floor') : 'none (blue-floor)',
+                dodge: c.dodgeEquip !== null ? (c.dodgeEquip > 13 ? 'real' : 'blue-floor') : 'none (blue-floor)'
+              };
+
               console.log(`- Player: ${m.username || m.userId} (${m.userId})`);
-              console.log(`  degraded: ${degraded}`);
-              console.log(`  dailyDmg: ${dailyDmg.toFixed(1)}`);
+              console.log(`  degraded: ${liveRes.degraded}`);
+              console.log(`  Tag potential (Blue): ${tagRes.dailyDmg.toFixed(1)}`);
+              console.log(`  Real floored potential: ${realRes.dailyDmg.toFixed(1)}`);
+              console.log(`  Live potential (now): ${liveRes.liveDmg.toFixed(1)}`);
+              console.log(`  usableHours: ${liveRes.usableHours?.toFixed(2) ?? 'N/A'}`);
+              console.log(`  fracH: ${liveRes.fracH?.toFixed(4) ?? 'N/A'}`);
+              console.log(`  observed weekly / 7: ${c.weeklyDamage !== null ? (c.weeklyDamage / 7).toFixed(1) : 'N/A'}`);
+              console.log(`  equipment source:`, equipSource);
               console.log(`  inputs:`, {
                 attackValue: c.attackValue,
                 rank: c.rank,
@@ -1443,11 +1465,20 @@
                 armorValue: c.armorValue,
                 dodgeValue: c.dodgeValue,
                 healthMax: c.healthMax,
-                hungerMax: c.hungerMax
+                hungerMax: c.hungerMax,
+                healthRegen: c.healthRegen,
+                hungerRegen: c.hungerRegen,
+                debuffEndAt: m.debuffEndAt
               });
             });
-            console.log(`Summary Aggregate:`, full.summary);
-            return full.summary;
+            console.log(`=== Summary Aggregates ===`);
+            console.log(`Tag Aggregate potential:`, full.summary.damagePotential);
+            console.log(`Live Aggregate potential:`, liveSummary.live);
+            console.log(`Observed Aggregate average:`, liveSummary.observed);
+            return {
+              tagSummary: full.summary,
+              liveSummary
+            };
           } catch (err) {
             console.error('[PROST:troopRadar] damage breakdown failed:', err);
             return { error: err.message };
