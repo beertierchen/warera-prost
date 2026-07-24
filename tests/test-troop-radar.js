@@ -274,5 +274,230 @@ assert.strictEqual(globalThis.fmtDamage(12700), '12,7k');
 assert.strictEqual(globalThis.fmtDamage(48200000), '48,2M');
 assert.strictEqual(globalThis.fmtDamage(1200000000), '1,2Mrd');
 
-console.log('All Troop-Radar Phase 1 and 2 tests passed successfully!');
+// Test 11: computeDamagePotential realFloored
+console.log('Test 11: Testing computeDamagePotential with realFloored option...');
+const equippedMember = {
+  isWarskiller: true,
+  combat: {
+    attackValue: 300,
+    rank: 10,
+    precisionValue: 80,
+    critChanceValue: 40,
+    critDmgValue: 220,
+    armorValue: 18,
+    dodgeValue: 16,
+    healthMax: 160,
+    hungerMax: 8,
+    weaponDmgReal: 120,
+    precisionEquip: 20,
+    critChanceWeapon: 20,
+    critDmgEquip: 50,
+    armorEquip: 40,
+    dodgeEquip: 20,
+    healthRegen: 10,
+    hungerRegen: 1
+  }
+};
+const strippedMember = {
+  isWarskiller: true,
+  combat: {
+    attackValue: 300,
+    rank: 10,
+    precisionValue: 80,
+    critChanceValue: 40,
+    critDmgValue: 220,
+    armorValue: 18,
+    dodgeValue: 16,
+    healthMax: 160,
+    hungerMax: 8,
+    weaponDmgReal: null,
+    precisionEquip: null,
+    critChanceWeapon: null,
+    critDmgEquip: null,
+    armorEquip: null,
+    dodgeEquip: null,
+    healthRegen: 10,
+    hungerRegen: 1
+  }
+};
+
+const equipRes = globalThis.computeDamagePotential(equippedMember, { equip: 'realFloored' });
+const stripRes = globalThis.computeDamagePotential(strippedMember, { equip: 'realFloored' });
+const baseRes = globalThis.computeDamagePotential(strippedMember, { equip: 'blue' });
+
+assert.ok(equipRes.dailyDmg > baseRes.dailyDmg, 'Real equipment should produce higher damage than baseline');
+assert.strictEqual(stripRes.dailyDmg, baseRes.dailyDmg, 'Stripped member should floor to the exact same baseline');
+assert.ok(Math.abs(baseRes.dailyDmg - 864213.84) < 1, 'Test 7 expected value must remain correct');
+
+// Test 12: hoursUntilDailyReset
+console.log('Test 12: Testing hoursUntilDailyReset...');
+const beforeMidnight = new Date('2026-07-24T22:30:00');
+const afterMidnight = new Date('2026-07-25T00:45:00');
+const afterReset = new Date('2026-07-25T03:15:00');
+
+assert.strictEqual(globalThis.hoursUntilDailyReset(beforeMidnight), 3.5);
+assert.strictEqual(globalThis.hoursUntilDailyReset(afterMidnight), 1.25);
+assert.strictEqual(globalThis.hoursUntilDailyReset(afterReset), 22.75);
+
+// Test 13: computeLiveDamagePotential
+console.log('Test 13: Testing computeLiveDamagePotential scenarios...');
+const nowTime = new Date('2026-07-24T22:30:00');
+
+const liveMemberA = {
+  isWarskiller: true,
+  hpCurrent: 160,
+  hpMax: 160,
+  combat: {
+    attackValue: 300,
+    rank: 10,
+    precisionValue: 80,
+    critChanceValue: 40,
+    critDmgValue: 220,
+    armorValue: 18,
+    dodgeValue: 16,
+    healthMax: 160,
+    hungerMax: 8,
+    healthRegen: 50,
+    weaponDmgReal: null,
+    precisionEquip: null,
+    critChanceWeapon: null,
+    critDmgEquip: null,
+    armorEquip: null,
+    dodgeEquip: null
+  }
+};
+const liveResA = globalThis.computeLiveDamagePotential(liveMemberA, nowTime);
+assert.strictEqual(liveResA.fracH, 1, 'Should clamp fracH to 1');
+assert.strictEqual(liveResA.liveDmg, stripRes.dailyDmg, 'Should equal realFloored daily damage when fracH is 1');
+
+const liveMemberB = {
+  isWarskiller: true,
+  hpCurrent: 40,
+  hpMax: 160,
+  combat: {
+    attackValue: 300,
+    rank: 10,
+    precisionValue: 80,
+    critChanceValue: 40,
+    critDmgValue: 220,
+    armorValue: 18,
+    dodgeValue: 16,
+    healthMax: 160,
+    hungerMax: 8,
+    healthRegen: 0,
+    weaponDmgReal: null,
+    precisionEquip: null,
+    critChanceWeapon: null,
+    critDmgEquip: null,
+    armorEquip: null,
+    dodgeEquip: null
+  }
+};
+const liveResB = globalThis.computeLiveDamagePotential(liveMemberB, nowTime);
+const expectedFrac = 40 / (1.8 * 160);
+assert.ok(Math.abs(liveResB.fracH - expectedFrac) < 1e-6);
+
+const liveMemberC = {
+  isWarskiller: true,
+  hpCurrent: 160,
+  hpMax: 160,
+  debuffEndAt: '2026-07-25T05:00:00',
+  combat: {
+    attackValue: 300,
+    rank: 10,
+    precisionValue: 80,
+    critChanceValue: 40,
+    critDmgValue: 220,
+    armorValue: 18,
+    dodgeValue: 16,
+    healthMax: 160,
+    hungerMax: 8,
+    healthRegen: 10,
+    weaponDmgReal: null,
+    precisionEquip: null,
+    critChanceWeapon: null,
+    critDmgEquip: null,
+    armorEquip: null,
+    dodgeEquip: null
+  }
+};
+const liveResC = globalThis.computeLiveDamagePotential(liveMemberC, nowTime);
+assert.strictEqual(liveResC.usableHours, 0, 'Usable hours must be 0 when debuff ends after reset');
+assert.ok(Math.abs(liveResC.fracH - 160 / 288) < 1e-6);
+
+// Test 14: sumLiveDamage aggregation
+console.log('Test 14: Testing sumLiveDamage aggregates...');
+const mixedRoster = [
+  {
+    isWarskiller: true,
+    isActive: true,
+    hpCurrent: 160,
+    hpMax: 160,
+    combat: {
+      attackValue: 300,
+      rank: 10,
+      precisionValue: 80,
+      critChanceValue: 40,
+      critDmgValue: 220,
+      armorValue: 18,
+      dodgeValue: 16,
+      healthMax: 160,
+      hungerMax: 8,
+      healthRegen: 100,
+      weaponDmgReal: null,
+      precisionEquip: null,
+      critChanceWeapon: null,
+      critDmgEquip: null,
+      armorEquip: null,
+      dodgeEquip: null,
+      weeklyDamage: 70000
+    }
+  },
+  {
+    isWarskiller: true,
+    isActive: true,
+    hpCurrent: 160,
+    hpMax: 160,
+    combat: {
+      attackValue: null,
+      rank: 10,
+      precisionValue: 80,
+      critChanceValue: 40,
+      critDmgValue: 220,
+      armorValue: 18,
+      dodgeValue: 16,
+      healthMax: 160,
+      hungerMax: 8,
+      healthRegen: 10,
+      weeklyDamage: null
+    }
+  },
+  {
+    isWarskiller: false,
+    isActive: true,
+    hpCurrent: 160,
+    hpMax: 160,
+    combat: {
+      attackValue: 300,
+      rank: 10,
+      precisionValue: 80,
+      critChanceValue: 40,
+      critDmgValue: 220,
+      armorValue: 18,
+      dodgeValue: 16,
+      healthMax: 160,
+      hungerMax: 8,
+      healthRegen: 10,
+      weeklyDamage: 280000
+    }
+  }
+];
+
+const sumRes = globalThis.sumLiveDamage(mixedRoster, nowTime);
+assert.strictEqual(sumRes.total, 2, 'Should have 2 warskillers in total count');
+assert.strictEqual(sumRes.computed, 1, 'Should have 1 computed warskiller');
+assert.ok(Math.abs(sumRes.live - 864213.84) < 1, 'Sum live damage should equal the non-degraded warskiller potential');
+assert.strictEqual(sumRes.observed, 10000, 'Observed average should sum only the warskiller weekly damage / 7');
+
+console.log('All Troop-Radar Phase 1, 2, and 3 tests passed successfully!');
 process.exit(0);
