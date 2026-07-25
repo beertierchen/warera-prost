@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         PROST
+// @name         TEST PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.10.0
+// @version      0.10.1-unstable
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -235,6 +235,33 @@
     AMMO_GREEN_PCT: 10,
     FOOD_PCT_STEAK: 0.5,
     BASELINE_TIER: 3,
+
+    // ── Custom-Baseline-Set — basis for the "Tag" (daily) damage calc ────────────
+    // SHARED baseline assumed for EVERY MU member (default = average blue / tier 3).
+    // Hand-edit to model your own reference loadout. NO validation — a typo just
+    // gives a wrong number (non-numeric → 0). Live mode floors real gear at this set.
+    // Units: weapon.dmg / *.precision / *.armor / *.dodge = raw POINTS;
+    //        weapon.crit / helmet.critDmg = whole PERCENT (13 = 13%).
+    // precision + critChance are clamped to 100 together with the player's skill —
+    // overshooting is wasted, not an error.
+    // Cheat-sheet — valid stat range per tier (from statRangesByTier/weaponRanges):
+    //   slot     | T1    T2     T3(blue) T4     T5      T6
+    //   weaponDmg| 21-40 51-60  71-90    101-130 141-170 221-300
+    //   weaponCr | 1-5   6-10   11-15    16-20   26-35   41-50
+    //   gloves(P)| 1-5   6-10   11-15    21-25   31-40   51-60
+    //   helmet(C)| 1-15  16-30  31-50    71-90   91-110  121-150
+    //   chest(A) | 1-5   6-10   11-15    21-30   35-50   56-70
+    //   pants(A) | 1-5   6-10   11-15    21-30   35-50   56-70
+    //   boots(D) | 1-5   6-10   11-15    21-25   31-40   51-60
+    CUSTOM_SET: {
+      weapon: { dmg: 80.5, crit: 13 },
+      gloves: { precision: 13 },
+      helmet: { critDmg: 40.5 },
+      chest:  { armor: 13 },
+      pants:  { armor: 13 },
+      boots:  { dodge: 13 },
+    },
+
     DAILY_RESET_HOUR: 2, // local wall-clock; UNVERIFIED: confirm vs game server TZ
 
     featPillReminder: false,
