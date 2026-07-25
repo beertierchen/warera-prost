@@ -226,6 +226,22 @@ assert.strictEqual(dmgResult.degraded, false, 'Should not be degraded');
 const ratio = dmgResult.dailyDmg / 864213.842897337;
 assert.ok(ratio >= 0.995 && ratio <= 1.005, `Daily damage should be within 0.5% of expected 864213.84 (got: ${dmgResult.dailyDmg})`);
 
+// Temporarily override CONFIG.CUSTOM_SET.weapon.dmg to higher value and check damage increases
+const oldDmg = globalThis.CONFIG.CUSTOM_SET.weapon.dmg;
+globalThis.CONFIG.CUSTOM_SET.weapon.dmg = 150;
+const increasedDmgResult = globalThis.computeDamagePotential(testMember);
+assert.ok(increasedDmgResult.dailyDmg > dmgResult.dailyDmg, 'Custom baseline weapon dmg increase should increase damage potential');
+globalThis.CONFIG.CUSTOM_SET.weapon.dmg = oldDmg;
+
+// Test slot value with "abc" non-numeric string
+const oldGlovesPrec = globalThis.CONFIG.CUSTOM_SET.gloves.precision;
+globalThis.CONFIG.CUSTOM_SET.gloves.precision = 'abc';
+const normalized = globalThis.baselineContribs();
+assert.strictEqual(normalized.precision, 0, 'Non-numeric gloves precision should normalize to 0');
+const fallbackDmgResult = globalThis.computeDamagePotential(testMember);
+assert.ok(!isNaN(fallbackDmgResult.dailyDmg), 'Damage calculation must remain finite and not NaN even with garbage set values');
+globalThis.CONFIG.CUSTOM_SET.gloves.precision = oldGlovesPrec;
+
 // Test 8: NaN-guard degraded checks
 console.log('Test 8: Testing computeDamagePotential NaN-guards...');
 const degradedMember = {
