@@ -229,18 +229,108 @@ assert.ok(ratio >= 0.995 && ratio <= 1.005, `Daily damage should be within 0.5% 
 // Temporarily override CONFIG.CUSTOM_SET.weapon.dmg to higher value and check damage increases
 const oldDmg = globalThis.CONFIG.CUSTOM_SET.weapon.dmg;
 globalThis.CONFIG.CUSTOM_SET.weapon.dmg = 150;
+globalThis.setActiveBaselineSet(globalThis.loadBaselineSet());
 const increasedDmgResult = globalThis.computeDamagePotential(testMember);
 assert.ok(increasedDmgResult.dailyDmg > dmgResult.dailyDmg, 'Custom baseline weapon dmg increase should increase damage potential');
 globalThis.CONFIG.CUSTOM_SET.weapon.dmg = oldDmg;
+globalThis.setActiveBaselineSet(globalThis.loadBaselineSet());
 
 // Test slot value with "abc" non-numeric string
 const oldGlovesPrec = globalThis.CONFIG.CUSTOM_SET.gloves.precision;
 globalThis.CONFIG.CUSTOM_SET.gloves.precision = 'abc';
+globalThis.setActiveBaselineSet(globalThis.loadBaselineSet());
 const normalized = globalThis.baselineContribs();
 assert.strictEqual(normalized.precision, 0, 'Non-numeric gloves precision should normalize to 0');
 const fallbackDmgResult = globalThis.computeDamagePotential(testMember);
 assert.ok(!isNaN(fallbackDmgResult.dailyDmg), 'Damage calculation must remain finite and not NaN even with garbage set values');
 globalThis.CONFIG.CUSTOM_SET.gloves.precision = oldGlovesPrec;
+globalThis.setActiveBaselineSet(globalThis.loadBaselineSet());
+
+// Test 7b: Custom Baseline Set persistence & validation (Issue #71 Part B)
+console.log('Test 7b: Testing Custom Baseline Set persistence and validation...');
+// 1. isValidBaselineShape checks
+const validSet = {
+  weapon: { dmg: 80.5, crit: 13 },
+  gloves: { precision: 13 },
+  helmet: { critDmg: 40.5 },
+  chest:  { armor: 13 },
+  pants:  { armor: 13 },
+  boots:  { dodge: 13 },
+};
+assert.strictEqual(globalThis.isValidBaselineShape(validSet), true, 'Valid set shape should return true');
+
+const missingSlot = {
+  weapon: { dmg: 80.5, crit: 13 },
+  gloves: { precision: 13 },
+  helmet: { critDmg: 40.5 },
+  chest:  { armor: 13 },
+  pants:  { armor: 13 },
+  // boots slot missing
+};
+assert.strictEqual(globalThis.isValidBaselineShape(missingSlot), false, 'Missing slot boots should return false');
+
+const missingKey = {
+  weapon: { dmg: 80.5 }, // crit missing
+  gloves: { precision: 13 },
+  helmet: { critDmg: 40.5 },
+  chest:  { armor: 13 },
+  pants:  { armor: 13 },
+  boots:  { dodge: 13 },
+};
+assert.strictEqual(globalThis.isValidBaselineShape(missingKey), false, 'Missing key weapon.crit should return false');
+
+const nonNumeric = {
+  weapon: { dmg: 'abc', crit: 13 },
+  gloves: { precision: 13 },
+  helmet: { critDmg: 40.5 },
+  chest:  { armor: 13 },
+  pants:  { armor: 13 },
+  boots:  { dodge: 13 },
+};
+assert.strictEqual(globalThis.isValidBaselineShape(nonNumeric), false, 'Non-numeric leaf weapon.dmg should return false');
+
+// 2. loadBaselineSet fallback checks
+const originalGMGet = global.GM_getValue;
+
+// Mock GM_getValue for broken JSON
+global.GM_getValue = (key, def) => {
+  if (key === 'wia.customBaselineSet') return '{invalid json';
+  return def;
+};
+const fallbackSet = globalThis.loadBaselineSet();
+assert.deepStrictEqual(fallbackSet, globalThis.CONFIG.CUSTOM_SET, 'Broken JSON should fallback to default CONFIG.CUSTOM_SET');
+
+// Mock GM_getValue for valid override
+const overrideSet = {
+  weapon: { dmg: 110, crit: 20 },
+  gloves: { precision: 25 },
+  helmet: { critDmg: 90 },
+  chest:  { armor: 30 },
+  pants:  { armor: 30 },
+  boots:  { dodge: 25 },
+};
+global.GM_getValue = (key, def) => {
+  if (key === 'wia.customBaselineSet') return JSON.stringify(overrideSet);
+  return def;
+};
+const parsedOverride = globalThis.loadBaselineSet();
+assert.deepStrictEqual(parsedOverride, overrideSet, 'Valid persisted override should be loaded');
+
+// 3. activeBaselineSet and baselineContribs updates
+// Mock activeBaselineSet with override
+globalThis.setActiveBaselineSet(parsedOverride);
+const contribs = globalThis.baselineContribs();
+assert.strictEqual(contribs.weaponDmg, 110);
+assert.strictEqual(contribs.precision, 25);
+assert.strictEqual(contribs.armor, 60, 'Should sum chest + pants armor');
+
+// Restore to default
+globalThis.setActiveBaselineSet(globalThis.CONFIG.CUSTOM_SET);
+const defaultContribs = globalThis.baselineContribs();
+assert.strictEqual(defaultContribs.weaponDmg, 80.5);
+
+// Restore original GM_getValue mock
+global.GM_getValue = originalGMGet;
 
 // Test 8: NaN-guard degraded checks
 console.log('Test 8: Testing computeDamagePotential NaN-guards...');
