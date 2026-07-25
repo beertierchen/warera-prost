@@ -1,5 +1,21 @@
 # CHANGELOG
 
+## 2026-07-25 | Feature: Custom-Baseline-Set (v0.10.1)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/test-troop-radar.js`
+
+**Änderungen (Deutsch):**
+- **Persistiertes Custom-Baseline-Set**: Die Baseline für die Tages-Schadenberechnung im Truppen-Radar ist jetzt anpassbar und wird per `GM_setValue` dauerhaft gespeichert.
+- **Eingabemaske**: Ein neues Zahnrad-Icon (Ausrüstungs-SVG + ✎) öffnet ein modales Overlay, in dem das JSON-Set direkt editiert werden kann.
+- **Format-Validierung**: Das eingegebene Set wird syntaktisch und strukturell geprüft. Ungültige Werte werden mit einer Warnmeldung abgefangen und setzen die Baseline sicher auf das Standard-Set zurück.
+- **Integrierte Ausrüstungshilfe**: Ein Cheat-Sheet im Overlay listet die gültigen Stat-Ranges für alle Ausrüstungsteile und Tiers auf.
+
+**Changes (English):**
+- **Persistent Custom-Baseline-Set**: The baseline configuration for daily damage computation is now customizable and persisted via `GM_setValue` across script updates.
+- **Input Modal**: A gear-like icon (equipment SVG + ✎) opens a dialog overlay to directly edit the configuration JSON.
+- **Shape and Format Validation**: Input JSON is validated for layout structure and numeric sanity. Invalid layouts fallback to the default set with a warning toast.
+- **Embedded Cheat Sheet**: An inline details list displays valid stat ranges per slot and tier for quick lookup.
+
 ## 2026-07-24 | Feature: Truppen-Radar Schadenspotenzial (Tag & Live) & Bezugsgrößen-Labels (v0.10.0)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/test-troop-radar.js`
