@@ -587,7 +587,16 @@
         troopRadarSubWarskiller: 'of warskillers',
         troopRadarSubActive: 'of active members',
         settingsFeatTroopRadarCheckbox: 'Troop-Radar (MU Member List & Header)',
-        settingsFeatTroopRadarHint: 'Displays member combat readiness (HP, pill status, skill orientation) in MU member lists and header.'
+        settingsFeatTroopRadarHint: 'Displays member combat readiness (HP, pill status, skill orientation) in MU member lists and header.',
+        customBaselineTitle: 'Edit Baseline-Set',
+        customBaselineHint: 'Applies to Tag only. JSON — only shape/number-format is checked. Invalid → Default.',
+        customBaselineCheatTitle: 'Cheat Sheet · valid stat range per tier',
+        customBaselineBtnReset: 'Reset',
+        customBaselineBtnCancel: 'Cancel',
+        customBaselineBtnSave: 'Save',
+        customBaselineToastReset: 'Reset to default baseline set',
+        customBaselineToastSaved: 'Saved · Tag damage recalculated',
+        customBaselineToastInvalid: 'Format invalid — reset to default'
       },
       de: {
         never: 'nie',
@@ -878,7 +887,16 @@
         troopRadarSubWarskiller: 'von Warskillern',
         troopRadarSubActive: 'von aktiven Mitgliedern',
         settingsFeatTroopRadarCheckbox: 'Truppen-Radar (MU-Member-Liste & Header)',
-        settingsFeatTroopRadarHint: 'Zeigt Kampfbereitschaft (HP, Pillen-Status, Skill-Klasse) in MU-Mitgliederlisten und Header an.'
+        settingsFeatTroopRadarHint: 'Zeigt Kampfbereitschaft (HP, Pillen-Status, Skill-Klasse) in MU-Mitgliederlisten und Header an.',
+        customBaselineTitle: 'Baseline-Set bearbeiten',
+        customBaselineHint: 'Gilt nur für Tag. JSON — nur Format wird geprüft (Slots + Zahlen). Ungültig → Standard.',
+        customBaselineCheatTitle: 'Cheat-Sheet · gültige Stat-Ranges je Tier',
+        customBaselineBtnReset: 'Zurücksetzen',
+        customBaselineBtnCancel: 'Abbrechen',
+        customBaselineBtnSave: 'Speichern',
+        customBaselineToastReset: 'Auf Standard zurückgesetzt',
+        customBaselineToastSaved: 'Gespeichert · Tag-Schaden neu berechnet',
+        customBaselineToastInvalid: 'Format ungültig — auf Standard zurückgesetzt'
       }
     },
 
@@ -904,6 +922,7 @@
   const KEYS = {
     token: NS + 'token',
     tokenFormat: NS + 'tokenFormat',
+    customBaselineSet: NS + 'customBaselineSet',
     locale: NS + 'locale',
     priceCache: NS + 'priceCache',     // { data, fetchedAt }-materials map
     scrapCache: NS + 'scrapCache',     // { price, fetchedAt }-legacy, unused
@@ -2945,6 +2964,10 @@
     const bountyAllies = () => resolveAllyCountryIds().then((s) => [...s]);
     globalThis.bountyAllies = bountyAllies;
     globalThis.extractAllyBounties = extractAllyBounties;
+    globalThis.isValidBaselineShape = isValidBaselineShape;
+    globalThis.loadBaselineSet = loadBaselineSet;
+    globalThis.getActiveBaselineSet = getActiveBaselineSet;
+    globalThis.setActiveBaselineSet = setActiveBaselineSet;
     if (typeof unsafeWindow !== 'undefined' && CONFIG.debug) {
       unsafeWindow.getCurrentUserId = getCurrentUserId;
       unsafeWindow.WIA_resolve = resolveApiBase;
@@ -2956,6 +2979,10 @@
       unsafeWindow.getEffectiveTopic = getEffectiveTopic;
       unsafeWindow.bountyAllies = bountyAllies;
       unsafeWindow.extractAllyBounties = extractAllyBounties;
+      unsafeWindow.isValidBaselineShape = isValidBaselineShape;
+      unsafeWindow.loadBaselineSet = loadBaselineSet;
+      unsafeWindow.getActiveBaselineSet = getActiveBaselineSet;
+      unsafeWindow.setActiveBaselineSet = setActiveBaselineSet;
     }
     globalThis.parseHealthAndHunger = parseHealthAndHunger;
     globalThis.updatePillState = updatePillState;
@@ -5026,6 +5053,56 @@ async function scanInventory(force) {
       .wia-dmg-tile .num { font-size: 16px; font-weight: 800; color: var(--acc); font-variant-numeric: tabular-nums; line-height: 1.05; }
       .wia-dmg-tile .lab { font-size: 9px; font-weight: 700; color: var(--acc); opacity: .85; text-transform: uppercase; margin-top: 1px; letter-spacing: .02em; }
       .wia-dmg-tile .sublab { font-size: 8px; color: #8b949e; margin-top: 3px; font-variant-numeric: tabular-nums; }
+
+      /* ── Custom Baseline Modal & Edit Badge ── */
+      .wia-edit-badge {
+        all: unset; position: absolute; top: 3px; left: 3px; cursor: pointer; width: 19px; height: 19px; border-radius: 5px;
+        display: flex; align-items: center; justify-content: center; color: var(--acc); background: rgba(240, 165, 74, .10);
+        border: 1px solid rgba(240, 165, 74, .28); transition: background .15s, transform .12s;
+      }
+      .wia-edit-badge:hover { background: rgba(240, 165, 74, .22); transform: scale(1.08); }
+      .wia-edit-badge:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px; }
+      .wia-edit-badge svg { width: 12px; height: 12px; display: block; }
+      .wia-edit-badge .pen { position: absolute; right: -3px; bottom: -3px; font-size: 8px; line-height: 1; background: #0d1117; border-radius: 50%; padding: 1px 1px 0; color: var(--acc); }
+      .wia-dmg-tile[data-mode="live"] .wia-edit-badge { display: none; }
+
+      .wia-mask-ov { position: fixed; inset: 0; background: rgba(1, 4, 9, 0.72); display: none; align-items: center; justify-content: center; padding: 10px; z-index: 2147483610; }
+      .wia-mask-ov.wia-open { display: flex; }
+      .wia-mask { width: 440px; max-width: 100%; background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 12px 13px; box-shadow: 0 12px 34px rgba(0,0,0,.5); text-align: left; }
+      .wia-mask h3 { margin: 0 0 3px; font-size: 13px; font-weight: 700; color: #f8fafc; display: flex; align-items: center; gap: 6px; }
+      .wia-mask .wia-mhint { font-size: 10.5px; color: #8b949e; margin: 0 0 8px; text-align: left; }
+      .wia-mask textarea { width: 100%; height: 150px; resize: vertical; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #e6edf3; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; line-height: 1.5; padding: 8px 10px; tab-size: 2; }
+      .wia-mask textarea:focus { outline: none; border-color: #7c3aed; }
+      .wia-mask textarea.wia-err { border-color: #f2495c; }
+      
+      .wia-cheat { margin: 8px 0 2px; border: 1px solid #21262d; border-radius: 6px; background: #0d1117; text-align: left; }
+      .wia-cheat summary { cursor: pointer; font-size: 10.5px; color: #8b949e; padding: 6px 10px; list-style: none; outline: none; }
+      .wia-cheat summary::-webkit-details-marker { display: none; }
+      .wia-cheat summary::before { content: "▸ "; color: #6e7681; }
+      .wia-cheat[open] summary::before { content: "▾ "; }
+      .wia-cheat-body { padding: 0 10px 8px; overflow-x: auto; }
+      .wia-cheat-body table { border-collapse: collapse; font-family: ui-monospace, Menlo, monospace; font-size: 10px; color: #8b949e; white-space: nowrap; width: 100%; }
+      .wia-cheat-body td, .wia-cheat-body th { padding: 2px 8px 2px 0; text-align: left; }
+      .wia-cheat-body th { color: #6e7681; font-weight: 600; }
+      .wia-cheat-body td:first-child { color: #c9d1d9; }
+      .wia-cheat-body .wia-t3 { color: #4fd1e0; }
+
+      .wia-mask-actions { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+      .wia-mask-actions .wia-spacer { flex: 1; }
+      
+      .wia-btn { all: unset; cursor: pointer; font-size: 11.5px; font-weight: 600; padding: 6px 12px; border-radius: 6px; line-height: 1; transition: background .15s, border-color .15s; box-sizing: border-box; display: inline-block; text-align: center; }
+      .wia-btn:focus-visible { outline: 2px solid #a78bfa; outline-offset: 1px; }
+      .wia-btn-save { background: #238636; color: #fff; }
+      .wia-btn-save:hover { background: #2ea043; }
+      .wia-btn-ghost { color: #8b949e; border: 1px solid #30363d; }
+      .wia-btn-ghost:hover { color: #f8fafc; border-color: #8b949e; }
+      .wia-btn-reset { color: #d29922; border: 1px solid #3a2d18; }
+      .wia-btn-reset:hover { background: #17130b; }
+      
+      .wia-toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%) translateY(8px); background: #0d1117; border: 1px solid #30363d; color: #e6edf3; font-size: 11.5px; padding: 7px 12px; border-radius: 6px; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; z-index: 2147483620; box-shadow: 0 6px 20px rgba(0,0,0,.5); white-space: nowrap; }
+      .wia-toast.wia-show { opacity: 1; transform: translateX(-50%) translateY(0); }
+      .wia-toast.wia-ok { border-color: #238636; }
+      .wia-toast.wia-warn { border-color: #f2495c; color: #ffb3ba; }
     `);
   }
 
@@ -7885,6 +7962,48 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
   let troopRadarLastSummary = null;
   let troopRadarLastMembers = [];
 
+  function isValidBaselineShape(o) {
+    if (!o || typeof o !== 'object') return false;
+    const spec = {
+      weapon: ['dmg', 'crit'],
+      gloves: ['precision'],
+      helmet: ['critDmg'],
+      chest: ['armor'],
+      pants: ['armor'],
+      boots: ['dodge']
+    };
+    for (const [slot, leaves] of Object.entries(spec)) {
+      if (!o[slot] || typeof o[slot] !== 'object') return false;
+      for (const leaf of leaves) {
+        if (!(leaf in o[slot]) || !Number.isFinite(Number(o[slot][leaf]))) return false;
+      }
+    }
+    return true;
+  }
+
+  function loadBaselineSet() {
+    const raw = GM_getValue(KEYS.customBaselineSet, null);
+    if (raw === null) {
+      return JSON.parse(JSON.stringify(CONFIG.CUSTOM_SET));
+    }
+    try {
+      const o = JSON.parse(raw);
+      return isValidBaselineShape(o) ? o : JSON.parse(JSON.stringify(CONFIG.CUSTOM_SET));
+    } catch (e) {
+      return JSON.parse(JSON.stringify(CONFIG.CUSTOM_SET));
+    }
+  }
+
+  let activeBaselineSet = loadBaselineSet();
+
+  function getActiveBaselineSet() {
+    return activeBaselineSet;
+  }
+
+  function setActiveBaselineSet(val) {
+    activeBaselineSet = val;
+  }
+
   function classifyWarskiller(skills) {
     if (!skills || typeof skills !== 'object') {
       return { isWarskiller: false, warShare: 0, ecoShare: 0, warSum: 0, ecoSum: 0, totalPoints: 0, build: 'eco', emoji: '💰', label: 'Eco' };
@@ -8014,7 +8133,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
   }
 
   function baselineContribs() {
-    const s = CONFIG.CUSTOM_SET, n = (x) => Number(x) || 0;
+    const s = activeBaselineSet, n = (x) => Number(x) || 0;
     return {
       weaponDmg:  n(s.weapon.dmg),
       weaponCrit: n(s.weapon.crit),
@@ -8657,6 +8776,10 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
           </div>
           
           <button class="wia-dmg-tile" id="wia-troop-dmg-tile" data-mode="${mode}" aria-label="Schadenspotential — Modus umschalten">
+            <span class="wia-edit-badge" id="wia-troop-edit-btn" title="${t('customBaselineTitle')}" aria-label="${t('customBaselineTitle')}">
+              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8.5 2.5 4 5.5l1.8 3L8 7.2V21h8V7.2l2.2 1.3L20 5.5l-4.5-3c-.5 1.3-1.7 2.2-3.5 2.2s-3-.9-3.5-2.2Z"/></svg>
+              <span class="pen">✎</span>
+            </span>
             <span class="chip"><span class="ico">${chipIcon}</span><span class="mname">${chipText}</span><span class="caret">⇄</span></span>
             <span class="num">${displayNum}</span>
             <span class="lab">${labelText}</span>
@@ -8683,7 +8806,179 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
         troopRadarDamageMode = troopRadarDamageMode === 'tag' ? 'live' : 'tag';
         renderTroopRadarHeaderSummary(troopRadarLastSummary, muId, troopRadarLastMembers);
       });
+      const editBtn = tile.querySelector('#wia-troop-edit-btn');
+      if (editBtn) {
+        editBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openBaselineMask(muId);
+        });
+      }
     }
+  }
+
+  function showBaselineToast(msg, kind) {
+    let toast = document.getElementById('wia-custom-baseline-toast');
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.id = 'wia-custom-baseline-toast';
+      toast.className = 'wia-toast';
+      document.body.appendChild(toast);
+    }
+    toast.textContent = msg;
+    toast.className = 'wia-toast wia-show ' + (kind === 'ok' ? 'wia-ok' : 'wia-warn');
+    if (toast.tHide) clearTimeout(toast.tHide);
+    toast.tHide = setTimeout(() => {
+      toast.className = 'wia-toast';
+    }, 2600);
+  }
+
+  function openBaselineMask(muId) {
+    let ov = document.getElementById('wia-custom-baseline-mask-ov');
+    if (!ov) {
+      ov = document.createElement('div');
+      ov.id = 'wia-custom-baseline-mask-ov';
+      ov.className = 'wia-mask-ov';
+      document.body.appendChild(ov);
+    }
+
+    ov.innerHTML = `
+      <div class="wia-mask" role="dialog" aria-label="Baseline-Set bearbeiten">
+        <h3>
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="#f0a54a" aria-hidden="true"><path d="M8.5 2.5 4 5.5l1.8 3L8 7.2V21h8V7.2l2.2 1.3L20 5.5l-4.5-3c-.5 1.3-1.7 2.2-3.5 2.2s-3-.9-3.5-2.2Z"/></svg>
+          ${t('customBaselineTitle')}
+        </h3>
+        <p class="wia-mhint">${t('customBaselineHint')}</p>
+        <textarea id="wia-custom-baseline-ta" spellcheck="false"></textarea>
+        <details class="wia-cheat">
+          <summary>${t('customBaselineCheatTitle')}</summary>
+          <div class="wia-cheat-body">
+            <table>
+              <thead>
+                <tr><th>Slot (Einheit)</th><th>T1</th><th>T2</th><th class="wia-t3">T3 Blau</th><th>T4</th><th>T5</th><th>T6</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>weapon.dmg (Pkt)</td><td>21-40</td><td>51-60</td><td class="wia-t3">71-90</td><td>101-130</td><td>141-170</td><td>221-300</td></tr>
+                <tr><td>weapon.crit (%)</td><td>1-5</td><td>6-10</td><td class="wia-t3">11-15</td><td>16-20</td><td>26-35</td><td>41-50</td></tr>
+                <tr><td>gloves.precision (Pkt)</td><td>1-5</td><td>6-10</td><td class="wia-t3">11-15</td><td>21-25</td><td>31-40</td><td>51-60</td></tr>
+                <tr><td>helmet.critDmg (%)</td><td>1-15</td><td>16-30</td><td class="wia-t3">31-50</td><td>71-90</td><td>91-110</td><td>121-150</td></tr>
+                <tr><td>chest.armor (Pkt)</td><td>1-5</td><td>6-10</td><td class="wia-t3">11-15</td><td>21-30</td><td>35-50</td><td>56-70</td></tr>
+                <tr><td>pants.armor (Pkt)</td><td>1-5</td><td>6-10</td><td class="wia-t3">11-15</td><td>21-30</td><td>35-50</td><td>56-70</td></tr>
+                <tr><td>boots.dodge (Pkt)</td><td>1-5</td><td>6-10</td><td class="wia-t3">11-15</td><td>21-25</td><td>31-40</td><td>51-60</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </details>
+        <div class="wia-mask-actions">
+          <button class="wia-btn wia-btn-reset" id="wia-custom-baseline-reset">${t('customBaselineBtnReset')}</button>
+          <span class="wia-spacer"></span>
+          <button class="wia-btn wia-btn-ghost" id="wia-custom-baseline-cancel">${t('customBaselineBtnCancel')}</button>
+          <button class="wia-btn wia-btn-save" id="wia-custom-baseline-save">${t('customBaselineBtnSave')}</button>
+        </div>
+      </div>
+    `;
+
+    const ta = ov.querySelector('#wia-custom-baseline-ta');
+    ta.value = JSON.stringify(activeBaselineSet, null, 2);
+    ta.classList.remove('wia-err');
+
+    const closeMask = () => {
+      ov.classList.remove('wia-open');
+    };
+
+    ov.classList.add('wia-open');
+    ta.focus();
+
+    // Event listeners
+    ov.addEventListener('click', (e) => {
+      if (e.target === ov) closeMask();
+    });
+
+    const escHandler = (e) => {
+      if (e.key === 'Escape' && ov.classList.contains('wia-open')) {
+        closeMask();
+      }
+    };
+    document.addEventListener('keydown', escHandler);
+
+    ov.querySelector('#wia-custom-baseline-cancel').addEventListener('click', closeMask);
+
+    ov.querySelector('#wia-custom-baseline-reset').addEventListener('click', () => {
+      activeBaselineSet = JSON.parse(JSON.stringify(CONFIG.CUSTOM_SET));
+      GM_setValue(KEYS.customBaselineSet, '');
+      ta.value = JSON.stringify(activeBaselineSet, null, 2);
+      ta.classList.remove('wia-err');
+      if (troopRadarLastSummary) {
+        const membersData = troopRadarLastMembers;
+        const processed = membersData.map((m) => {
+          const tagRes = computeDamagePotential(m, { equip: 'blue' });
+          const realRes = computeDamagePotential(m, { equip: 'realFloored' });
+          return {
+            ...m,
+            tagDmg: tagRes.dailyDmg,
+            realDmg: realRes.dailyDmg,
+            degraded: tagRes.degraded
+          };
+        });
+        const summary = summarizeTroops(processed);
+        troopRadarLastSummary = summary;
+        renderTroopRadarHeaderSummary(summary, muId, membersData);
+      }
+      showBaselineToast(t('customBaselineToastReset'), 'ok');
+    });
+
+    ov.querySelector('#wia-custom-baseline-save').addEventListener('click', () => {
+      let parsed;
+      try {
+        parsed = JSON.parse(ta.value);
+      } catch (e) {
+        parsed = null;
+      }
+
+      if (parsed && isValidBaselineShape(parsed)) {
+        activeBaselineSet = parsed;
+        GM_setValue(KEYS.customBaselineSet, JSON.stringify(parsed));
+        closeMask();
+        if (troopRadarLastSummary) {
+          const membersData = troopRadarLastMembers;
+          const processed = membersData.map((m) => {
+            const tagRes = computeDamagePotential(m, { equip: 'blue' });
+            const realRes = computeDamagePotential(m, { equip: 'realFloored' });
+            return {
+              ...m,
+              tagDmg: tagRes.dailyDmg,
+              realDmg: realRes.dailyDmg,
+              degraded: tagRes.degraded
+            };
+          });
+          const summary = summarizeTroops(processed);
+          troopRadarLastSummary = summary;
+          renderTroopRadarHeaderSummary(summary, muId, membersData);
+        }
+        showBaselineToast(t('customBaselineToastSaved'), 'ok');
+      } else {
+        activeBaselineSet = JSON.parse(JSON.stringify(CONFIG.CUSTOM_SET));
+        GM_setValue(KEYS.customBaselineSet, '');
+        ta.value = JSON.stringify(activeBaselineSet, null, 2);
+        ta.classList.add('wia-err');
+        if (troopRadarLastSummary) {
+          const membersData = troopRadarLastMembers;
+          const processed = membersData.map((m) => {
+            const tagRes = computeDamagePotential(m, { equip: 'blue' });
+            const realRes = computeDamagePotential(m, { equip: 'realFloored' });
+            return {
+              ...m,
+              tagDmg: tagRes.dailyDmg,
+              realDmg: realRes.dailyDmg,
+              degraded: tagRes.degraded
+            };
+          });
+          const summary = summarizeTroops(processed);
+          troopRadarLastSummary = summary;
+          renderTroopRadarHeaderSummary(summary, muId, membersData);
+        }
+        showBaselineToast(t('customBaselineToastInvalid'), 'warn');
+      }
+    });
   }
 
   function formatTroopRadarTime(isoString) {
@@ -8946,6 +9241,10 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
   if (CONFIG.debug || typeof process !== 'undefined') {
     globalThis.classifyWarskiller = classifyWarskiller;
     globalThis.baselineContribs = baselineContribs;
+    globalThis.isValidBaselineShape = isValidBaselineShape;
+    globalThis.loadBaselineSet = loadBaselineSet;
+    globalThis.getActiveBaselineSet = getActiveBaselineSet;
+    globalThis.setActiveBaselineSet = setActiveBaselineSet;
     globalThis.evaluatePillStatus = evaluatePillStatus;
     globalThis.createOptimisticMemberData = createOptimisticMemberData;
     globalThis.computeDamagePotential = computeDamagePotential;
