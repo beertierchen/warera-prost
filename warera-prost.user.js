@@ -8132,8 +8132,8 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     };
   }
 
-  function baselineContribs() {
-    const s = activeBaselineSet, n = (x) => Number(x) || 0;
+  function contribsOf(s) {
+    const n = (x) => Number(x) || 0;
     return {
       weaponDmg:  n(s.weapon.dmg),
       weaponCrit: n(s.weapon.crit),
@@ -8142,6 +8142,10 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       armor:      n(s.chest.armor) + n(s.pants.armor),
       dodge:      n(s.boots.dodge),
     };
+  }
+
+  function baselineContribs() {
+    return contribsOf(activeBaselineSet);
   }
 
   function computeDamagePotential(member, opts = {}) {
@@ -8167,16 +8171,17 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     }
 
     // Custom set baseline source
-    const b = baselineContribs();
+    const bTag   = baselineContribs();             // active/custom set → Tag path
+    const bFloor = contribsOf(CONFIG.CUSTOM_SET);  // immutable default (blue) → Live floor
 
     // Choose equipment contributions based on mode
     const isReal = opts.equip === 'realFloored';
-    const effWeaponDmg  = isReal ? Math.max(c.weaponDmgReal ?? 0, b.weaponDmg)   : b.weaponDmg;
-    const effWeaponCrit = isReal ? Math.max(c.critChanceWeapon ?? 0, b.weaponCrit) : b.weaponCrit;
-    const effPrecision  = isReal ? Math.max(c.precisionEquip ?? 0, b.precision)   : b.precision;
-    const effCritDmg    = isReal ? Math.max(c.critDmgEquip ?? 0, b.critDmg)       : b.critDmg;
-    const effArmor      = isReal ? Math.max(c.armorEquip ?? 0, b.armor)           : b.armor;
-    const effDodge      = isReal ? Math.max(c.dodgeEquip ?? 0, b.dodge)           : b.dodge;
+    const effWeaponDmg  = isReal ? Math.max(c.weaponDmgReal ?? 0, bFloor.weaponDmg)   : bTag.weaponDmg;
+    const effWeaponCrit = isReal ? Math.max(c.critChanceWeapon ?? 0, bFloor.weaponCrit) : bTag.weaponCrit;
+    const effPrecision  = isReal ? Math.max(c.precisionEquip ?? 0, bFloor.precision)   : bTag.precision;
+    const effCritDmg    = isReal ? Math.max(c.critDmgEquip ?? 0, bFloor.critDmg)       : bTag.critDmg;
+    const effArmor      = isReal ? Math.max(c.armorEquip ?? 0, bFloor.armor)           : bTag.armor;
+    const effDodge      = isReal ? Math.max(c.dodgeEquip ?? 0, bFloor.dodge)           : bTag.dodge;
 
     const PILL_BUFF_PCT = CONFIG.PILL_BUFF_PCT ?? 60;
     const AMMO_GREEN_PCT = CONFIG.AMMO_GREEN_PCT ?? 10;
@@ -8652,7 +8657,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
 
         const formatDmg = (val) => val !== null && val !== undefined ? (val / 1000000).toFixed(2) + 'M' : 'N/A';
 
-        const b = baselineContribs();
+        const b = contribsOf(CONFIG.CUSTOM_SET);
 
         const getGearSource = (realVal, baseline) => {
           if (realVal === null || realVal === undefined) return 'blue';

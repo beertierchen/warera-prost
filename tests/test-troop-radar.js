@@ -246,6 +246,31 @@ assert.ok(!isNaN(fallbackDmgResult.dailyDmg), 'Damage calculation must remain fi
 globalThis.CONFIG.CUSTOM_SET.gloves.precision = oldGlovesPrec;
 globalThis.setActiveBaselineSet(globalThis.loadBaselineSet());
 
+// Test 7c: Live Floor Regression Guard (Custom Baseline Set must not affect Live floor)
+console.log('Test 7c: Testing Live Floor Regression Guard (Custom baseline must not affect Live floor)...');
+const defaultLiveDmgResult = globalThis.computeDamagePotential(testMember, { equip: 'realFloored' });
+const defaultTagDmgResult = globalThis.computeDamagePotential(testMember);
+
+// Set a HIGH custom baseline set
+const highCustomSet = {
+  weapon: { dmg: 300, crit: 20 },
+  gloves: { precision: 25 },
+  helmet: { critDmg: 90 },
+  chest:  { armor: 30 },
+  pants:  { armor: 30 },
+  boots:  { dodge: 25 },
+};
+globalThis.setActiveBaselineSet(highCustomSet);
+
+const highTagDmgResult = globalThis.computeDamagePotential(testMember);
+assert.ok(highTagDmgResult.dailyDmg > defaultTagDmgResult.dailyDmg, 'Tag damage potential should rise with high custom baseline set');
+
+const highLiveDmgResult = globalThis.computeDamagePotential(testMember, { equip: 'realFloored' });
+assert.strictEqual(highLiveDmgResult.dailyDmg, defaultLiveDmgResult.dailyDmg, 'Live damage potential (realFloored) must remain unchanged when custom baseline is modified');
+
+// Restore default baseline set
+globalThis.setActiveBaselineSet(globalThis.CONFIG.CUSTOM_SET);
+
 // Test 7b: Custom Baseline Set persistence & validation (Issue #71 Part B)
 console.log('Test 7b: Testing Custom Baseline Set persistence and validation...');
 // 1. isValidBaselineShape checks
