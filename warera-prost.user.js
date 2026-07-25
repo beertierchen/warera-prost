@@ -8047,24 +8047,17 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       }
     }
 
-    // Midpoints derived from CONFIG maps
-    const T = CONFIG.BASELINE_TIER;
-    const mid = (r) => (r.min + r.max) / 2;
-    const blueWeaponDmg  = mid(CONFIG.weaponRanges[T].dmg);
-    const blueWeaponCrit = mid(CONFIG.weaponRanges[T].crit);
-    const bluePrecision  = mid(CONFIG.statRangesByTier.gloves[T]);
-    const blueCritDmg    = mid(CONFIG.statRangesByTier.helmet[T]);
-    const blueArmor      = mid(CONFIG.statRangesByTier.chest[T]) + mid(CONFIG.statRangesByTier.pants[T]);
-    const blueDodge      = mid(CONFIG.statRangesByTier.boots[T]);
+    // Custom set baseline source
+    const b = baselineContribs();
 
     // Choose equipment contributions based on mode
     const isReal = opts.equip === 'realFloored';
-    const effWeaponDmg  = isReal ? Math.max(c.weaponDmgReal ?? 0, blueWeaponDmg)   : blueWeaponDmg;
-    const effWeaponCrit = isReal ? Math.max(c.critChanceWeapon ?? 0, blueWeaponCrit) : blueWeaponCrit;
-    const effPrecision  = isReal ? Math.max(c.precisionEquip ?? 0, bluePrecision)   : bluePrecision;
-    const effCritDmg    = isReal ? Math.max(c.critDmgEquip ?? 0, blueCritDmg)       : blueCritDmg;
-    const effArmor      = isReal ? Math.max(c.armorEquip ?? 0, blueArmor)           : blueArmor;
-    const effDodge      = isReal ? Math.max(c.dodgeEquip ?? 0, blueDodge)           : blueDodge;
+    const effWeaponDmg  = isReal ? Math.max(c.weaponDmgReal ?? 0, b.weaponDmg)   : b.weaponDmg;
+    const effWeaponCrit = isReal ? Math.max(c.critChanceWeapon ?? 0, b.weaponCrit) : b.weaponCrit;
+    const effPrecision  = isReal ? Math.max(c.precisionEquip ?? 0, b.precision)   : b.precision;
+    const effCritDmg    = isReal ? Math.max(c.critDmgEquip ?? 0, b.critDmg)       : b.critDmg;
+    const effArmor      = isReal ? Math.max(c.armorEquip ?? 0, b.armor)           : b.armor;
+    const effDodge      = isReal ? Math.max(c.dodgeEquip ?? 0, b.dodge)           : b.dodge;
 
     const PILL_BUFF_PCT = CONFIG.PILL_BUFF_PCT ?? 60;
     const AMMO_GREEN_PCT = CONFIG.AMMO_GREEN_PCT ?? 10;
@@ -8540,14 +8533,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
 
         const formatDmg = (val) => val !== null && val !== undefined ? (val / 1000000).toFixed(2) + 'M' : 'N/A';
 
-        const mid = (r) => (r.min + r.max) / 2;
-        const T = CONFIG.BASELINE_TIER ?? 3;
-        const blueWeaponDmg  = mid(CONFIG.weaponRanges[T].dmg);
-        const blueWeaponCrit = mid(CONFIG.weaponRanges[T].crit);
-        const bluePrecision  = mid(CONFIG.statRangesByTier.gloves[T]);
-        const blueCritDmg    = mid(CONFIG.statRangesByTier.helmet[T]);
-        const blueArmor      = mid(CONFIG.statRangesByTier.chest[T]) + mid(CONFIG.statRangesByTier.pants[T]);
-        const blueDodge      = mid(CONFIG.statRangesByTier.boots[T]);
+        const b = baselineContribs();
 
         const getGearSource = (realVal, baseline) => {
           if (realVal === null || realVal === undefined) return 'blue';
@@ -8564,12 +8550,12 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
           'Reset At': c.lastSkillsResetAt || 'null',
           'Hours Left': liveRes.usableHours !== undefined ? liveRes.usableHours.toFixed(2) : 'N/A',
           'fracH': liveRes.fracH !== undefined ? (liveRes.fracH * 100).toFixed(1) + '%' : 'N/A',
-          'Wpn': getGearSource(c.weaponDmgReal, blueWeaponDmg),
-          'Prec': getGearSource(c.precisionEquip, bluePrecision),
-          'Crit': getGearSource(c.critChanceWeapon, blueWeaponCrit),
-          'Helm': getGearSource(c.critDmgEquip, blueCritDmg),
-          'Chest/Pants': getGearSource(c.armorEquip, blueArmor),
-          'Boots': getGearSource(c.dodgeEquip, blueDodge)
+          'Wpn': getGearSource(c.weaponDmgReal, b.weaponDmg),
+          'Prec': getGearSource(c.precisionEquip, b.precision),
+          'Crit': getGearSource(c.critChanceWeapon, b.weaponCrit),
+          'Helm': getGearSource(c.critDmgEquip, b.critDmg),
+          'Chest/Pants': getGearSource(c.armorEquip, b.armor),
+          'Boots': getGearSource(c.dodgeEquip, b.dodge)
         };
       });
 
