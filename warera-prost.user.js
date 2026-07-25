@@ -8013,6 +8013,18 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     };
   }
 
+  function baselineContribs() {
+    const s = CONFIG.CUSTOM_SET, n = (x) => Number(x) || 0;
+    return {
+      weaponDmg:  n(s.weapon.dmg),
+      weaponCrit: n(s.weapon.crit),
+      precision:  n(s.gloves.precision),
+      critDmg:    n(s.helmet.critDmg),
+      armor:      n(s.chest.armor) + n(s.pants.armor),
+      dodge:      n(s.boots.dodge),
+    };
+  }
+
   function computeDamagePotential(member, opts = {}) {
     if (!member || !member.combat) {
       return { dailyDmg: 0, degraded: true };
@@ -8947,6 +8959,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
 
   if (CONFIG.debug || typeof process !== 'undefined') {
     globalThis.classifyWarskiller = classifyWarskiller;
+    globalThis.baselineContribs = baselineContribs;
     globalThis.evaluatePillStatus = evaluatePillStatus;
     globalThis.createOptimisticMemberData = createOptimisticMemberData;
     globalThis.computeDamagePotential = computeDamagePotential;
