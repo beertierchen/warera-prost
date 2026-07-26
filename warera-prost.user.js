@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.10.1
+// @version      0.10.2
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -72,6 +72,7 @@
     featBattleAdvisor: false,            // experimental: highlight ally button on /battle/<id> pages
     featOrderRadar: true,                // compact order radar in country & MU headers
     featTroopRadar: true,                // troop radar in MU member list & header
+    featProfileCharsheet: true,          // user profile RPG character sheet (HP, Hunger, build class)
     featSystemAlerts: true,               // receive signed system alerts
     alliedCountryCodes: ['de','pt','es','gm','ir','na','sr','th','at','fi','ie','no','se','uk','va','bf','cd','ye','ne','au','br','id'],
     featMarketGraph: false,
@@ -588,6 +589,13 @@
         troopRadarSubActive: 'of active members',
         settingsFeatTroopRadarCheckbox: 'Troop-Radar (MU Member List & Header)',
         settingsFeatTroopRadarHint: 'Displays member combat readiness (HP, pill status, skill orientation) in MU member lists and header.',
+        settingsFeatProfileCharsheetCheckbox: 'Character Sheet Strip (Player Profiles)',
+        settingsFeatProfileCharsheetHint: 'Shows a DnD-style RPG character sheet (HP, Hunger, build orientation) on player profile pages.',
+        profileClassWar: 'Warrior',
+        profileClassHybrid: 'Mercenary',
+        profileClassEco: 'Magnate',
+        profileHp: 'HP',
+        profileHunger: 'Hunger',
         customBaselineTitle: 'Edit Baseline-Set',
         customBaselineHint: 'Applies to Tag only. JSON — only shape/number-format is checked. Invalid → Default.',
         customBaselineCheatTitle: 'Cheat Sheet · valid stat range per tier',
@@ -888,6 +896,13 @@
         troopRadarSubActive: 'von aktiven Mitgliedern',
         settingsFeatTroopRadarCheckbox: 'Truppen-Radar (MU-Member-Liste & Header)',
         settingsFeatTroopRadarHint: 'Zeigt Kampfbereitschaft (HP, Pillen-Status, Skill-Klasse) in MU-Mitgliederlisten und Header an.',
+        settingsFeatProfileCharsheetCheckbox: 'Charakterbogen-Strip (Spieler-Profile)',
+        settingsFeatProfileCharsheetHint: 'Zeigt einen DnD-artigen Charakterbogen (Leben, Hunger, Skill-Klasse) auf Spieler-Profilseiten.',
+        profileClassWar: 'Krieger',
+        profileClassHybrid: 'Söldner',
+        profileClassEco: 'Magnat',
+        profileHp: 'Leben',
+        profileHunger: 'Hunger',
         customBaselineTitle: 'Baseline-Set bearbeiten',
         customBaselineHint: 'Gilt nur für Tag. JSON — nur Format wird geprüft (Slots + Zahlen). Ungültig → Standard.',
         customBaselineCheatTitle: 'Cheat-Sheet · gültige Stat-Ranges je Tier',
@@ -936,6 +951,7 @@
     featBattleAdvisor: NS + 'featBattle',
     featOrderRadar: NS + 'featOrderRadar',
     featTroopRadar: NS + 'featTroopRadar',
+    featProfileCharsheet: NS + 'featProfileCharsheet',
     regionMap: NS + 'regionMap',
     alliedCountryCodes: NS + 'alliedCodes',
     featPillReminder: NS + 'featPill',
@@ -5103,6 +5119,32 @@ async function scanInventory(force) {
       .wia-toast.wia-show { opacity: 1; transform: translateX(-50%) translateY(0); }
       .wia-toast.wia-ok { border-color: #238636; }
       .wia-toast.wia-warn { border-color: #f2495c; color: #ffb3ba; }
+
+      /* ── User-Profile Charakterbogen-Strip (#63) ── */
+      .wia-charsheet { position: relative; padding: 12px 14px; border-bottom: 1px solid #1c2128; font-family: system-ui, -apple-system, sans-serif; background: linear-gradient(180deg, color-mix(in srgb, var(--cls, #8b949e) 7%, #0d1117), #0d1117); }
+      .wia-charsheet .wia-cs-badge { position: absolute; top: 9px; right: 12px; border: 1px solid #7c3aed; color: #a78bfa; font-size: 9px; font-weight: 700; letter-spacing: .5px; padding: 1px 6px; border-radius: 4px; }
+      .wia-charsheet .wia-cs-title { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 0 0 11px; }
+      .wia-charsheet .wia-cs-word { font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif; font-size: 21px; font-weight: 800; letter-spacing: 3.5px; text-transform: uppercase; color: var(--cls, #d8c9a0); text-shadow: 0 1px 0 rgba(0,0,0,.6), 0 0 14px color-mix(in srgb, var(--cls, #8b949e) 45%, transparent); }
+      .wia-charsheet .wia-cs-rune { color: var(--cls, #8b949e); opacity: .65; font-size: 14px; }
+      .wia-charsheet .wia-cs-share { font-family: ui-monospace, Menlo, monospace; font-size: 11px; color: #b6b09a; }
+      .wia-charsheet .wia-cs-bars { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+      .wia-charsheet .wia-cs-bar { display: flex; height: 36px; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 6px rgba(0,0,0,.4); }
+      .wia-charsheet .wia-cs-bar .ico { width: 40px; flex: none; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+      .wia-charsheet .wia-cs-bar .track { position: relative; flex-grow: 1; display: flex; align-items: center; overflow: hidden; }
+      .wia-charsheet .wia-cs-bar .fill { position: absolute; left: 0; top: 0; bottom: 0; transition: width .35s ease; background-image: linear-gradient(180deg, rgba(255,255,255,.22), rgba(255,255,255,0) 60%); }
+      .wia-charsheet .wia-cs-bar .lbl { position: relative; z-index: 2; font-size: 12px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; padding-left: 11px; text-shadow: 0 1px 2px rgba(0,0,0,.6); }
+      .wia-charsheet .wia-cs-bar .val { position: relative; z-index: 2; margin-left: auto; padding-right: 11px; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; text-shadow: 0 1px 2px rgba(0,0,0,.6); }
+      .wia-charsheet .wia-cs-bar.hp { background: #1c2a1a; }
+      .wia-charsheet .wia-cs-bar.hp .ico { background: #3f5130; color: #d7f0c4; }
+      .wia-charsheet .wia-cs-bar.hp .track { background: #22331d; }
+      .wia-charsheet .wia-cs-bar.hp .fill { background: #5aa152; }
+      .wia-charsheet .wia-cs-bar.hp .lbl, .wia-charsheet .wia-cs-bar.hp .val { color: #eafbe2; }
+      .wia-charsheet .wia-cs-bar.hu { background: #2a1f12; }
+      .wia-charsheet .wia-cs-bar.hu .ico { background: #5a4320; color: #f5dfae; }
+      .wia-charsheet .wia-cs-bar.hu .track { background: #2f2413; }
+      .wia-charsheet .wia-cs-bar.hu .fill { background: #c1842b; }
+      .wia-charsheet .wia-cs-bar.hu .lbl, .wia-charsheet .wia-cs-bar.hu .val { color: #fbeeda; }
+      @media (max-width: 480px) { .wia-charsheet .wia-cs-bars { grid-template-columns: 1fr; } }
     `);
   }
 
@@ -5199,6 +5241,7 @@ async function scanInventory(force) {
     const prevFeatPnlTracker = bg.querySelector('.wia-feat-pnl-tracker')?.checked ?? CONFIG.featPnlTracker;
     const prevFeatOrderRadar = bg.querySelector('.wia-feat-order-radar')?.checked ?? CONFIG.featOrderRadar;
     const prevFeatTroopRadar = bg.querySelector('.wia-feat-troop-radar')?.checked ?? CONFIG.featTroopRadar;
+    const prevFeatProfileCharsheet = bg.querySelector('.wia-feat-profile-charsheet')?.checked ?? CONFIG.featProfileCharsheet;
     const prevPillBuff = bg.querySelector('.wia-pill-buff')?.value ?? CONFIG.pillBuffH;
     const prevPillKnife = bg.querySelector('.wia-pill-knife')?.value ?? CONFIG.pillKnifeH;
     const prevPillDebuff = bg.querySelector('.wia-pill-debuff')?.value ?? CONFIG.pillDebuffH;
@@ -5291,6 +5334,14 @@ async function scanInventory(force) {
             </div>
             <div class="wia-hint" hidden>${t('settingsFeatTroopRadarHint')}</div>
           </details>
+        </div>
+        <div class="wia-feat-row" style="margin-top: 6px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <input type="checkbox" class="wia-feat-profile-charsheet" style="width: auto;" ${prevFeatProfileCharsheet ? 'checked' : ''} />
+            <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatProfileCharsheetCheckbox')}</label>
+            <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
+          </div>
+          <div class="wia-hint" hidden>${t('settingsFeatProfileCharsheetHint')}</div>
         </div>
         <div class="wia-feat-row" style="margin-top: 6px;">
           <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%;">
@@ -5768,6 +5819,11 @@ async function scanInventory(force) {
       GM_setValue(KEYS.featTroopRadar, featTroopRadar);
       CONFIG.featTroopRadar = featTroopRadar;
       if (featBattle && featTroopRadar && isMuPage()) { applyTroopRadar(); } else { const el = document.getElementById('wia-troop-radar-summary'); if (el) el.remove(); document.querySelectorAll('.wia-troop-chips').forEach(e => e.remove()); }
+
+      const featProfileCharsheet = bg.querySelector('.wia-feat-profile-charsheet')?.checked ?? true;
+      GM_setValue(KEYS.featProfileCharsheet, featProfileCharsheet);
+      CONFIG.featProfileCharsheet = featProfileCharsheet;
+      if (featProfileCharsheet && isUserProfilePage()) { applyProfileCharsheet(); } else { removeProfileCharsheet(); }
 
       const featPill = bg.querySelector('.wia-feat-pill').checked;
       GM_setValue(KEYS.featPillReminder, featPill);
@@ -6684,6 +6740,12 @@ function updateObserverTarget() {
         guard('troopRadar', applyTroopRadar);
         initSharedBodyObserver();
       }
+    } else if (isUserProfilePage()) {
+      observer.disconnect();
+      if (CONFIG.featProfileCharsheet) {
+        guard('profileCharsheet', applyProfileCharsheet);
+        initSharedBodyObserver();
+      }
     } else {
       teardownBattleAdvisory();
       const orderRadarEl = document.getElementById('wia-order-radar');
@@ -6691,6 +6753,7 @@ function updateObserverTarget() {
       const troopRadarSummary = document.getElementById('wia-troop-radar-summary');
       if (troopRadarSummary) troopRadarSummary.remove();
       cleanupStrayTroopRadarChips();
+      removeProfileCharsheet();
       observer.disconnect();
       teardownSharedBodyObserver();
     }
@@ -6907,6 +6970,9 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       if (CONFIG.featTroopRadar && isMuPage()) {
         ensureTroopRadarInjected();
       }
+      if (CONFIG.featProfileCharsheet && isUserProfilePage()) {
+        ensureProfileCharsheetInjected();
+      }
       triggerCraftingAdvisorCheck();
     });
     sharedBodyObserver.observe(document.body, { childList: true, subtree: true });
@@ -7081,6 +7147,12 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
   // ───────────────────────────────────────────────────────────────────────────
   function isMuPage() {
     return /^\/mu(\/|$)/.test(getPagePathname());
+  }
+
+  function isUserProfilePage() {
+    // Main profile page only (not /user/<id>/inventory, /skills, … subviews —
+    // those lack the "Ausrüstung" anchor and a different layout).
+    return /^\/user\/[0-9a-zA-Z_-]+\/?$/.test(getPagePathname());
   }
 
   function shouldDimMuHeal(featPill, featDim, inDebuff, hpFull) {
@@ -7258,6 +7330,8 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     if (mCountry) return { type: 'country', rawId: mCountry[1] };
     const mMu = path.match(/^\/mu\/([0-9a-zA-Z_-]+)/);
     if (mMu) return { type: 'mu', rawId: mMu[1] };
+    const mUser = path.match(/^\/user\/([0-9a-zA-Z_-]+)/);
+    if (mUser) return { type: 'user', rawId: mUser[1] };
     return null;
   }
 
@@ -9192,6 +9266,135 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     }
   }
 
+  // ── User-Profile Charakterbogen-Strip (#63) ─────────────────────────────────
+  let profileCharsheetLoading = false;
+  let profileCharsheetActiveUserId = null;
+  let profileCharsheetReqId = 0;
+
+  function profileClassMeta(build) {
+    if (build === 'war')    return { titleKey: 'profileClassWar',    color: '#e05a45' };
+    if (build === 'hybrid') return { titleKey: 'profileClassHybrid', color: '#8a6fc0' };
+    return { titleKey: 'profileClassEco', color: '#b8912b' };
+  }
+
+  // Anchor: the "Ausrüstung"/"Equipment" section is the first card in the profile
+  // content column. Insert our strip in-flow before it (pushes everything down —
+  // never an overlay). Text-based so it survives the hashed atomic class churn.
+  function findProfileCharsheetAnchor() {
+    if (typeof document === 'undefined') return null;
+    const win = document.getElementById('main-window') || document.body;
+    if (!win) return null;
+    const eq = Array.from(win.querySelectorAll('span'))
+      .find((s) => /^(Ausrüstung|Equipment)$/.test((s.textContent || '').trim()));
+    if (!eq) return null;
+    let section = eq;
+    let depth = 0;
+    while (section.parentElement && depth < 25 &&
+           !/Ranglisten|Rankings|Reichtum|Wealth/i.test(section.parentElement.textContent || '')) {
+      section = section.parentElement;
+      depth++;
+    }
+    const column = section.parentElement;
+    if (!column) return null;
+    return { column, before: section };
+  }
+
+  function removeProfileCharsheet() {
+    if (typeof document !== 'undefined') {
+      const el = document.getElementById('wia-profile-charsheet');
+      if (el) el.remove();
+    }
+    profileCharsheetActiveUserId = null;
+  }
+
+  function renderProfileCharsheet(member) {
+    if (typeof document === 'undefined' || !member) return;
+    const anchor = findProfileCharsheetAnchor();
+    if (!anchor) return;
+    let el = document.getElementById('wia-profile-charsheet');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'wia-profile-charsheet';
+      el.className = 'wia-charsheet';
+      anchor.column.insertBefore(el, anchor.before);
+    }
+    const build = member.build || 'eco';
+    const meta = profileClassMeta(build);
+    el.style.setProperty('--cls', meta.color);
+    const share = build === 'eco' ? (member.ecoShare || 0) : (member.warShare || 0);
+    const pct = Math.round((Number.isFinite(share) ? share : 0) * 100);
+    const buildLabel = build === 'eco' ? t('troopRadarEco') : (build === 'hybrid' ? t('troopRadarHybrid') : t('troopRadarWar'));
+    const hpMax = member.hpMax > 0 ? member.hpMax : 0;
+    const huMax = member.hungerMax > 0 ? member.hungerMax : 0;
+    const hpCur = Number.isFinite(member.hpCurrent) ? member.hpCurrent : 0;
+    const huCur = Number.isFinite(member.hungerCurrent) ? member.hungerCurrent : 0;
+    const hpPct = hpMax > 0 ? Math.max(0, Math.min(100, hpCur / hpMax * 100)) : 0;
+    const huPct = huMax > 0 ? Math.max(0, Math.min(100, huCur / huMax * 100)) : 0;
+    const nfmt = (v) => { const r = Math.round((Number.isFinite(v) ? v : 0) * 10) / 10; return Number.isInteger(r) ? String(r) : r.toFixed(1); };
+    el.innerHTML = `
+      <span class="wia-cs-badge">PROST</span>
+      <div class="wia-cs-title">
+        <span class="wia-cs-rune">✦</span>
+        <span class="wia-cs-word">${t(meta.titleKey)}</span>
+        <span class="wia-cs-rune">✦</span>
+        <span class="wia-cs-share">${buildLabel} · ${pct}%</span>
+      </div>
+      <div class="wia-cs-bars">
+        <div class="wia-cs-bar hp">
+          <span class="ico">❤</span>
+          <span class="track"><span class="fill" style="width:${hpPct}%"></span>
+            <span class="lbl">${t('profileHp')}</span><span class="val">${nfmt(hpCur)} / ${nfmt(hpMax)} HP</span></span>
+        </div>
+        <div class="wia-cs-bar hu">
+          <span class="ico">🍖</span>
+          <span class="track"><span class="fill" style="width:${huPct}%"></span>
+            <span class="lbl">${t('profileHunger')}</span><span class="val">${nfmt(huCur)} / ${nfmt(huMax)}</span></span>
+        </div>
+      </div>`;
+  }
+
+  async function applyProfileCharsheet() {
+    if (!CONFIG.featProfileCharsheet) {
+      removeProfileCharsheet();
+      setHealth('profileCharsheet', 'idle', 'disabled in settings');
+      return;
+    }
+    const route = getEntityFromRoute();
+    if (!route || route.type !== 'user' || !route.rawId || !isUserProfilePage()) {
+      removeProfileCharsheet();
+      setHealth('profileCharsheet', 'idle', 'not on profile page');
+      return;
+    }
+    const userId = route.rawId;
+    if (profileCharsheetLoading && profileCharsheetActiveUserId === userId && document.getElementById('wia-profile-charsheet')) return;
+    profileCharsheetActiveUserId = userId;
+    profileCharsheetLoading = true;
+    const reqId = ++profileCharsheetReqId;
+    try {
+      const member = await fetchTroopMemberData(userId);
+      if (reqId !== profileCharsheetReqId) return;
+      renderProfileCharsheet(member);
+      setHealth('profileCharsheet', 'ok', member && member.isOptimistic ? 'optimistic' : 'rendered');
+    } catch (e) {
+      dbg('profileCharsheet', 'error', 'applyProfileCharsheet failed: ' + e.message);
+      setHealth('profileCharsheet', 'fail', e.message);
+    } finally {
+      if (reqId === profileCharsheetReqId) profileCharsheetLoading = false;
+    }
+  }
+
+  function ensureProfileCharsheetInjected() {
+    if (!CONFIG.featProfileCharsheet || typeof document === 'undefined') return;
+    if (!isUserProfilePage()) return;
+    const route = getEntityFromRoute();
+    if (!route || route.type !== 'user') return;
+    if (document.getElementById('wia-profile-charsheet')) return;
+    if (!findProfileCharsheetAnchor()) return;
+    const cached = troopRadarMemberCache.get(route.rawId);
+    if (cached && cached.data) renderProfileCharsheet(cached.data);
+    else applyProfileCharsheet();
+  }
+
   function ensureTroopRadarInjected() {
     if (!CONFIG.featTroopRadar || !isMuPage() || typeof document === 'undefined') return;
     const route = getEntityFromRoute();
@@ -9268,6 +9471,10 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     globalThis.fmtDamage = fmtDamage;
     globalThis.troopRadarMemberCache = troopRadarMemberCache;
     globalThis.troopRadarRosterCache = troopRadarRosterCache;
+    globalThis.isUserProfilePage = isUserProfilePage;
+    globalThis.profileClassMeta = profileClassMeta;
+    globalThis.renderProfileCharsheet = renderProfileCharsheet;
+    globalThis.findProfileCharsheetAnchor = findProfileCharsheetAnchor;
   }
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -14870,6 +15077,7 @@ function checkInventoryDeltaWear() {
     CONFIG.featBattleAdvisor = GM_getValue(KEYS.featBattleAdvisor, false);
     CONFIG.featOrderRadar = GM_getValue(KEYS.featOrderRadar, true);
     CONFIG.featTroopRadar = GM_getValue(KEYS.featTroopRadar, true);
+    CONFIG.featProfileCharsheet = GM_getValue(KEYS.featProfileCharsheet, true);
     CONFIG.alliedCountryCodes = GM_getValue(KEYS.alliedCountryCodes, CONFIG.alliedCountryCodes);
     CONFIG.featPillReminder = GM_getValue(KEYS.featPillReminder, false);
     CONFIG.featPillNotifHnH = GM_getValue(KEYS.featPillNotifHnH, false);
@@ -14916,6 +15124,12 @@ function checkInventoryDeltaWear() {
         initSharedBodyObserver();
       } else setHealth('troopRadar', 'idle', 'not on MU page');
     } else setHealth('troopRadar', 'idle', 'disabled in settings');
+    if (CONFIG.featProfileCharsheet) {
+      if (isUserProfilePage()) {
+        guard('profileCharsheet', applyProfileCharsheet);
+        initSharedBodyObserver();
+      } else setHealth('profileCharsheet', 'idle', 'not on profile page');
+    } else setHealth('profileCharsheet', 'idle', 'disabled in settings');
     if (CONFIG.featPillReminder) guard('pillReminder', initPillReminder); else setHealth('pillReminder', 'idle', 'disabled in settings');
     if (CONFIG.featMuHealDim) applyMuHealDimSoon(); else setHealth('muHealDim', 'idle', 'disabled in settings');
     if (CONFIG.featMarketGraph) guard('marketGraph', initMarketGraph); else setHealth('marketGraph', 'idle', 'disabled in settings');
