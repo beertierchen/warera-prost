@@ -1,5 +1,21 @@
 # CHANGELOG
 
+## 2026-07-25 | Feature: Charakterbogen-Strip auf Spieler-Profilen (v0.10.2)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `package.json`, `tests/test-profile-charsheet.js`, `tests/test-advisor-load.js`
+
+**Änderungen (Deutsch):**
+- **Charakterbogen-Strip**: Auf Spieler-Profilseiten erscheint direkt über dem Ausrüstungs-Bereich ein neuer Streifen mit Leben, Hunger und der Skill-Klasse — schiebt den restlichen Inhalt sanft nach unten (kein Overlay).
+- **Leben/Hunger-Balken**: Große Balken im Spiel-Stil (Leben grün, Hunger amber) mit aktuellen Werten und Füllstand.
+- **Klassen-Titel**: Ein goldener RPG-Titel zeigt die Ausrichtung des Spielers — Krieger (War), Söldner (Hybrid) oder Magnat (Eco) — inkl. Farbe und Skill-Anteil.
+- **Ein-/ausschaltbar**: Neue Einstellung „Charakterbogen-Strip (Spieler-Profile)".
+
+**Changes (English):**
+- **Character Sheet Strip**: On player profile pages a new strip appears in-flow above the equipment section, showing Health, Hunger and the skill class — pushes the rest of the content down (no overlay).
+- **Health/Hunger Bars**: Large game-style bars (Health green, Hunger amber) with current values and fill level.
+- **Class Title**: A gold RPG-style title reflects the player's orientation — Warrior (War), Mercenary (Hybrid) or Magnate (Eco) — with matching color and skill share.
+- **Toggle**: New setting "Character Sheet Strip (Player Profiles)".
+
 ## 2026-07-25 | Feature: Custom-Baseline-Set (v0.10.1)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/test-troop-radar.js`
