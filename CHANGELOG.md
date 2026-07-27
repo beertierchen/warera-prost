@@ -1,5 +1,23 @@
 # CHANGELOG
 
+## 2026-07-27 | Fix: Kleine Preis-Fixes im Crafting-Berater (v0.10.3)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/test-advisor-load.js`
+
+**Änderungen (Deutsch):**
+- **Falsche Marktpreise behoben**: Der Crafting-Berater zeigte teils viel zu niedrige Preise an, wenn einzelne Verkäufe (z. B. Geschenke an Freunde zum Minimalpreis) die Berechnung verzerrt haben.
+- **T5/T6 (Legendary/Mythic) zeigen jetzt Preise**: Bisher blieb die Preisanzeige leer, wenn man ein Ausrüstungsteil craften wollte, das man selbst noch nicht besitzt — genau der Fall beim Crafting.
+- **Geskinnte Waffen erkannt**: Waffen mit Skin (z. B. gsg9-Skins) zeigten keinen Preis, obwohl ein normaler Marktpreis existierte.
+- **Performance**: Kleinere Ruckler/Verzögerungen behoben, die auftraten, während der Crafting-Dialog offen war.
+- **Sicherheitshärtung**: Item-Namen werden jetzt sauber escaped, bevor sie im Crafting-Berater angezeigt werden.
+
+**Changes (English):**
+- **Fixed wrong market prices**: The crafting advisor sometimes showed way-too-low prices when a handful of outlier sales (e.g. gifts to friends at a minimal price) skewed the calculation.
+- **T5/T6 (Legendary/Mythic) now show prices**: Previously the price display stayed blank for a tier you don't own yet — which is exactly the case when crafting.
+- **Skinned weapons recognized**: Weapons with a skin (e.g. gsg9 skins) showed no price even though a normal market price existed.
+- **Performance**: Fixed minor slowdowns/lag that could occur while the crafting dialog was open.
+- **Security hardening**: Item names are now properly escaped before being displayed in the crafting advisor.
+
 ## 2026-07-25 | Feature: Charakterbogen-Strip auf Spieler-Profilen (v0.10.2)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `package.json`, `tests/test-profile-charsheet.js`, `tests/test-advisor-load.js`

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.10.2
+// @version      0.10.3
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -169,6 +169,12 @@
     // weapon score = crit * critWeight + attack
     weaponCritWeight: 4.15,
     critItemMinPercent: 0,
+
+    // --- market reference price (item advisor + crafting advisor) ---
+    txRefLookbackDays: 6,       // only consider transactions from the last N days
+    txRefMinSample: 6,          // widen the closest-by-score group to at least this many txs before averaging
+    txRefMaxSample: 12,         // ...but never grow it past this, so we stay near myStat's actual score
+    txRefOutlierRatio: 3,       // reject prices outside [median/ratio, median*ratio] as gift-cap dumps or wash-trade pumps
     // market-value icon (inline SVG, coin stack). Scrap uses the 🔨 emoji.
     marketIconSvg: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" style="filter:drop-shadow(1px 1px 0 #000)"><path d="M12 5C7.031 5 2 6.546 2 9.5S7.031 14 12 14c4.97 0 10-1.546 10-4.5S16.97 5 12 5zm-5 9.938v3c1.237.299 2.605.482 4 .541v-3a21.166 21.166 0 0 1-4-.541zm6 .54v3a20.994 20.994 0 0 0 4-.541v-3a20.994 20.994 0 0 1-4 .541zm6-1.181v3c1.801-.755 3-1.857 3-3.297v-3c0 1.44-1.199 2.542-3 3.297zm-14 3v-3C3.2 13.542 2 12.439 2 11v3c0 1.439 1.2 2.542 3 3.297z"/></svg>',
 
@@ -2504,6 +2510,35 @@
     return statForType(type, tx.item?.skills);
   }
 
+  function txRefLookbackMs() {
+    return CONFIG.txRefLookbackDays * 24 * 60 * 60 * 1000;
+  }
+
+  function isRecentMarketTx(tx, lookbackMs) {
+    const t = getTxTimestamp(tx);
+    if (!t || t < Date.now() - lookbackMs) return false;
+    return tx.transactionType === undefined || tx.transactionType === 'itemMarket';
+  }
+
+  function median(nums) {
+    const sorted = [...nums].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+  }
+
+  // Rejects price outliers relative to the pool's own median: near-zero
+  // gift/friend sales (min-cap dumps) and wash-trade "boost" sales (max-cap
+  // pumps) both sit far outside a real market cluster's price ratio.
+  function rejectPriceOutliers(entries, getPrice) {
+    if (entries.length < 2) return entries;
+    const priced = entries.map((e) => [e, getPrice(e)]);
+    const mid = median(priced.map(([, p]) => p));
+    if (!mid) return entries;
+    const ratio = CONFIG.txRefOutlierRatio;
+    const kept = priced.filter(([, p]) => p >= mid / ratio && p <= mid * ratio).map(([e]) => e);
+    return kept.length ? kept : entries;
+  }
+
   function migrateTransactionsCache() {
     const key = NS + 'cacheSchemaVersion';
     const currentVersion = GM_getValue(key, 0);
@@ -2539,6 +2574,10 @@
 
   // ── Equipment transactions (gateway/historical) ──────────────────────────
   const transactionsInFlight = {}; // code -> promise (dedup)
+  // code -> timestamp of last attempt, success or failure. A timeout doesn't
+  // trip isRateLimited() (that's 429-only), so without this a code that keeps
+  // timing out gets re-requested on every call site's next tick, forever.
+  const transactionsLastAttempt = {};
 
   async function fetchItemTransactions(code, force) {
     if (!code) return null;
@@ -2547,6 +2586,9 @@
     if (!force && cached && now() - cached.fetchedAt < CONFIG.txCacheTtlMs) return cached.data;
     if (isRateLimited()) return cached ? cached.data : null;
     if (transactionsInFlight[code]) return transactionsInFlight[code];
+    const lastAttempt = transactionsLastAttempt[code];
+    if (!force && lastAttempt && now() - lastAttempt < CONFIG.rateLimitBackoffMs) return cached ? cached.data : null;
+    transactionsLastAttempt[code] = now();
 
     transactionsInFlight[code] = (async () => {
       try {
@@ -3054,6 +3096,11 @@
     globalThis.detectItem = detectItem;
     globalThis.evaluate = evaluate;
     globalThis.calculateInventoryRankings = calculateInventoryRankings;
+    globalThis.getTransactionReferencePrice = getTransactionReferencePrice;
+    globalThis.getItemPriceRange = getItemPriceRange;
+    globalThis.rejectPriceOutliers = rejectPriceOutliers;
+    globalThis.median = median;
+    globalThis.ensureCraftingPricesFetched = ensureCraftingPricesFetched;
   }
 
   function getLocale() {
@@ -3103,6 +3150,20 @@
     return match ? match[1] : null;
   }
 
+  // Lazily built, memoized: CONFIG.skinToSlot is a static literal, so this
+  // only needs to be derived once regardless of how many hot paths (DOM
+  // mutation observer, crafting-modal poll) call slotForSkin per second.
+  let skinToSlotLowerCache = null;
+  function skinToSlotLower() {
+    if (!skinToSlotLowerCache) {
+      skinToSlotLowerCache = {};
+      for (const [key, slot] of Object.entries(CONFIG.skinToSlot || {})) {
+        skinToSlotLowerCache[key.toLowerCase()] = slot;
+      }
+    }
+    return skinToSlotLowerCache;
+  }
+
   function slotForSkin(skinName) {
     if (!skinName) return null;
 
@@ -3111,12 +3172,8 @@
       if (CONFIG.skinToSlot[skinName]) {
         return CONFIG.skinToSlot[skinName];
       }
-      const lowerName = skinName.toLowerCase();
-      for (const [key, slot] of Object.entries(CONFIG.skinToSlot)) {
-        if (key.toLowerCase() === lowerName) {
-          return slot;
-        }
-      }
+      const lowerHit = skinToSlotLower()[skinName.toLowerCase()];
+      if (lowerHit) return lowerHit;
     }
 
     // 2. Suffix-Auto-Fallback
@@ -3132,6 +3189,13 @@
 
   
 
+  // A skin's slot (e.g. "jet", "chest") isn't always its item type ("weapon",
+  // "chest") — typeByAltKeyword maps the ones that differ. Shared by
+  // detectType() (inventory items) and parseCraftingState() (crafting modal).
+  function slotType(slot) {
+    return CONFIG.typeByAltKeyword[slot] || slot;
+  }
+
   function detectType(img, card) {
     const alt = (img.getAttribute('alt') || '').toLowerCase().trim();
     const src = (img.getAttribute('src') || '').toLowerCase();
@@ -3146,7 +3210,7 @@
 
       const slot = slotForSkin(skinName);
       if (!slot) return { type: 'unknown', alt, code: null, srcBase: skinName, tier: null, isSkin: true };
-      const type = CONFIG.typeByAltKeyword[slot] || slot;
+      const type = slotType(slot);
       if (type === 'weapon') {
         // Weapon-Code = Slot; Tier deterministisch
         return {
@@ -3411,12 +3475,10 @@
   function getTransactionReferencePrice(txs, type, myStat) {
     if (!txs || !txs.length || myStat == null) return null;
 
-    const sixDaysAgo = Date.now() - 6 * 24 * 60 * 60 * 1000;
+    const lookbackMs = txRefLookbackMs();
 
     const validTxs = txs.map(tx => {
-      const t = getTxTimestamp(tx);
-      if (!t || t < sixDaysAgo) return null;
-      if (tx.transactionType !== undefined && tx.transactionType !== 'itemMarket') return null;
+      if (!isRecentMarketTx(tx, lookbackMs)) return null;
 
       const score = getTxScore(tx, type);
       return {
@@ -3431,6 +3493,9 @@
     // Sort by diff ascending
     validTxs.sort((a, b) => a.diff - b.diff);
 
+    // Widen the pool to at least txRefMinSample entries (grouping same-diff
+    // ties atomically, same as before), then hard-cap at txRefMaxSample —
+    // a single huge tie-group could otherwise blow past it in one step.
     const closest = [];
     let i = 0;
     while (i < validTxs.length) {
@@ -3441,15 +3506,23 @@
         i++;
       }
       closest.push(...group);
-      if (closest.length >= 3) {
-        break;
-      }
+      if (closest.length >= CONFIG.txRefMinSample) break;
+    }
+    if (closest.length > CONFIG.txRefMaxSample) closest.length = CONFIG.txRefMaxSample;
+
+    const kept = rejectPriceOutliers(closest, (t) => t.price);
+    if (kept.length < closest.length) {
+      dbg('advisor', 'debug', 'txRef: rejected price outliers', {
+        rejected: closest.length - kept.length,
+        kept: kept.length,
+        prices: closest.map((t) => t.price)
+      });
     }
 
-    const sum = closest.reduce((acc, t) => acc + t.price, 0);
+    const sum = kept.reduce((acc, t) => acc + t.price, 0);
     return {
-      price: sum / closest.length,
-      count: closest.length,
+      price: sum / kept.length,
+      count: kept.length,
       diff: closest[0]?.diff ?? 0
     };
   }
@@ -4126,8 +4199,8 @@
 
   const pendingFetches = new Set();
 
-  function hasFreshCachedData(code) {
-    const tc = GM_getValue(KEYS.transactionsCache, {}) || {};
+  function hasFreshCachedData(code, cache) {
+    const tc = cache || GM_getValue(KEYS.transactionsCache, {}) || {};
     const cachedTx = tc[code];
     if (!cachedTx || now() - cachedTx.fetchedAt >= CONFIG.txCacheTtlMs) return false;
     return true;
@@ -11651,6 +11724,23 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     ];
   }
 
+  // The crafting advisor otherwise only ever sees prices the general inventory
+  // scan happened to cache — i.e. items the player already owns. That's the
+  // opposite of what's needed here: you're crafting a tier precisely because
+  // you *don't* own one yet. Proactively fetch all 6 of the tier's codes so a
+  // rare/expensive tier (T5/T6) isn't permanently blank. Returns null if
+  // everything's already fresh, otherwise a Promise the caller can await to
+  // know when to re-render. Retry backoff for codes that keep failing lives
+  // in fetchItemTransactions itself (transactionsLastAttempt), shared by
+  // every caller — not duplicated here.
+  function ensureCraftingPricesFetched(tier, codes = getTierItemCodes(tier).filter(Boolean)) {
+    const tc = readCache(KEYS.transactionsCache) || {};
+    const stale = codes.filter((c) => !hasFreshCachedData(c, tc));
+    if (!stale.length) return null;
+    dbg('advisor', 'debug', 'craftAdvisor: fetching prices for tier ' + tier, { codes: stale });
+    return Promise.all(stale.map((c) => fetchItemTransactions(c)));
+  }
+
   function getCachedPrice(itemCode) {
     const normCode = normalizeItemCode(itemCode);
     const pc = readCache(KEYS.priceCache);
@@ -11668,7 +11758,16 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     const tc = readCache(KEYS.transactionsCache) || {};
     const itemTxs = tc[itemCode];
     if (itemTxs && Array.isArray(itemTxs.data) && itemTxs.data.length > 0) {
-      const prices = itemTxs.data.map(t => getTxPrice(t)).filter(p => p != null && !Number.isNaN(p));
+      const lookbackMs = txRefLookbackMs();
+      const recentTxs = itemTxs.data.filter((tx) => isRecentMarketTx(tx, lookbackMs));
+      const kept = rejectPriceOutliers(recentTxs, getTxPrice);
+      if (kept.length < recentTxs.length) {
+        dbg('advisor', 'debug', 'craftAdvisor: rejected price outliers for ' + itemCode, {
+          rejected: recentTxs.length - kept.length,
+          kept: kept.length
+        });
+      }
+      const prices = kept.map(t => getTxPrice(t)).filter(p => p != null && !Number.isNaN(p));
       if (prices.length > 0) {
         minPrice = Math.min(...prices);
         maxPrice = Math.max(...prices);
@@ -11767,7 +11866,17 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
         } else {
           const img = itemCell.querySelector('img[alt]');
           if (img) {
-            selectedItem = img.getAttribute('alt');
+            // A skinned item's alt text is the skin's display name (e.g.
+            // "gsg9Jet"), not the base market code ("jet") the price cache
+            // and transaction API are keyed on — resolve it back via the
+            // same skin->slot table detectType() uses for inventory items.
+            const skinName = skinNameFromSrc(img.getAttribute('src') || '');
+            const slot = skinName ? slotForSkin(skinName) : null;
+            if (slot) {
+              selectedItem = slotType(slot) === 'weapon' ? slot : `${slot}${tier}`;
+            } else {
+              selectedItem = img.getAttribute('alt');
+            }
           }
         }
       }
@@ -11857,6 +11966,15 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       buttonRow.parentElement.insertBefore(panel, buttonRow);
     }
 
+    const tierItemCodes = getTierItemCodes(state.tier);
+    const pricesFetch = ensureCraftingPricesFetched(state.tier, tierItemCodes.filter(Boolean));
+    if (pricesFetch !== null) {
+      pricesFetch.then(() => {
+        lastCraftState = null; // force a re-render once the fetched prices land
+        checkAndRenderCraftingAdvisor();
+      });
+    }
+
     const scrapsPrice = getCachedPrice('scraps');
     const steelPrice = getCachedPrice('steel');
 
@@ -11885,8 +12003,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
 
     if (!isSpecific) {
       // Random mode: find min/max profit range among green equipment items of this tier
-      const itemCodes = getTierItemCodes(state.tier);
-      const itemsInfo = itemCodes.map(code => {
+      const itemsInfo = tierItemCodes.map(code => {
         const range = getItemPriceRange(code);
         return { code, range };
       }).filter(item => item.range.minPrice != null);
@@ -11940,11 +12057,18 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
           </div>
         `;
       } else {
-        html += `<div style="color: #8b949e; font-style: italic;">No market price range found for ${formatItemCode(state.selectedItem)}.</div>`;
+        html += `<div style="color: #8b949e; font-style: italic;">No market price range found for <span class="wia-craft-missing-item"></span>.</div>`;
       }
     }
 
     panel.innerHTML = html;
+
+    // formatItemCode(state.selectedItem) can be an unrecognized skinned
+    // item's raw DOM alt text - set via textContent, never string-interpolated
+    // into the innerHTML template above, so it can never be reinterpreted as
+    // markup (CodeQL js/xss-through-dom).
+    const missingItemEl = panel.querySelector('.wia-craft-missing-item');
+    if (missingItemEl) missingItemEl.textContent = formatItemCode(state.selectedItem);
   }
 
   // ───────────────────────────────────────────────────────────────────────────

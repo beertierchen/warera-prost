@@ -2861,6 +2861,131 @@ try {
 
       console.log('Order-Radar core algorithm tests passed successfully.');
 
+      // --- Market reference price: outlier rejection (Issue #75) ---
+      console.log('--- Testing market reference price outlier rejection ---');
+
+      // Test A: median() helper, even and odd sample sizes.
+      assert.strictEqual(globalThis.median([1, 2, 3]), 2, 'median of odd-length array');
+      assert.strictEqual(globalThis.median([1, 2, 3, 4]), 2.5, 'median of even-length array is average of middle two');
+
+      // Test B: real-world data from Issue #75 — a T5 tank (score target 310.25,
+      // i.e. 165 attack + 35 crit * 4.15) with 2 legitimate sales (~171k-176k Gold)
+      // and 2 near-zero gift/friend sales (163/165 Gold) tied on score-diff.
+      // Plain mean of all 4 previously landed at ~86.8k Gold — under half the true
+      // market value. Outlier rejection must exclude the 2 gift sales.
+      const tankTxs = [
+        { p: 175998, t: Date.now(), s: 306.10 }, // diff 4.15
+        { p: 170989, t: Date.now(), s: 304.25 }, // diff 6.00
+        { p: 165,    t: Date.now(), s: 303.95 }, // diff 6.30 — gift/min-cap dump
+        { p: 163,    t: Date.now(), s: 303.95 }, // diff 6.30 — gift/min-cap dump
+      ];
+      const tankRef = globalThis.getTransactionReferencePrice(tankTxs, 'weapon', 310.25);
+      assert.ok(tankRef, 'reference price should be computed');
+      assert.strictEqual(tankRef.count, 2, 'the 2 gift-price outliers should be rejected, leaving 2');
+      assert.ok(Math.abs(tankRef.price - 173493.5) < 1, `price should average only the 2 legitimate sales, got ${tankRef.price}`);
+
+      // Test C: symmetric case — a wash-trade/"boost" pump sale (max-cap) must be
+      // rejected the same way a gift dump (min-cap) is, not just the low side.
+      const pumpTxs = [
+        { p: 100,    t: Date.now(), s: 50 },
+        { p: 105,    t: Date.now(), s: 50 },
+        { p: 95,     t: Date.now(), s: 50 },
+        { p: 100000, t: Date.now(), s: 50 }, // wash-trade pump
+      ];
+      const pumpRef = globalThis.getTransactionReferencePrice(pumpTxs, 'weapon', 50);
+      assert.ok(pumpRef, 'reference price should be computed for pump scenario');
+      assert.strictEqual(pumpRef.count, 3, 'the 1 wash-trade pump outlier should be rejected, leaving 3');
+      assert.ok(pumpRef.price < 110 && pumpRef.price > 95, `price should stay within the legit cluster, got ${pumpRef.price}`);
+
+      // Test D: stale (>6 day old) transactions are excluded regardless of price.
+      const staleTxs = [
+        { p: 200, t: Date.now(), s: 50 },
+        { p: 205, t: Date.now(), s: 50 },
+        { p: 999999, t: Date.now() - 10 * 24 * 60 * 60 * 1000, s: 50 }, // stale, would otherwise skew the pool
+      ];
+      const staleRef = globalThis.getTransactionReferencePrice(staleTxs, 'weapon', 0);
+      assert.strictEqual(staleRef.count, 2, 'stale transaction should be filtered out before outlier rejection even runs');
+
+      // Test E: getItemPriceRange (crafting advisor) applies the same recency +
+      // outlier filtering as getTransactionReferencePrice, not raw Math.min/max.
+      globalThis.writeCache(globalThis.KEYS.transactionsCache, {
+        tank: {
+          data: [
+            { p: 175998, t: Date.now(), s: 306.10 },
+            { p: 170989, t: Date.now(), s: 304.25 },
+            { p: 165,    t: Date.now(), s: 303.95 },
+            { p: 163,    t: Date.now(), s: 303.95 },
+          ],
+          fetchedAt: Date.now()
+        }
+      });
+      const tankRange = globalThis.getItemPriceRange('tank');
+      assert.ok(tankRange.minPrice > 100000, `min price should exclude the gift-sale floor, got ${tankRange.minPrice}`);
+      assert.ok(tankRange.maxPrice < 200000, `max price should be the legitimate top sale, got ${tankRange.maxPrice}`);
+
+      console.log('Market reference price outlier rejection tests passed successfully.');
+
+      // --- Crafting advisor: T5/T6 blank + skin lookup (Issue #75 follow-up) ---
+      console.log('--- Testing crafting advisor T5/T6 price fetch + skin resolution ---');
+
+      // Test F: a skinned weapon's alt text ("gsg9Jet") must resolve back to the
+      // base market code ("jet"), the same skin->slot table detectType() uses.
+      const jetSkin = globalThis.skinNameFromSrc('/images/skins/gsg9Jet.png');
+      assert.strictEqual(jetSkin, 'gsg9Jet', 'skinNameFromSrc should extract the skin basename');
+      const jetSlot = globalThis.slotForSkin(jetSkin);
+      assert.strictEqual(jetSlot, 'jet', 'gsg9Jet skin should resolve to the "jet" slot');
+      const jetType = globalThis.CONFIG.typeByAltKeyword[jetSlot];
+      assert.strictEqual(jetType, 'weapon', 'jet slot should be classified as a weapon');
+      // Weapons: the slot IS the market code directly (no tier suffix).
+      assert.strictEqual(jetSlot, 'jet', 'weapon market code should be the bare slot code');
+
+      // Test G: a skinned armor piece resolves to slot+tier ("gsg9Chest" @ T6 -> "chest6").
+      const chestSkin = globalThis.skinNameFromSrc('/images/skins/gsg9Chest.png');
+      const chestSlot = globalThis.slotForSkin(chestSkin);
+      assert.strictEqual(chestSlot, 'chest', 'gsg9Chest skin should resolve to the "chest" slot');
+      const chestType = globalThis.CONFIG.typeByAltKeyword[chestSlot];
+      assert.strictEqual(chestType, 'chest', 'chest slot should be classified as chest armor');
+      const chestCode = `${chestSlot}6`;
+      assert.strictEqual(chestCode, 'chest6', 'armor market code needs the tier digit the skin alt text lacks');
+
+      // Test H: ensureCraftingPricesFetched's staleness decision — it must kick
+      // off a fetch when the tier's codes are missing/stale (T5/T6 gear the
+      // player doesn't own would otherwise never get fetched by the general
+      // inventory-driven background loader), and skip it once everything is
+      // fresh. The actual network round-trip is fetchItemTransactions's own
+      // concern (already covered by production error handling); this only
+      // tests the decision of *whether* to fetch.
+      // Each scenario uses a different tier (disjoint item codes: jet/tank vs.
+      // knife/helmet1... vs. gun/helmet2...) so the fire-and-forget fetch left
+      // running from an earlier scenario can never touch a later one's keys.
+      const freshEntry = () => ({ data: [], fetchedAt: Date.now() });
+      const staleEntry = () => ({ data: [], fetchedAt: Date.now() - CONFIG.txCacheTtlMs - 1000 });
+
+      // Nothing cached at all (tier 6) -> must fetch.
+      globalThis.writeCache(globalThis.KEYS.transactionsCache, {});
+      const nothingCachedFetch = globalThis.ensureCraftingPricesFetched(6);
+      assert.ok(nothingCachedFetch, 'should kick off a fetch when nothing is cached for the tier yet');
+      nothingCachedFetch.catch(() => {}); // don't await: the network retry loop's real timing/backoff isn't under test here
+
+      // All 6 codes fresh-cached (tier 1) -> must NOT fetch.
+      const allFresh = {};
+      for (const code of globalThis.getTierItemCodes(1)) allFresh[code] = freshEntry();
+      globalThis.writeCache(globalThis.KEYS.transactionsCache, allFresh);
+      const allFreshFetch = globalThis.ensureCraftingPricesFetched(1);
+      assert.strictEqual(allFreshFetch, null, 'should not re-fetch codes that are already fresh-cached');
+
+      // One of the 6 codes is stale (tier 2) -> must fetch again.
+      const codes2 = globalThis.getTierItemCodes(2);
+      const oneStale = {};
+      for (const code of codes2) oneStale[code] = freshEntry();
+      oneStale[codes2[0]] = staleEntry();
+      globalThis.writeCache(globalThis.KEYS.transactionsCache, oneStale);
+      const oneStaleFetch = globalThis.ensureCraftingPricesFetched(2);
+      assert.ok(oneStaleFetch, 'should re-fetch once any one of the tier codes goes stale');
+      oneStaleFetch.catch(() => {}); // don't await, same reason as above
+
+      console.log('Crafting advisor T5/T6 price fetch + skin resolution tests passed successfully.');
+
       console.log('Compliance tests passed successfully.');
 
       console.log('Success! The script loaded and initialized without throwing any runtime errors.');
