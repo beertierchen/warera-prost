@@ -657,5 +657,117 @@ assert.strictEqual(sumRes.computed, 2, 'Should have 2 computed warskillers');
 assert.ok(Math.abs(sumRes.live - 2 * 864213.85) < 1, 'Sum live damage should sum the non-degraded warskillers potential');
 assert.strictEqual(sumRes.observed, 20000, 'Observed average should adjust denominators using lastSkillsResetAt');
 
+// Test 15: summarizeTroops responsive / H&H metrics (avgHungerPct, avgEffPoolPct)
+console.log('Test 15: Testing summarizeTroops H&H metrics (avgHungerPct, avgEffPoolPct)...');
+const hhRoster = [
+  // Member 1: HP 100/100, Hunger 50/100 -> effPct = (100 + 25) / (100 + 50) = 125 / 150 = 83.33%
+  { isWarskiller: true, isActive: true, hpCurrent: 100, hpMax: 100, hungerCurrent: 50, hungerMax: 100 },
+  // Member 2: HP 0/100, Hunger 100/100 -> effPct = (0 + 50) / (100 + 50) = 50 / 150 = 33.33%
+  { isWarskiller: true, isActive: true, hpCurrent: 0, hpMax: 100, hungerCurrent: 100, hungerMax: 100 },
+  // Member 3: HP 100/100, Hunger 0/100 -> effPct = (100 + 0) / (100 + 50) = 100 / 150 = 66.67%
+  { isWarskiller: true, isActive: true, hpCurrent: 100, hpMax: 100, hungerCurrent: 0, hungerMax: 100 },
+  // Member 4: missing fields
+  { isWarskiller: true, isActive: true }
+];
+
+const hhSummary = globalThis.summarizeTroops(hhRoster);
+// Member 1 hunger = 50%, Member 2 hunger = 100%, Member 3 hunger = 0%, Member 4 hunger = 100% (default)
+// avgHungerPct = Math.round((50 + 100 + 0 + 100) / 4) = Math.round(250 / 4) = 62.5 -> 63
+assert.strictEqual(hhSummary.avgHungerPct, 63);
+
+// Member 1 effPct = 83.33333333333333
+// Member 2 effPct = 33.33333333333333
+// Member 3 effPct = 66.66666666666666
+// Member 4 effPct = 100 (defaults: hpCurrent=100, hpMax=100, hungerCurrent=100, hungerMax=100 -> (100+50)/(100+50)=100%)
+// effSumPct = 83.3333 + 33.3333 + 66.6667 + 100 = 283.3333
+// avgEffPoolPct = Math.round(283.3333 / 4) = 71
+assert.strictEqual(hhSummary.avgEffPoolPct, 71);
+
+// Test 16: effMember% edge-cases
+console.log('Test 16: Testing effMember% edge cases (0/100, 100/0, 100/100, den <= 0)...');
+const edgeRoster = [
+  // 0/100 HP, 0/100 hunger -> effPct = 0%
+  { isActive: true, hpCurrent: 0, hpMax: 100, hungerCurrent: 0, hungerMax: 100 },
+  // 100/100 HP, 100/100 hunger -> effPct = 100%
+  { isActive: true, hpCurrent: 100, hpMax: 100, hungerCurrent: 100, hungerMax: 100 },
+  // hpMax & hungerMax are 0 -> den <= 0 -> should fall back to 100%
+  { isActive: true, hpCurrent: 0, hpMax: 0, hungerCurrent: 0, hungerMax: 0 }
+];
+const edgeSummary = globalThis.summarizeTroops(edgeRoster);
+// effPct 1 = 0
+// effPct 2 = 100
+// effPct 3 = 100
+// avg = Math.round((0 + 100 + 100) / 3) = 67
+assert.strictEqual(edgeSummary.avgEffPoolPct, 67);
+
+// Test 17: computeLiveDamagePotential custom horizon hour
+console.log('Test 17: Testing computeLiveDamagePotential with custom horizon hours...');
+const baseTime = new Date('2026-07-24T18:00:00'); // 18:00
+const testLiveMember = {
+  isWarskiller: true,
+  hpCurrent: 100,
+  hpMax: 100,
+  combat: {
+    attackValue: 300, rank: 10, precisionValue: 80, critChanceValue: 40, critDmgValue: 220,
+    armorValue: 18, dodgeValue: 16, healthMax: 100, hungerMax: 8, healthRegen: 0
+  }
+};
+
+// Horizon 23: reset today at 23:00. usableHours = 5.
+const resH23 = globalThis.computeLiveDamagePotential(testLiveMember, baseTime, 23);
+assert.strictEqual(resH23.usableHours, 5);
+
+// Horizon 2: reset today at 02:00? Since 18:00 > 02:00, reset is tomorrow at 02:00.
+// usableHours = from 18:00 to tomorrow 02:00 = 8 hours.
+const resH2 = globalThis.computeLiveDamagePotential(testLiveMember, baseTime, 2);
+assert.strictEqual(resH2.usableHours, 8);
+
+// Horizon 0: reset tomorrow at 00:00.
+// usableHours = from 18:00 to tomorrow 00:00 = 6 hours.
+const resH0 = globalThis.computeLiveDamagePotential(testLiveMember, baseTime, 0);
+assert.strictEqual(resH0.usableHours, 6);
+
+// Horizon in past relative to current hour (e.g. horizon = 12). Reset tomorrow at 12:00.
+// usableHours = from 18:00 to tomorrow 12:00 = 18 hours.
+const resH12 = globalThis.computeLiveDamagePotential(testLiveMember, baseTime, 12);
+assert.strictEqual(resH12.usableHours, 18);
+
+// debuffEndAt > horizon -> usableHours = 0
+const debuffedMember = {
+  ...testLiveMember,
+  debuffEndAt: '2026-07-25T01:00:00' // tomorrow at 01:00
+};
+// Horizon 23 (today 23:00) -> debuff ends after reset -> usableHours = 0
+const resDebuff = globalThis.computeLiveDamagePotential(debuffedMember, baseTime, 23);
+assert.strictEqual(resDebuff.usableHours, 0);
+
+// Test 18: sumLiveDamage passes horizonHour
+console.log('Test 18: Testing sumLiveDamage passing horizonHour...');
+const testSumRoster = [testLiveMember];
+const sumH23 = globalThis.sumLiveDamage(testSumRoster, baseTime, 23);
+const sumH2 = globalThis.sumLiveDamage(testSumRoster, baseTime, 2);
+// Horizon 23 has 5 usable hours, Horizon 2 has 8 usable hours. Since regen is 0, fracH is same, but let's check it passes it correctly.
+// Let's modify healthRegen to 10. Then throughput = 100 + 10 * usableHours.
+// For H23: throughput = 100 + 50 = 150 -> fracH = 150 / 180 = 0.8333
+// For H2: throughput = 100 + 80 = 180 -> fracH = 180 / 180 = 1
+const testRegenMember = {
+  ...testLiveMember,
+  combat: { ...testLiveMember.combat, healthRegen: 10 }
+};
+const sumRegenH23 = globalThis.sumLiveDamage([testRegenMember], baseTime, 23);
+const sumRegenH2 = globalThis.sumLiveDamage([testRegenMember], baseTime, 2);
+assert.ok(sumRegenH2.live > sumRegenH23.live, 'Horizon 2 should produce higher damage due to more regen hours');
+
+// Test 19: Per-member damage degraded cases
+console.log('Test 19: Testing per-member damage potential degradation...');
+const ecoMember = {
+  isWarskiller: false,
+  isActive: true,
+  combat: null // degraded
+};
+const ecoRes = globalThis.computeDamagePotential(ecoMember);
+assert.strictEqual(ecoRes.degraded, true);
+assert.strictEqual(ecoRes.dailyDmg, 0);
+
 console.log('All Troop-Radar Phase 1, 2, and 3 tests passed successfully!');
 process.exit(0);

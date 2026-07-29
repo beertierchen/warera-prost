@@ -1,5 +1,25 @@
 # CHANGELOG
 
+## 2026-07-29 | Feature: Responsiver Truppen-Radar mit Leben & Hunger und Live-Horizont (v0.10.4)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/test-troop-radar.js`
+
+**Änderungen (Deutsch):**
+- **Responsives Layout**: Der Truppen-Radar-Header und die Member-Kacheln passen sich jetzt stufenlos der Fensterbreite an und brechen im Spaltenlayout sauber um.
+- **Leben & Hunger getrennt**: Die Header-Kachel zeigt nun im breiten Layout separate HP- und Hunger-Werte an.
+- **Effektiver Pool**: In schmalen Viewports verschmilzt die Anzeige zu einem kombinierten Wert (Ø Leben/Hunger) für maximale Übersicht.
+- **Live-Schadenspotential**: Pro-Member-Schadenspotentiale im Roster zeigen nun im Live-Modus das verbleibende Potential an.
+- **Zeit-Horizont-Wähler**: Über einen Klick auf das neue ⏰-Icon im Live-Modus lässt sich der Ziel-Horizont (Stunde des Daily-Resets) flexibel einstellen.
+- **Version in Settings**: Die installierte Versionsnummer wird nun übersichtlich im Titel der Einstellungen und zum Start im Log angezeigt.
+
+**Changes (English):**
+- **Responsive Layout**: The troop radar header and member chips now scale fluidly to the available window width and wrap cleanly.
+- **Split H&H Display**: The header tile displays separate average HP and Hunger values on wider screens.
+- **Effective Pool**: In narrow viewports, the display collapses to a combined value (Ø HP/Hunger) for clean overview.
+- **Live Damage Potential**: Individual member chips now show the remaining damage potential in live mode.
+- **Time Horizon Picker**: Click the new ⏰ icon in live mode to customize the target daily reset hour.
+- **Version in Settings**: The installed script version is now displayed in the settings modal title and logged at startup.
+
 ## 2026-07-27 | Fix: Kleine Preis-Fixes im Crafting-Berater (v0.10.3)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/test-advisor-load.js`

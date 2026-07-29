@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.10.3
+// @version      0.10.4
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -593,6 +593,13 @@
         troopRadarLiveObserved: 'obs. avg {val}',
         troopRadarSubWarskiller: 'of warskillers',
         troopRadarSubActive: 'of active members',
+        troopRadarHunger: 'Hunger',
+        troopRadarHpHunger: 'Ø HP / Hunger',
+        troopRadarLiveHorizonTitle: 'Edit Live Horizon',
+        troopRadarLiveHorizonHint: 'Select target hour (0-23) for live damage potential calculation:',
+        troopRadarPillReadyShort: 'ready',
+        troopRadarPillCdShort: 'not ready',
+        troopRadarPillOffShort: 'unpilled',
         settingsFeatTroopRadarCheckbox: 'Troop-Radar (MU Member List & Header)',
         settingsFeatTroopRadarHint: 'Displays member combat readiness (HP, pill status, skill orientation) in MU member lists and header.',
         settingsFeatProfileCharsheetCheckbox: 'Character Sheet Strip (Player Profiles)',
@@ -900,6 +907,13 @@
         troopRadarLiveObserved: 'Ø real {val}',
         troopRadarSubWarskiller: 'von Warskillern',
         troopRadarSubActive: 'von aktiven Mitgliedern',
+        troopRadarHunger: 'Hunger',
+        troopRadarHpHunger: 'Ø Leben/Hunger',
+        troopRadarLiveHorizonTitle: 'Live-Horizont anpassen',
+        troopRadarLiveHorizonHint: 'Wähle die Ziel-Uhrzeit (0-23 Uhr) für die Live-Schadensberechnung:',
+        troopRadarPillReadyShort: 'bereit',
+        troopRadarPillCdShort: 'n. bereit',
+        troopRadarPillOffShort: 'ungepillt',
         settingsFeatTroopRadarCheckbox: 'Truppen-Radar (MU-Member-Liste & Header)',
         settingsFeatTroopRadarHint: 'Zeigt Kampfbereitschaft (HP, Pillen-Status, Skill-Klasse) in MU-Mitgliederlisten und Header an.',
         settingsFeatProfileCharsheetCheckbox: 'Charakterbogen-Strip (Spieler-Profile)',
@@ -957,6 +971,7 @@
     featBattleAdvisor: NS + 'featBattle',
     featOrderRadar: NS + 'featOrderRadar',
     featTroopRadar: NS + 'featTroopRadar',
+    troopRadarLiveHorizonHour: NS + 'troopRadarLiveHorizonHour',
     featProfileCharsheet: NS + 'featProfileCharsheet',
     regionMap: NS + 'regionMap',
     alliedCountryCodes: NS + 'alliedCodes',
@@ -1423,6 +1438,16 @@
     }
   }
 
+  function pick(id, sel, root = document) {
+    if (!root) return [];
+    const els = root.querySelectorAll(sel);
+    if (!els.length) {
+      setHealth(id, 'fail', `selector miss: ${sel}`);
+      dbg(id, 'debug', `selector miss: ${sel}`);
+    }
+    return els;
+  }
+
 
   function setDebug(on) {
     CONFIG.debug = !!on;
@@ -1624,11 +1649,22 @@
       if (!CONFIG.featTroopRadar) return ['idle', 'disabled in settings'];
       if (!getToken()) return ['idle', 'no API token set'];
       if (!isMuPage()) return ['idle', 'not on MU page'];
-      const injected = document.getElementById('wia-troop-radar');
-      if (injected) return ['ok', ''];
-      const memberLinks = document.querySelectorAll("a[href*='/user/']").length;
-      if (memberLinks === 0) return ['warn', 'no member links found'];
-      return ['warn', 'troop radar not injected yet'];
+      
+      const horizon = String(getLiveHorizonHour()).padStart(2, '0') + ':00';
+      const mode = troopRadarDamageMode;
+      const details = `Live-Horizont ${horizon}, Modus ${mode}`;
+
+      const injected = document.getElementById('wia-troop-radar-summary');
+      if (!injected) {
+        return ['warn', `troop radar not injected yet, ${details}`];
+      }
+
+      const current = Health['troopRadar'];
+      if (current && (current.status === 'warn' || current.status === 'fail')) {
+        return [current.status, `${details} (${current.reason})`];
+      }
+
+      return ['ok', details];
     },
     pnl() {
       if (!CONFIG.featPnlTracker) return ['idle', 'disabled in settings'];
@@ -5112,7 +5148,144 @@ async function scanInventory(force) {
       .wia-tour-prompt-never:hover { color: #8b949e; }
       .wia-tour-paste { margin: 0 0 10px; }
 
-      /* ── Troop Radar Schadenspotential tile ── */
+      /* ── Troop Radar Responsive & Custom Baseline ── */
+      .wia-troop-radar-container {
+        container-type: inline-size;
+        width: 100%;
+      }
+      .wia-tr-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 8px;
+        margin-top: 10px;
+      }
+      .wia-tr-grid > div,
+      .wia-tr-grid > button {
+        background: #0d1117;
+        border: 1px solid #21262d;
+        border-radius: 6px;
+        padding: 8px;
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        box-sizing: border-box;
+      }
+
+      .wia-tr-grid .wia-tr-tile .num {
+        font-size: 16px;
+        font-weight: 700;
+        color: #f8fafc;
+        font-variant-numeric: tabular-nums;
+        line-height: 1.05;
+      }
+      .wia-tr-grid .wia-tr-tile .lab {
+        font-size: 9px;
+        font-weight: 700;
+        color: #8b949e;
+        text-transform: uppercase;
+        margin-top: 1px;
+        letter-spacing: 0.02em;
+      }
+      .wia-tr-grid .wia-tr-tile .sub {
+        font-size: 8px;
+        color: #6e7681;
+        margin-top: 3px;
+        font-variant-numeric: tabular-nums;
+        min-height: 1em;
+      }
+
+      /* H&H Tile Layouts */
+      .tr-hh-wide {
+        display: flex;
+        gap: 8px;
+        justify-content: center;
+        align-items: center;
+      }
+      .tr-hh-row {
+        display: flex;
+        align-items: center;
+        gap: 3px;
+        font-size: 13px;
+        font-weight: 700;
+        color: #f8fafc;
+      }
+      .tr-hh-row .ico {
+        font-size: 11px;
+      }
+      .tr-hh-narrow {
+        font-size: 16px;
+        font-weight: 700;
+        color: #f8fafc;
+        line-height: 1.05;
+      }
+
+      /* Hidden by default (wide layout) */
+      .wia-tr-hh-tile .tr-hh-narrow,
+      .wia-tr-hh-tile .tr-hh-lbl-narrow {
+        display: none;
+      }
+      .wia-tr-hh-tile .tr-hh-wide {
+        display: flex;
+      }
+      .wia-tr-hh-tile .tr-hh-lbl-wide {
+        display: block;
+      }
+      .wia-troop-chips .lh-badge {
+        display: none;
+      }
+      .wia-troop-chips .hp-badge,
+      .wia-troop-chips .hunger-badge {
+        display: inline-flex;
+      }
+      .wia-troop-chips .pill-txt-short {
+        display: none;
+      }
+      .wia-troop-chips .pill-txt-long {
+        display: inline;
+      }
+      .wia-troop-chips .build-pct {
+        display: inline;
+      }
+
+      @container (max-width: 640px) {
+        .wia-tr-grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+
+      @container (max-width: 480px) {
+        .wia-tr-hh-tile .tr-hh-wide,
+        .wia-tr-hh-tile .tr-hh-lbl-wide {
+          display: none;
+        }
+        .wia-tr-hh-tile .tr-hh-narrow {
+          display: block;
+        }
+        .wia-tr-hh-tile .tr-hh-lbl-narrow {
+          display: block;
+        }
+
+        .wia-troop-chips .hp-badge,
+        .wia-troop-chips .hunger-badge {
+          display: none;
+        }
+        .wia-troop-chips .lh-badge {
+          display: inline-flex;
+        }
+        .wia-troop-chips .pill-txt-long {
+          display: none;
+        }
+        .wia-troop-chips .pill-txt-short {
+          display: inline;
+        }
+        .wia-troop-chips .build-pct {
+          display: none;
+        }
+      }
+
+      /* Damage potential tile */
       .wia-dmg-tile {
         all: unset; box-sizing: border-box; cursor: pointer; display: flex; flex-direction: column;
         align-items: center; justify-content: center; border-radius: 6px; padding: 6px 8px 8px;
@@ -5143,7 +5316,7 @@ async function scanInventory(force) {
       .wia-dmg-tile .lab { font-size: 9px; font-weight: 700; color: var(--acc); opacity: .85; text-transform: uppercase; margin-top: 1px; letter-spacing: .02em; }
       .wia-dmg-tile .sublab { font-size: 8px; color: #8b949e; margin-top: 3px; font-variant-numeric: tabular-nums; }
 
-      /* ── Custom Baseline Modal & Edit Badge ── */
+      /* Badges & modal setup */
       .wia-edit-badge {
         all: unset; position: absolute; top: 3px; left: 3px; cursor: pointer; width: 19px; height: 19px; border-radius: 5px;
         display: flex; align-items: center; justify-content: center; color: var(--acc); background: rgba(240, 165, 74, .10);
@@ -5153,7 +5326,122 @@ async function scanInventory(force) {
       .wia-edit-badge:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px; }
       .wia-edit-badge svg { width: 12px; height: 12px; display: block; }
       .wia-edit-badge .pen { position: absolute; right: -3px; bottom: -3px; font-size: 8px; line-height: 1; background: #0d1117; border-radius: 50%; padding: 1px 1px 0; color: var(--acc); }
+
+      .wia-live-horizon-badge {
+        all: unset; position: absolute; top: 3px; left: 3px; cursor: pointer; width: 19px; height: 19px; border-radius: 5px;
+        display: flex; align-items: center; justify-content: center; color: var(--acc); background: rgba(79, 209, 224, 0.10);
+        border: 1px solid rgba(79, 209, 224, 0.28); transition: background .15s, transform .12s;
+      }
+      .wia-live-horizon-badge:hover { background: rgba(79, 209, 224, 0.22); transform: scale(1.08); }
+      .wia-live-horizon-badge:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px; }
+      .wia-live-horizon-badge .clock { font-size: 11px; }
+
+      .wia-dmg-tile[data-mode="tag"] .wia-live-horizon-badge { display: none; }
       .wia-dmg-tile[data-mode="live"] .wia-edit-badge { display: none; }
+
+      /* Member Chips (wia-troop-chips) */
+      .wia-troop-chips {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.55em;
+        margin-left: 0.7em;
+        font-size: clamp(7px, 2.4cqi, 12px);
+        vertical-align: middle;
+        flex-wrap: wrap;
+      }
+      .wia-troop-chip {
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-weight: 600;
+        line-height: 1.2;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        box-sizing: border-box;
+      }
+      .wia-troop-chip.build-war {
+        background: rgba(239, 68, 68, 0.15);
+        border: 1px solid rgba(239, 68, 68, 0.4);
+        color: #fca5a5;
+      }
+      .wia-troop-chip.build-hybrid {
+        background: rgba(99, 102, 241, 0.15);
+        border: 1px solid rgba(99, 102, 241, 0.4);
+        color: #c7d2fe;
+      }
+      .wia-troop-chip.build-eco {
+        background: rgba(100, 116, 139, 0.15);
+        border: 1px solid rgba(100, 116, 139, 0.4);
+        color: #cbd5e1;
+      }
+      .wia-troop-chip.hp-badge,
+      .wia-troop-chip.hunger-badge,
+      .wia-troop-chip.lh-badge {
+        background: rgba(15, 23, 42, 0.6);
+        border: 1px solid #334155;
+      }
+      .hp-heart { color: #ef4444; font-size: 10px; }
+      .hunger-steak { font-size: 10px; }
+      .lh-lbl { color: #eab308; font-weight: 700; font-size: 10px; }
+      .hp-track,
+      .hunger-track,
+      .lh-track {
+        width: 44px;
+        height: 5px;
+        background: #334155;
+        border-radius: 3px;
+        overflow: hidden;
+        display: inline-block;
+      }
+      .hp-fill,
+      .hunger-fill,
+      .lh-fill {
+        display: block;
+        height: 100%;
+        transition: width 0.2s;
+      }
+      .hp-val,
+      .hunger-val,
+      .lh-val {
+        font-size: 10px;
+        font-family: monospace;
+        color: #cbd5e1;
+      }
+      .wia-troop-chip.pill-on {
+        background: rgba(34, 197, 94, 0.15);
+        border: 1px solid rgba(34, 197, 94, 0.4);
+        color: #86efac;
+      }
+      .wia-troop-chip.pill-debuff {
+        background: rgba(239, 68, 68, 0.15);
+        border: 1px solid rgba(239, 68, 68, 0.4);
+        color: #fca5a5;
+      }
+      .wia-troop-chip.pill-ready {
+        background: rgba(234, 179, 8, 0.15);
+        border: 1px solid rgba(234, 179, 8, 0.5);
+        color: #fef08a;
+      }
+      .wia-troop-chip.pill-off {
+        background: rgba(100, 116, 139, 0.15);
+        border: 1px solid rgba(100, 116, 139, 0.3);
+        color: #94a3b8;
+      }
+      .wia-troop-chip.dmg-chip.dmg-tag {
+        background: rgba(240, 165, 74, 0.15);
+        border: 1px solid rgba(240, 165, 74, 0.4);
+        color: #f0a54a;
+      }
+      .wia-troop-chip.dmg-chip.dmg-live {
+        background: rgba(79, 209, 224, 0.15);
+        border: 1px solid rgba(79, 209, 224, 0.4);
+        color: #4fd1e0;
+      }
+      .wia-troop-chip.dmg-chip.dmg-degraded {
+        background: rgba(100, 116, 139, 0.15);
+        border: 1px solid rgba(100, 116, 139, 0.3);
+        color: #94a3b8;
+      }
 
       .wia-mask-ov { position: fixed; inset: 0; background: rgba(1, 4, 9, 0.72); display: none; align-items: center; justify-content: center; padding: 10px; z-index: 2147483610; }
       .wia-mask-ov.wia-open { display: flex; }
@@ -5343,7 +5631,7 @@ async function scanInventory(force) {
       <div class="wia-modal">
         <div class="wia-modal-topbar">
           <div class="wia-modal-titlewrap">
-            <h2>${t('settingsTitle')}</h2>
+            <h2>${t('settingsTitle')} <span style="font-size: 10px; font-weight: normal; color: #8b949e; background: #21262d; padding: 2px 6px; border-radius: 4px; vertical-align: middle; margin-left: 6px;">v${SCRIPT_VERSION}</span></h2>
             <div style="font-size: 12px; color: #8b949e; margin-top: 4px; line-height: 1.4;">${t('settingsDesc')}</div>
           </div>
           <div class="wia-locale-wrap">
@@ -8355,6 +8643,12 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     return { dailyDmg, degraded: false };
   }
 
+  function getLiveHorizonHour() {
+    const raw = GM_getValue(KEYS.troopRadarLiveHorizonHour, CONFIG.DAILY_RESET_HOUR ?? 2);
+    const parsed = parseInt(raw, 10);
+    return isNaN(parsed) ? (CONFIG.DAILY_RESET_HOUR ?? 2) : Math.max(0, Math.min(23, parsed));
+  }
+
   function hoursUntilDailyReset(now) {
     const nowDate = new Date(now);
     const resetToday = new Date(nowDate);
@@ -8366,7 +8660,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     return Math.max(0, (nextReset.getTime() - nowDate.getTime()) / (1000 * 60 * 60));
   }
 
-  function computeLiveDamagePotential(member, now) {
+  function computeLiveDamagePotential(member, now, horizonHour = (CONFIG.DAILY_RESET_HOUR ?? 2)) {
     const rawDmg = computeDamagePotential(member, { equip: 'realFloored' });
     if (rawDmg.degraded) {
       return { liveDmg: 0, degraded: true };
@@ -8382,7 +8676,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     }
 
     const resetToday = new Date(nowDate);
-    resetToday.setHours(CONFIG.DAILY_RESET_HOUR ?? 2, 0, 0, 0);
+    resetToday.setHours(horizonHour, 0, 0, 0);
     let nextReset = resetToday;
     if (nowDate >= resetToday) {
       nextReset = new Date(resetToday.getTime() + 24 * 60 * 60 * 1000);
@@ -8407,7 +8701,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     };
   }
 
-  function sumLiveDamage(members, now) {
+  function sumLiveDamage(members, now, horizonHour = (CONFIG.DAILY_RESET_HOUR ?? 2)) {
     const activeWarskillers = Array.isArray(members)
       ? members.filter(m => m.isActive !== false && m.isWarskiller)
       : [];
@@ -8418,7 +8712,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     let observedSum = 0;
 
     activeWarskillers.forEach(m => {
-      const res = computeLiveDamagePotential(m, now);
+      const res = computeLiveDamagePotential(m, now, horizonHour);
       if (!res.degraded) {
         liveSum += res.liveDmg;
         computedCount++;
@@ -8448,6 +8742,36 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     };
   }
 
+  function memberEffPoolPct(m) {
+    const hpCurrent = m.hpCurrent !== undefined && m.hpCurrent !== null ? m.hpCurrent : 100;
+    const hpMax = m.hpMax !== undefined && m.hpMax !== null ? m.hpMax : 100;
+    const hungerCurrent = m.hungerCurrent !== undefined && m.hungerCurrent !== null ? m.hungerCurrent : 100;
+    const hungerMax = m.hungerMax !== undefined && m.hungerMax !== null ? m.hungerMax : 100;
+    
+    const FOOD_PCT_STEAK = CONFIG.FOOD_PCT_STEAK ?? 0.5;
+    const num = hpCurrent + hungerCurrent * FOOD_PCT_STEAK;
+    const den = hpMax + hungerMax * FOOD_PCT_STEAK;
+    if (den <= 0) return 100;
+    return (num / den) * 100;
+  }
+
+  function barColor(pct) {
+    return pct >= 80 ? '#22c55e' : pct >= 40 ? '#eab308' : '#ef4444';
+  }
+
+  function computeMemberDamage(m, mode, now, horizonHour) {
+    if (m.isActive === false) {
+      return { dmgVal: 0, degraded: true };
+    }
+    if (mode === 'tag') {
+      const res = computeDamagePotential(m);
+      return { dmgVal: res.dailyDmg, degraded: res.degraded };
+    } else {
+      const res = computeLiveDamagePotential(m, now, horizonHour);
+      return { dmgVal: res.liveDmg, degraded: res.degraded };
+    }
+  }
+
   function summarizeTroops(membersArray) {
     const activeMembers = Array.isArray(membersArray)
       ? membersArray.filter(m => m.isActive !== false)
@@ -8460,6 +8784,8 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
         warskillerCount: 0,
         pillCount: 0,
         avgHpPct: 0,
+        avgHungerPct: 0,
+        avgEffPoolPct: 0,
         actionableWarskillers: [],
         damagePotential: 0,
         damageComputedCount: 0,
@@ -8487,6 +8813,19 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     }, 0);
     const avgHpPct = Math.round(hpSumPct / totalMembers);
 
+    const hungerSumPct = activeMembers.reduce((acc, m) => {
+      const cur = m.hungerCurrent !== undefined && m.hungerCurrent !== null ? m.hungerCurrent : (m.hungerMax !== undefined && m.hungerMax !== null ? m.hungerMax : 100);
+      const max = m.hungerMax !== undefined && m.hungerMax !== null ? m.hungerMax : 100;
+      const pct = max > 0 ? (cur / max) * 100 : 100;
+      return acc + pct;
+    }, 0);
+    const avgHungerPct = Math.round(hungerSumPct / totalMembers);
+
+    const effSumPct = activeMembers.reduce((acc, m) => {
+      return acc + memberEffPoolPct(m);
+    }, 0);
+    const avgEffPoolPct = Math.round(effSumPct / totalMembers);
+
     // Warskiller bereit zu pillen (ungepillt & H&H voll)
     const actionableWarskillers = activeMembers.filter((m) => m.isWarskiller && m.pillState === 'pill-off');
 
@@ -8508,6 +8847,8 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       warskillerCount,
       pillCount,
       avgHpPct,
+      avgHungerPct,
+      avgEffPoolPct,
       actionableWarskillers,
       damagePotential,
       damageComputedCount,
@@ -8873,7 +9214,6 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     
     const mode = troopRadarDamageMode;
     const isTag = mode === 'tag';
-    const accentColor = isTag ? '#f0a54a' : '#4fd1e0';
     const alertBg = isTag ? 'rgba(234, 179, 8, 0.12)' : 'rgba(79, 209, 224, 0.10)';
     const alertBorder = isTag ? '1px solid rgba(234, 179, 8, 0.3)' : '1px solid rgba(79, 209, 224, 0.28)';
     const alertColor = isTag ? '#fef08a' : '#a8ecf4';
@@ -8898,6 +9238,8 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     let displayNum = '';
     let sublabelText = '';
 
+    const horizonHour = getLiveHorizonHour();
+
     if (isTag) {
       displayNum = fmtDamage(summary.damagePotential);
       if (summary.damageComputedCount < summary.damageTotalCount) {
@@ -8906,9 +9248,9 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
         sublabelText = 'Blau · Pille';
       }
     } else {
-      const liveRes = sumLiveDamage(troopRadarLastMembers, new Date());
+      const liveRes = sumLiveDamage(troopRadarLastMembers, new Date(), horizonHour);
       displayNum = fmtDamage(liveRes.live);
-      sublabelText = t('troopRadarLiveUntil', { time: '02:00' }) + ' · ' + t('troopRadarLiveObserved', { val: fmtDamage(liveRes.observed) });
+      sublabelText = t('troopRadarLiveUntil', { time: String(horizonHour).padStart(2, '0') + ':00' }) + ' · ' + t('troopRadarLiveObserved', { val: fmtDamage(liveRes.observed) });
     }
 
     el.innerHTML = `
@@ -8920,11 +9262,11 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
           </div>
           <span style="border: 1px solid #7c3aed; color: #a78bfa; padding: 2px 6px; font-size: 10px; font-weight: 700; border-radius: 4px; letter-spacing: 0.5px;">PROST</span>
         </div>
-        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;">
-          <div style="background: #0d1117; border: 1px solid #21262d; border-radius: 6px; padding: 8px; text-align: center; display: flex; flex-direction: column; justify-content: center; align-items: center;">
-            <div style="font-size: 16px; font-weight: 700; color: #f8fafc; font-variant-numeric: tabular-nums; line-height: 1.05;">${summary.readyCount}/${summary.warskillerCount}</div>
-            <div style="font-size: 9px; font-weight: 700; color: #8b949e; text-transform: uppercase; margin-top: 1px; letter-spacing: 0.02em;">KAMPFBEREIT</div>
-            <div style="font-size: 8px; color: #6e7681; margin-top: 3px; font-variant-numeric: tabular-nums; min-height: 1em;">${t('troopRadarSubWarskiller')}</div>
+        <div class="wia-tr-grid">
+          <div class="wia-tr-tile">
+            <div class="num">${summary.readyCount}/${summary.warskillerCount}</div>
+            <div class="lab">KAMPFBEREIT</div>
+            <div class="sub">${t('troopRadarSubWarskiller')}</div>
           </div>
           
           <button class="wia-dmg-tile" id="wia-troop-dmg-tile" data-mode="${mode}" aria-label="Schadenspotential — Modus umschalten">
@@ -8932,37 +9274,61 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
               <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8.5 2.5 4 5.5l1.8 3L8 7.2V21h8V7.2l2.2 1.3L20 5.5l-4.5-3c-.5 1.3-1.7 2.2-3.5 2.2s-3-.9-3.5-2.2Z"/></svg>
               <span class="pen">✎</span>
             </span>
+            <span class="wia-live-horizon-badge" id="wia-troop-live-horizon-btn" title="${t('troopRadarLiveHorizonTitle')}" aria-label="${t('troopRadarLiveHorizonTitle')}">
+              <span class="clock">⏰</span>
+            </span>
             <span class="chip"><span class="ico">${chipIcon}</span><span class="mname">${chipText}</span><span class="caret">⇄</span></span>
             <span class="num">${displayNum}</span>
             <span class="lab">${labelText}</span>
             <span class="sublab">${sublabelText}</span>
           </button>
           
-          <div style="background: #0d1117; border: 1px solid #21262d; border-radius: 6px; padding: 8px; text-align: center; display: flex; flex-direction: column; justify-content: center; align-items: center;">
-            <div style="font-size: 16px; font-weight: 700; color: #f8fafc; font-variant-numeric: tabular-nums; line-height: 1.05;">${summary.pillCount}/${summary.totalMembers}</div>
-            <div style="font-size: 9px; font-weight: 700; color: #8b949e; text-transform: uppercase; margin-top: 1px; letter-spacing: 0.02em;">GEPILLT</div>
-            <div style="font-size: 8px; color: #6e7681; margin-top: 3px; font-variant-numeric: tabular-nums; min-height: 1em;">${t('troopRadarSubActive')}</div>
+          <div class="wia-tr-tile">
+            <div class="num">${summary.pillCount}/${summary.totalMembers}</div>
+            <div class="lab">GEPILLT</div>
+            <div class="sub">${t('troopRadarSubActive')}</div>
           </div>
-          <div style="background: #0d1117; border: 1px solid #21262d; border-radius: 6px; padding: 8px; text-align: center; display: flex; flex-direction: column; justify-content: center; align-items: center;">
-            <div style="font-size: 16px; font-weight: 700; color: #f8fafc; font-variant-numeric: tabular-nums; line-height: 1.05;">${summary.avgHpPct}%</div>
-            <div style="font-size: 9px; font-weight: 700; color: #8b949e; text-transform: uppercase; margin-top: 1px; letter-spacing: 0.02em;">Ø HP</div>
-            <div style="font-size: 8px; color: #6e7681; margin-top: 3px; font-variant-numeric: tabular-nums; min-height: 1em;">${t('troopRadarSubActive')}</div>
+          <div class="wia-tr-tile wia-tr-hh-tile">
+            <div class="tr-hh-wide">
+              <div class="tr-hh-row">
+                <span class="ico">❤</span> <span class="val">${summary.avgHpPct}%</span>
+              </div>
+              <div class="tr-hh-row">
+                <span class="ico">🍖</span> <span class="val">${summary.avgHungerPct}%</span>
+              </div>
+            </div>
+            <div class="tr-hh-narrow">
+              <span class="val">${summary.avgEffPoolPct}%</span>
+            </div>
+            <div class="tr-hh-lbl-wide lab">Ø HP / Hunger</div>
+            <div class="tr-hh-lbl-narrow lab">${t('troopRadarHpHunger')}</div>
+            <div class="sub">${t('troopRadarSubActive')}</div>
           </div>
         </div>
         ${alertHtml}
       </div>`;
 
-    const tile = el.querySelector('#wia-troop-dmg-tile');
+    const tile = pick('troopRadar', '#wia-troop-dmg-tile', el)[0];
     if (tile) {
       tile.addEventListener('click', () => {
-        troopRadarDamageMode = troopRadarDamageMode === 'tag' ? 'live' : 'tag';
-        renderTroopRadarHeaderSummary(troopRadarLastSummary, muId, troopRadarLastMembers);
+        guard('troopRadar', () => {
+          troopRadarDamageMode = troopRadarDamageMode === 'tag' ? 'live' : 'tag';
+          renderTroopRadarHeaderSummary(troopRadarLastSummary, muId, troopRadarLastMembers);
+          renderTroopRadarMemberRows(troopRadarLastMembers);
+        });
       });
-      const editBtn = tile.querySelector('#wia-troop-edit-btn');
+      const editBtn = pick('troopRadar', '#wia-troop-edit-btn', tile)[0];
       if (editBtn) {
         editBtn.addEventListener('click', (e) => {
           e.stopPropagation();
-          openBaselineMask(muId);
+          guard('troopRadar', () => openBaselineMask(muId));
+        });
+      }
+      const liveBtn = pick('troopRadar', '#wia-troop-live-horizon-btn', tile)[0];
+      if (liveBtn) {
+        liveBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          guard('troopRadar', () => openLiveHorizonMask(muId));
         });
       }
     }
@@ -9133,6 +9499,110 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     });
   }
 
+  function openLiveHorizonMask(muId) {
+    let ov = document.getElementById('wia-live-horizon-mask-ov');
+    if (!ov) {
+      ov = document.createElement('div');
+      ov.id = 'wia-live-horizon-mask-ov';
+      ov.className = 'wia-mask-ov';
+      document.body.appendChild(ov);
+    }
+
+    const currentHorizon = getLiveHorizonHour();
+    let optionsHtml = '';
+    for (let h = 0; h < 24; h++) {
+      const selected = h === currentHorizon ? 'selected' : '';
+      const displayHour = String(h).padStart(2, '0') + ':00';
+      optionsHtml += `<option value="${h}" ${selected}>${displayHour}</option>`;
+    }
+
+    ov.innerHTML = `
+      <div class="wia-mask" role="dialog" aria-label="Live-Horizont bearbeiten" style="width: 320px;">
+        <h3 style="display: flex; align-items: center; gap: 6px; margin: 0 0 10px;">
+          ⏰ ${t('troopRadarLiveHorizonTitle')}
+        </h3>
+        <p class="wia-mhint" style="font-size: 11px; color: #8b949e; margin: 0 0 12px;">${t('troopRadarLiveHorizonHint')}</p>
+        <div style="margin: 15px 0; display: flex; justify-content: center;">
+          <select id="wia-live-horizon-select" style="background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 6px 12px; color: #f8fafc; font-size: 14px; font-weight: 600; width: 100%; box-sizing: border-box;">
+            ${optionsHtml}
+          </select>
+        </div>
+        <div class="wia-mask-actions" style="display: flex; gap: 8px; margin-top: 15px;">
+          <button class="wia-btn wia-btn-reset" id="wia-live-horizon-reset" style="background: #21262d; border: 1px solid #30363d; border-radius: 6px; padding: 6px 12px; color: #c9d1d9; font-size: 12px; cursor: pointer;">${t('customBaselineBtnReset')}</button>
+          <span class="wia-spacer" style="flex-grow: 1;"></span>
+          <button class="wia-btn wia-btn-ghost" id="wia-live-horizon-cancel" style="background: transparent; border: 0; color: #8b949e; font-size: 12px; cursor: pointer;">${t('customBaselineBtnCancel')}</button>
+          <button class="wia-btn wia-btn-save" id="wia-live-horizon-save" style="background: #238636; border: 1px solid #30363d; border-radius: 6px; padding: 6px 12px; color: #ffffff; font-size: 12px; cursor: pointer; font-weight: 600;">${t('customBaselineBtnSave')}</button>
+        </div>
+      </div>
+    `;
+
+    function closeMask() {
+      ov.classList.remove('wia-open');
+      document.removeEventListener('keydown', escHandler);
+    }
+
+    function escHandler(e) {
+      if (e.key === 'Escape' && ov.classList.contains('wia-open')) {
+        closeMask();
+      }
+    }
+
+    ov.classList.add('wia-open');
+
+    // Event listeners
+    ov.addEventListener('click', (e) => {
+      if (e.target === ov) closeMask();
+    });
+
+    document.addEventListener('keydown', escHandler);
+
+    const cancelBtn = pick('troopRadar', '#wia-live-horizon-cancel', ov)[0];
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', closeMask);
+    }
+
+    const reRenderAll = () => {
+      if (troopRadarLastSummary && troopRadarLastMembers) {
+        renderTroopRadarHeaderSummary(troopRadarLastSummary, muId, troopRadarLastMembers);
+        renderTroopRadarMemberRows(troopRadarLastMembers);
+      }
+    };
+
+    const resetBtn = pick('troopRadar', '#wia-live-horizon-reset', ov)[0];
+    if (resetBtn) {
+      resetBtn.addEventListener('click', () => {
+        guard('troopRadar', () => {
+          GM_setValue(KEYS.troopRadarLiveHorizonHour, CONFIG.DAILY_RESET_HOUR ?? 2);
+          closeMask();
+          reRenderAll();
+          showBaselineToast(t('customBaselineToastReset'), 'ok');
+        });
+      });
+    }
+
+    const saveBtn = pick('troopRadar', '#wia-live-horizon-save', ov)[0];
+    if (saveBtn) {
+      saveBtn.addEventListener('click', () => {
+        guard('troopRadar', () => {
+          const select = pick('troopRadar', '#wia-live-horizon-select', ov)[0];
+          if (select) {
+            const val = parseInt(select.value, 10);
+            if (!isNaN(val) && val >= 0 && val <= 23) {
+              GM_setValue(KEYS.troopRadarLiveHorizonHour, val);
+              closeMask();
+              reRenderAll();
+              showBaselineToast(t('customBaselineToastSaved'), 'ok');
+            } else {
+              closeMask();
+            }
+          } else {
+            closeMask();
+          }
+        });
+      });
+    }
+  }
+
   function formatTroopRadarTime(isoString) {
     if (!isoString) return '';
     try {
@@ -9158,6 +9628,10 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       }
     }
 
+    const now = new Date();
+    const horizon = getLiveHorizonHour();
+    const mode = troopRadarDamageMode;
+
     const allRows = mainWin.querySelectorAll('div._1dnmndynm, li._1txpadm0');
     for (const row of allRows) {
       const spans = Array.from(row.querySelectorAll('span'));
@@ -9166,6 +9640,9 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
 
       const hasStats = row.querySelector('._1dnmndy1x1') !== null;
       if (!hasStats) continue;
+
+      // A1 Fix: Establish container-type context programmatically on the native row
+      row.style.containerType = 'inline-size';
 
       const userLink = Array.from(row.querySelectorAll('a[href*="/user/"]')).find((a) => {
         const href = a.getAttribute('href') || '';
@@ -9197,46 +9674,95 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
         chipContainer = document.createElement('div');
         chipContainer.className = 'wia-troop-chips';
         chipContainer.setAttribute('data-wia-user', userId);
-        chipContainer.style.cssText = 'display: inline-flex; align-items: center; gap: 6px; margin-left: 8px; font-size: 11px; vertical-align: middle; flex-wrap: wrap;';
         parent.appendChild(chipContainer);
       }
 
       let buildBadge = '';
       if (memberData.build === 'war') {
         const pct = Math.round((memberData.warShare || 0) * 100);
-        buildBadge = `<span style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #fca5a5; padding: 2px 8px; border-radius: 12px; font-weight: 600;">💥 WAR (${pct}%)</span>`;
+        buildBadge = `<span class="wia-troop-chip build-war"><span>💥 WAR</span><span class="build-pct"> (${pct}%)</span></span>`;
       } else if (memberData.build === 'hybrid') {
         const pct = Math.round((memberData.warShare || 0) * 100);
-        buildBadge = `<span style="background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.4); color: #c7d2fe; padding: 2px 8px; border-radius: 12px; font-weight: 600;">⚖ Hybrid (${pct}%)</span>`;
+        buildBadge = `<span class="wia-troop-chip build-hybrid"><span>⚖ Hybrid</span><span class="build-pct"> (${pct}%)</span></span>`;
       } else {
-        buildBadge = `<span style="background: rgba(100, 116, 139, 0.15); border: 1px solid rgba(100, 116, 139, 0.4); color: #cbd5e1; padding: 2px 8px; border-radius: 12px; font-weight: 600;">💰 Eco</span>`;
+        buildBadge = `<span class="wia-troop-chip build-eco">💰 Eco</span>`;
       }
 
       const hpPct = memberData.hpMax > 0 ? Math.round((memberData.hpCurrent / memberData.hpMax) * 100) : 100;
-      const hpColor = hpPct >= 80 ? '#22c55e' : hpPct >= 40 ? '#eab308' : '#ef4444';
+      const hpColor = barColor(hpPct);
       const hpBadge = `
-        <span style="display: inline-flex; align-items: center; gap: 4px; background: rgba(15, 23, 42, 0.6); padding: 2px 8px; border-radius: 12px; border: 1px solid #334155;">
-          <span style="color: #ef4444; font-size: 10px;">❤</span>
-          <span style="width: 44px; height: 5px; background: #334155; border-radius: 3px; overflow: hidden; display: inline-block;">
-            <span style="display: block; width: ${hpPct}%; height: 100%; background: ${hpColor}; transition: width 0.2s;"></span>
+        <span class="wia-troop-chip hp-badge">
+          <span class="hp-heart">❤</span>
+          <span class="hp-track">
+            <span class="hp-fill" style="width: ${hpPct}%; background: ${hpColor};"></span>
           </span>
-          <span style="font-size: 10px; font-family: monospace; color: #cbd5e1;">${Math.round(memberData.hpCurrent)}/${memberData.hpMax}</span>
+          <span class="hp-val">${Math.round(memberData.hpCurrent)}/${memberData.hpMax}</span>
+        </span>`;
+
+      const hungerPct = memberData.hungerMax > 0 ? Math.round((memberData.hungerCurrent / memberData.hungerMax) * 100) : 100;
+      const hungerColor = barColor(hungerPct);
+      const hungerBadge = `
+        <span class="wia-troop-chip hunger-badge">
+          <span class="hunger-steak">🍖</span>
+          <span class="hunger-track">
+            <span class="hunger-fill" style="width: ${hungerPct}%; background: ${hungerColor};"></span>
+          </span>
+          <span class="hunger-val">${Math.round(memberData.hungerCurrent)}/${memberData.hungerMax}</span>
+        </span>`;
+
+      const effPct = memberEffPoolPct(memberData);
+      const effColor = barColor(effPct);
+      const lhBadge = `
+        <span class="wia-troop-chip lh-badge">
+          <span class="lh-lbl">L/H</span>
+          <span class="lh-track">
+            <span class="lh-fill" style="width: ${Math.round(effPct)}%; background: ${effColor};"></span>
+          </span>
+          <span class="lh-val">${Math.round(effPct)}%</span>
         </span>`;
 
       let pillBadge = '';
       if (memberData.pillState === 'pill-on') {
         const timeStr = formatTroopRadarTime(memberData.buffEndAt);
-        pillBadge = `<span style="background: rgba(34, 197, 94, 0.15); border: 1px solid rgba(34, 197, 94, 0.4); color: #86efac; padding: 2px 8px; border-radius: 12px;">💊 Gepillt bis: ${timeStr || 'unknown'}</span>`;
+        const labelLong = t('troopRadarPillOn') + (timeStr ? `: ${timeStr}` : '');
+        const labelShort = timeStr || '';
+        pillBadge = `
+          <span class="wia-troop-chip pill-on">
+            <span class="pill-txt-long">💊 ${labelLong}</span>
+            <span class="pill-txt-short">💊 ${labelShort}</span>
+          </span>`;
       } else if (memberData.debuffsPercent > 0) {
         const timeStr = formatTroopRadarTime(memberData.debuffEndAt);
-        pillBadge = `<span style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #fca5a5; padding: 2px 8px; border-radius: 12px;">💊 Kann pillen ab: ${timeStr || 'unknown'}</span>`;
+        const labelLong = t('troopRadarPillCd') + (timeStr ? ` ab: ${timeStr}` : '');
+        const labelShort = timeStr || t('troopRadarPillCdShort');
+        pillBadge = `
+          <span class="wia-troop-chip pill-debuff">
+            <span class="pill-txt-long">💊 ${labelLong}</span>
+            <span class="pill-txt-short">💊 ${labelShort}</span>
+          </span>`;
       } else if (memberData.pillReady) {
-        pillBadge = `<span style="background: rgba(234, 179, 8, 0.15); border: 1px solid rgba(234, 179, 8, 0.5); color: #fef08a; padding: 2px 8px; border-radius: 12px; font-weight: 700;">💊 ungepillt · bereit</span>`;
+        pillBadge = `
+          <span class="wia-troop-chip pill-ready">
+            <span class="pill-txt-long">💊 ${t('troopRadarPillOff')} · ${t('troopRadarPillReadyShort')}</span>
+            <span class="pill-txt-short">💊 ${t('troopRadarPillReadyShort')}</span>
+          </span>`;
       } else {
-        pillBadge = `<span style="background: rgba(100, 116, 139, 0.15); border: 1px solid rgba(100, 116, 139, 0.3); color: #94a3b8; padding: 2px 8px; border-radius: 12px;">💊 ungepillt</span>`;
+        pillBadge = `
+          <span class="wia-troop-chip pill-off">
+            <span class="pill-txt-long">💊 ${t('troopRadarPillOff')}</span>
+            <span class="pill-txt-short">💊 ${t('troopRadarPillOffShort')}</span>
+          </span>`;
       }
 
-      chipContainer.innerHTML = `${buildBadge}${hpBadge}${pillBadge}`;
+      let dmgBadge = '';
+      if (memberData.isActive !== false) {
+        const { dmgVal, degraded } = computeMemberDamage(memberData, mode, now, horizon);
+        const dmgText = degraded ? '—' : fmtDamage(dmgVal);
+        const chipClass = degraded ? 'dmg-degraded' : (mode === 'tag' ? 'dmg-tag' : 'dmg-live');
+        dmgBadge = `<span class="wia-troop-chip dmg-chip ${chipClass}">💥 ${dmgText}</span>`;
+      }
+
+      chipContainer.innerHTML = `${buildBadge}${hpBadge}${hungerBadge}${lhBadge}${pillBadge}${dmgBadge}`;
     }
   }
 
@@ -9291,6 +9817,38 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     troopRadarActiveMuId = muId;
     const reqId = ++troopRadarActiveRequestId;
 
+    const evaluateHealth = (summary, membersData) => {
+      if (!summary || !Array.isArray(membersData)) {
+        return { status: 'warn', reason: 'no data' };
+      }
+      
+      if (summary.avgHungerPct === undefined || isNaN(summary.avgHungerPct) ||
+          summary.avgEffPoolPct === undefined || isNaN(summary.avgEffPoolPct)) {
+        return { status: 'warn', reason: 'avgHungerPct/avgEffPoolPct not calculable' };
+      }
+
+      const activeMembers = membersData.filter(m => m && m.isActive !== false);
+      if (activeMembers.length > 0) {
+        const now = new Date();
+        const horizon = getLiveHorizonHour();
+        const mode = troopRadarDamageMode;
+        let degradedCount = 0;
+        activeMembers.forEach(m => {
+          const { degraded } = computeMemberDamage(m, mode, now, horizon);
+          if (degraded) degradedCount++;
+        });
+
+        if ((degradedCount / activeMembers.length) > 0.5) {
+          return {
+            status: 'warn',
+            reason: `degraded damage for >50% active members (${degradedCount}/${activeMembers.length})`
+          };
+        }
+      }
+
+      return { status: 'ok', reason: `${activeMembers.length} members rendered` };
+    };
+
     try {
       const fullData = await fetchFullTroopRadar(muId);
       if (reqId !== troopRadarActiveRequestId) {
@@ -9300,28 +9858,16 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       renderTroopRadarHeaderSummary(fullData.summary, muId, fullData.membersData);
       renderTroopRadarMemberRows(fullData.membersData);
 
-      const sum = fullData.summary.damagePotential;
-      const total = fullData.summary.damageTotalCount;
-      const done = fullData.summary.damageComputedCount;
-      if (total > 0 && (done === 0 || !isFinite(sum))) {
-        setHealth('troopRadar', 'warn', `degraded: ${done}/${total} computed, sum=${sum}`);
-      } else {
-        setHealth('troopRadar', 'ok', `${fullData.membersData.length} members rendered`);
-      }
+      const health = evaluateHealth(fullData.summary, fullData.membersData);
+      setHealth('troopRadar', health.status, health.reason);
 
       fullData.detailsPromise.then((liveFull) => {
         if (reqId !== troopRadarActiveRequestId) return;
         renderTroopRadarHeaderSummary(liveFull.summary, muId, liveFull.membersData);
         renderTroopRadarMemberRows(liveFull.membersData);
         
-        const lSum = liveFull.summary.damagePotential;
-        const lTotal = liveFull.summary.damageTotalCount;
-        const lDone = liveFull.summary.damageComputedCount;
-        if (lTotal > 0 && (lDone === 0 || !isFinite(lSum))) {
-          setHealth('troopRadar', 'warn', `degraded: ${lDone}/${lTotal} computed, sum=${lSum}`);
-        } else {
-          setHealth('troopRadar', 'ok', `${liveFull.membersData.length} members updated`);
-        }
+        const health = evaluateHealth(liveFull.summary, liveFull.membersData);
+        setHealth('troopRadar', health.status, health.reason);
         troopRadarLoading = false;
       }).catch((e) => {
         dbg('troopRadar', 'warn', 'detailsPromise error: ' + e.message);
@@ -15137,6 +15683,8 @@ function checkInventoryDeltaWear() {
   }
 
   function start() {
+    log('initializing PROST v' + SCRIPT_VERSION);
+    console.log('[PROST:core] initializing PROST v' + SCRIPT_VERSION);
     if (typeof sessionStorage !== 'undefined') {
       if (sessionStorage.getItem('wia-update-pending') === 'true') {
         sessionStorage.removeItem('wia-update-pending');
