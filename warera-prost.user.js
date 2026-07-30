@@ -3229,6 +3229,9 @@
     globalThis.battleFlagCode = battleFlagCode;
     globalThis.injectCompactOrders = injectCompactOrders;
     globalThis.renderSettingsModal = renderSettingsModal;
+    globalThis.initNotes = initNotes;
+    globalThis.scanNoteLinks = scanNoteLinks;
+    globalThis.attachNoteIcon = attachNoteIcon;
     globalThis.getCurrentUserId = getCurrentUserId;
     globalThis.WIA_resolve = resolveApiBase;
     globalThis.WIA_post = resolveApiPost;
@@ -5025,6 +5028,8 @@ async function scanInventory(force) {
         background: rgba(148,163,184,.18); color: #facc15; outline: none;
       }
       .warera-note-icon.has-note { color: #facc15; }
+      .warera-note-icon.hover-gated { opacity: 0; pointer-events: none; transition: opacity .15s ease; }
+      .warera-note-icon.hover-gated.is-visible { opacity: 1; pointer-events: auto; }
       .warera-note-backdrop {
         position: fixed; inset: 0; z-index: 2147483646;
         display: none; align-items: center; justify-content: center;
@@ -7558,6 +7563,7 @@ function updateObserverTarget() {
   const NOTES_ATTR      = 'data-warera-note-attached';
   const NOTES_KEY_PFX   = 'warera-note:';
   const NOTES_DEBOUNCE  = 150;
+  const NOTES_HOVER_GRACE_MS = 1500; // how long the empty pencil icon stays visible after the mouse leaves
 
   let sharedBodyObserver = null;
 
@@ -7688,10 +7694,16 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     const icon = document.createElement('button');
     icon.type = 'button';
     icon.className = 'warera-note-icon';
-    icon.textContent = hasNote(userId) ? '📒' : '✎';
+    const saved = hasNote(userId);
+    icon.textContent = saved ? '📒' : '✎';
     icon.title = notePreview(userId);
     icon.setAttribute('aria-label', t('editNoteAria', { user: link.textContent.trim() || t('noteUserLabel') }));
-    if (hasNote(userId)) icon.classList.add('has-note');
+    if (saved) {
+      icon.classList.add('has-note');
+    } else {
+      icon.classList.add('hover-gated');
+    }
+    attachNoteHoverGate(link, icon);
     icon.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -7699,6 +7711,28 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     });
     link.insertAdjacentElement('afterend', icon);
     link.dataset.wareraNoteAttached = 'true';
+  }
+
+  const noteHoverHideTimers = new WeakMap(); // icon -> pending hide timeout id
+
+  function attachNoteHoverGate(link, icon) {
+    const show = () => {
+      const pending = noteHoverHideTimers.get(icon);
+      if (pending) { clearTimeout(pending); noteHoverHideTimers.delete(icon); }
+      icon.classList.add('is-visible');
+    };
+    const scheduleHide = () => {
+      const pending = noteHoverHideTimers.get(icon);
+      if (pending) clearTimeout(pending);
+      noteHoverHideTimers.set(icon, setTimeout(() => {
+        icon.classList.remove('is-visible');
+        noteHoverHideTimers.delete(icon);
+      }, NOTES_HOVER_GRACE_MS));
+    };
+    link.addEventListener('mouseenter', show);
+    link.addEventListener('mouseleave', scheduleHide);
+    icon.addEventListener('mouseenter', show);
+    icon.addEventListener('mouseleave', scheduleHide);
   }
 
   function buildNotesModal() {

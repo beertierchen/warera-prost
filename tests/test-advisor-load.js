@@ -3136,6 +3136,72 @@ try {
       assert.ok(panelEl.innerHTML.includes('Test Idle'), 'idle row should appear after clicking the toggle');
       assert.ok(panelEl.innerHTML.includes('max-height:320px'), 'panel must cap its own height so it cannot overflow the viewport');
 
+      // Test Task 6: Notes scan and hover gate behavior
+      console.log('--- Testing User Notes hover gate & transition states ---');
+      globalThis.CONFIG.featNotes = true;
+
+      // Save original GM_getValue
+      const oldGetVal = global.GM_getValue;
+
+      // 1. Link without a note should get hover-gated icon
+      const linkNoNote = new MockElement('a');
+      linkNoNote.setAttribute('href', 'https://app.warera.io/user/123');
+      linkNoNote.textContent = 'Player123';
+      
+      global.GM_getValue = () => ''; // Mock no note in GM storage
+      
+      const injectedElements = [];
+      linkNoNote.insertAdjacentElement = (pos, el) => {
+        if (pos === 'afterend') {
+          injectedElements.push(el);
+        }
+      };
+
+      globalThis.attachNoteIcon(linkNoNote, '123');
+      
+      assert.strictEqual(injectedElements.length, 1, 'Should inject note icon');
+      const iconNoNote = injectedElements[0];
+      assert.ok(iconNoNote.classList.contains('hover-gated'), 'Icon for link without note should have hover-gated class');
+      assert.ok(!iconNoNote.classList.contains('has-note'), 'Icon for link without note should not have has-note class');
+      assert.strictEqual(iconNoNote.textContent, '✎', 'Icon for link without note should be a pencil');
+
+      // Test hover behavior
+      assert.ok(!iconNoNote.classList.contains('is-visible'), 'Icon should start not visible');
+      linkNoNote.dispatchEvent('mouseenter');
+      assert.ok(iconNoNote.classList.contains('is-visible'), 'Icon should become visible on mouseenter');
+      
+      linkNoNote.dispatchEvent('mouseleave');
+      // Visibility should still be there immediately (grace period timer is running)
+      assert.ok(iconNoNote.classList.contains('is-visible'), 'Icon should linger immediately on mouseleave');
+
+      // Wait 1.6 seconds to let the grace timer fire
+      await new Promise(resolve => setTimeout(resolve, 1600));
+      assert.ok(!iconNoNote.classList.contains('is-visible'), 'Icon should fade out after hover grace period');
+
+      // 2. Link with a note should get has-note class and not hover-gated
+      const linkWithNote = new MockElement('a');
+      linkWithNote.setAttribute('href', 'https://app.warera.io/user/456');
+      linkWithNote.textContent = 'Player456';
+      
+      global.GM_getValue = (key) => key.includes('456') ? 'Some note text' : ''; // Mock note present
+      
+      const injectedElementsWithNote = [];
+      linkWithNote.insertAdjacentElement = (pos, el) => {
+        if (pos === 'afterend') {
+          injectedElementsWithNote.push(el);
+        }
+      };
+      
+      globalThis.attachNoteIcon(linkWithNote, '456');
+      assert.strictEqual(injectedElementsWithNote.length, 1, 'Should inject note icon');
+      const iconWithNote = injectedElementsWithNote[0];
+      assert.ok(iconWithNote.classList.contains('has-note'), 'Icon for link with note should have has-note class');
+      assert.ok(!iconWithNote.classList.contains('hover-gated'), 'Icon for link with note should not have hover-gated class');
+      assert.strictEqual(iconWithNote.textContent, '📒', 'Icon for link with note should be a book');
+
+      // Restore original GM_getValue
+      global.GM_getValue = oldGetVal;
+
       console.log('Compliance tests passed successfully.');
 
       console.log('Success! The script loaded and initialized without throwing any runtime errors.');
