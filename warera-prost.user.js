@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.10.4
+// @version      0.10.5
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -91,6 +91,13 @@
     // ntfy.sh has its own (stricter) per-IP budget and BANS IPs that keep
     // sending after a 429 — back off much longer than for the game API.
     ntfyBackoffMs: 5 * 60 * 1000,       // after an ntfy 429, suppress ALL ntfy traffic this long
+
+    // Max simultaneous item-transaction fetches during an inventory scan. The
+    // gateway token bucket is ~100 rpm; a full inventory triggers ~20 fetches
+    // at once without this cap, exhausting the bucket and timing out (#82).
+    itemFetchConcurrency: 3,
+
+    requestTimeoutMs: 15000,             // default GM_xmlhttpRequest timeout
 
     // --- DOM ---
     // Item images all live under this path; we climb from the <img> to its card.
@@ -290,6 +297,9 @@
     pillDebuffH: 15.5,
     pillPrefWindowFrom: '19:00',
     pillPrefWindowTo: '20:00',
+    // After an H&H-full notification, suppress re-fire for this long even if
+    // both100 briefly toggles (threshold flicker / multi-tab race) (#80).
+    hnhNotifyCooldownMs: 15 * 60 * 1000,
     coinsIconPathPrefix: 'M12 5C7.031', // anchor for the gold-coins value icon in selector tiles
     hpIconPath: 'M12,21.35L10.55,20.03',
     hungerIconPath: 'M11,9H9V2H7V9',
@@ -490,11 +500,13 @@
         pillNextTickIn: 'Tick in {duration}',
         craftTitle: 'Crafting Advisor',
         craftResourceCost: 'Resource cost: {val} Gold (Steel: {steelPrice}/u, Scraps: {scrapsPrice}/u)',
-        craftProfitRange: 'Profit range:',
-        craftProfitSpecific: 'Profit: {min} to {max}',
+        craftProfitRange: 'Profit range (ranked by typical price):',
+        craftProfitSpecific: 'Profit range: {min} to {max}',
+        craftProfitMedian: 'Expected profit (typical price): {profit}',
         craftWorstItem: 'Worst option ({item}): {profit}',
         craftBestItem: 'Best option ({item}): {profit}',
         craftMarketRange: 'Market range: {min} to {max} Gold',
+        craftItemRange: 'range {min}–{max}',
         craftMissingPrices: '⚠️ Market prices for steel/scraps not found. Visit Market to update.',
         today: 'today',
         tomorrow: 'tomorrow',
@@ -804,11 +816,13 @@
         pillNextTickIn: 'Tick in {duration}',
         craftTitle: 'Crafting-Berater',
         craftResourceCost: 'Ressourcenkosten: {val} Gold (Stahl: {steelPrice}/Einh., Schrott: {scrapsPrice}/Einh.)',
-        craftProfitRange: 'Profit-Spanne:',
-        craftProfitSpecific: 'Profit: {min} bis {max}',
+        craftProfitRange: 'Profit-Spanne (nach typischem Preis sortiert):',
+        craftProfitSpecific: 'Profit-Spanne: {min} bis {max}',
+        craftProfitMedian: 'Erwarteter Profit (typischer Preis): {profit}',
         craftWorstItem: 'Schlechteste Option ({item}): {profit}',
         craftBestItem: 'Beste Option ({item}): {profit}',
         craftMarketRange: 'Marktspanne: {min} bis {max} Gold',
+        craftItemRange: 'Spanne {min}–{max}',
         craftMissingPrices: '⚠️ Marktpreise für Stahl/Schrott nicht gefunden. Besuche den Markt zum Aktualisieren.',
         today: 'heute',
         tomorrow: 'morgen',
@@ -980,6 +994,7 @@
     featPillNotifWindow: NS + 'featPillNotifWindow',
     featPillNotifDebuff: NS + 'featPillNotifDebuff',
     lastNotifiedHnH: NS + 'lastNotifiedHnH',
+    hnhNotifyCooldownUntil: NS + 'hnhNotifyCooldownUntil',
     lastNotifiedPillWindowDate: NS + 'lastNotifiedPillWindowDate',
     lastNotifiedDebuffEnd: NS + 'lastNotifiedDebuffEnd',
     featBountyNotify: NS + 'featBounty',
@@ -1022,6 +1037,7 @@
     debug: NS + 'debug',
     pnlProcessedTxs: NS + 'pnl.processedTxs',  // persistent (history-spanning) tx-id dedup for cost-basis + booking
     pnlBadTx: NS + 'pnl.badTx',                // quarantine retry attempts mapping for bad transactions
+    gatewayTimeoutLog: NS + 'gatewayTimeoutLog',   // persisted timestamps, to correlate timeouts with time-of-day across sessions
     gatedProcedures: NS + 'gatedProcedures',
     gatedResetV090: NS + 'gatedResetV090',
     bountyScope: NS + 'bountyScope',
@@ -1289,7 +1305,14 @@
     if (r.count > LIMIT) {
       if (!r.warned) {            // surface ONCE per window
         r.warned = true;
-        setHealth(feat, 'warn', `possible loop: "${String(msg).slice(0,60)}" ×${r.count} in ${W}ms`);
+        // Only escalate to a health warning for warn/error repeats. A burst of
+        // identical DEBUG lines (e.g. 20+ "user.getUserById succeeded" during a
+        // legitimately fast bulk batch fetch) is expected, not a sign of a
+        // runaway loop — still suppress the console spam below, just don't flip
+        // the ampel to warn over it.
+        if (level !== 'debug') {
+          setHealth(feat, 'warn', `possible loop: "${String(msg).slice(0,60)}" ×${r.count} in ${W}ms`);
+        }
         console.warn(`[PROST:${feat}] possible loop — "${String(msg).slice(0,60)}" repeated; suppressing`);
       }
       return true; // caller: suppress further console output for this key this window
@@ -1311,7 +1334,12 @@
     if (isRepeated) return;
 
     if (isError || CONFIG.debug) {
-      (level === 'error' ? console.error : console.log)(`[PROST:${feat}]`, ...msg);
+      // Route by real console level so browser DevTools' Info/Warnings/Errors
+      // filters actually work — previously only 'error' got console.error and
+      // everything else (including 'warn') went through console.log, making
+      // warnings invisible whenever the console's "Info"/"Log" filter is off.
+      const consoleFn = level === 'error' ? console.error : (level === 'warn' ? console.warn : console.log);
+      consoleFn(`[PROST:${feat}]`, ...msg);
     }
   }
 
@@ -1323,7 +1351,7 @@
     Debug.buf.push({ t: Date.now(), feat, level: 'error', msg: [ctx, msg].filter(Boolean) });
     if (Debug.buf.length > Debug.max) Debug.buf.shift();
 
-    setHealth(feat, status, fullMsg);
+    setHealth(feat, status, fullMsg, { logChange: false });   // already logged above
 
     if (!isRepeated) {
       console.error(`[PROST:${feat}]${ctx ? ' ' + ctx : ''}`, e);
@@ -1384,6 +1412,28 @@
       lines.push(`[${timeStr}] ${err.procedure} -> ${err.status} (${err.error})${intervalStr}`);
     }
     lines.push(``);
+    lines.push(`=== Gateway Timeout History (persisted across sessions, last ${GATEWAY_TIMEOUT_LOG_MAX}) ===`);
+    const timeoutLog = GM_getValue(KEYS.gatewayTimeoutLog, []);
+    if (!timeoutLog.length) {
+      lines.push(`(none recorded yet)`);
+    } else {
+      const first = timeoutLog[0].t;
+      const last = timeoutLog[timeoutLog.length - 1].t;
+      const spanHours = (last - first) / 3600000;
+      lines.push(`Total: ${timeoutLog.length} timeouts over ${spanHours.toFixed(1)}h (${new Date(first).toISOString()} to ${new Date(last).toISOString()})`);
+      // Local-hour-of-day histogram — is this worse at certain hours (peak load)
+      // or evenly spread (random)? A single session's data can't answer that.
+      const byHour = new Array(24).fill(0);
+      for (const entry of timeoutLog) byHour[new Date(entry.t).getHours()]++;
+      const maxCount = Math.max(1, ...byHour);
+      lines.push(`By local hour-of-day:`);
+      for (let h = 0; h < 24; h++) {
+        if (byHour[h] === 0) continue;
+        const barLen = Math.round((byHour[h] / maxCount) * 30);
+        lines.push(`  ${String(h).padStart(2, '0')}:00  ${'#'.repeat(barLen)} ${byHour[h]}`);
+      }
+    }
+    lines.push(``);
     lines.push(`=== Feature Health Registry ===`);
     for (const [id, h] of Object.entries(Health)) {
       lines.push(`[${id}] status=${h.status} info="${h.info || ''}" lastRun=${h.lastRun ? new Date(h.lastRun).toISOString() : 'never'}`);
@@ -1413,12 +1463,22 @@
     }
     return Health[id];
   }
-  function setHealth(id, status, reason = '') {
+  function setHealth(id, status, reason = '', { logChange = true } = {}) {
     const h = regFeature(id);
+    const changed = h.status !== status || h.reason !== reason;
     h.status = status;
     h.reason = reason;
     h._touched = true;                 // tells guard() not to overwrite with 'ok'
     if (status === 'fail') h.lastError = reason;
+    // Many call sites set health directly (selector-miss, loop-detector, feature-
+    // specific degraded states) without also calling dbg()/reportError() — those
+    // warn/fail transitions were only visible in the live health panel, never in
+    // exportDebugLog()'s log. Only log on actual change so a persistent warning
+    // re-asserted every poll tick doesn't spam the ring buffer.
+    if (logChange && changed && (status === 'warn' || status === 'fail')) {
+      Debug.buf.push({ t: Date.now(), feat: id, level: status === 'fail' ? 'error' : 'warn', msg: [reason || status] });
+      if (Debug.buf.length > Debug.max) Debug.buf.shift();
+    }
     if (typeof updateDebugHud === 'function') updateDebugHud();
     return h;
   }
@@ -1807,6 +1867,24 @@
       t = setTimeout(() => fn.apply(this, args), ms);
     };
   }
+
+  // Run `worker` over `items` with at most `limit` in flight at once, preserving
+  // input order in the returned array. Used to throttle bulk gateway fetches so a
+  // full-inventory scan doesn't exhaust the token bucket (#82). A worker rejection
+  // propagates — callers keep their own per-item try/catch, matching Promise.all.
+  async function mapWithConcurrency(items, limit, worker) {
+    const results = new Array(items.length);
+    const width = Math.max(1, Math.min(limit, items.length));
+    let cursor = 0;
+    const runner = async () => {
+      while (cursor < items.length) {
+        const i = cursor++;
+        results[i] = await worker(items[i], i);
+      }
+    };
+    await Promise.all(Array.from({ length: width }, runner));
+    return results;
+  }
   function colorDistance(a, b) {
     return Math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2);
   }
@@ -1829,7 +1907,7 @@
   // builds do not — the allowlist below, not the flag, is the real guarantee.
   const GM_HEADER_ALLOWLIST = ['content-type', 'accept', 'x-api-key', 'title', 'priority', 'tags', 'click'];
 
-  function gmRequest({ method, url, headers, data }) {
+  function gmRequest({ method, url, headers, data, timeout }) {
     const safe = {};
     for (const [k, v] of Object.entries(headers || {})) {
       if (v == null) continue;
@@ -1844,12 +1922,43 @@
         headers: safe,
         data,
         anonymous: true,            // strip ambient game-session cookies
-        timeout: 15000,
+        timeout: timeout || CONFIG.requestTimeoutMs,
         onload: (res) => resolve({ status: res.status, text: res.responseText, responseHeaders: res.responseHeaders || '' }),
         onerror: () => reject(new Error('network error: ' + url)),
         ontimeout: () => reject(new Error('timeout: ' + url)),
       });
     });
+  }
+
+  function isTimeoutError(err) {
+    return !!err && typeof err.message === 'string' && err.message.startsWith('timeout:');
+  }
+
+  const GATEWAY_TIMEOUT_LOG_MAX = 500;
+  // Persisted (survives reload/session, unlike the in-memory Debug ring buffer)
+  // so timeout occurrences can be correlated with time-of-day across many
+  // sessions — is the community gateway worse at certain hours, or is it just
+  // random? One session's data isn't enough to tell.
+  function recordGatewayTimeout(procedure) {
+    try {
+      const log = GM_getValue(KEYS.gatewayTimeoutLog, []);
+      log.push({ t: now(), procedure });
+      if (log.length > GATEWAY_TIMEOUT_LOG_MAX) log.splice(0, log.length - GATEWAY_TIMEOUT_LOG_MAX);
+      GM_setValue(KEYS.gatewayTimeoutLog, log);
+    } catch (e) { /* best-effort */ }
+  }
+
+  // Classify + report a failed resolveApi* attempt for one base in the fallback
+  // loop: timeouts get a visible api-health warn (so the ampel surfaces gateway
+  // degradation instead of a silent hang, #81); other errors just get a debug log.
+  function reportApiAttemptFailure(fnName, procedure, base, e) {
+    if (isTimeoutError(e)) {
+      setHealth('api', 'warn', `${isGateway(base) ? 'gateway' : 'API'} timeout — retrying/degraded`);
+      dbg('api', 'warn', `${fnName} ${procedure} timed out on ${base}`);
+      if (isGateway(base)) recordGatewayTimeout(procedure);
+    } else {
+      dbg('api', 'warn', `${fnName} ${procedure} failed on ${base}: ${e.message}`);
+    }
   }
 
   function keyedHeaders() {                               // key only upgrades rate limit
@@ -2150,24 +2259,60 @@
     officialBucket.tokens = Math.min(officialBucket.tokens, officialBucket.maxTokens);
   }
 
-  async function acquireOfficialToken() {
-    updateBucketRate();
+  // Priority-aware token-bucket acquire, shared by the official-API and gateway
+  // buckets. Foreground features (troop-radar/order-radar — whatever the user is
+  // actively looking at right now) pass priority: 'high' so they aren't stuck
+  // queued behind background pollers (bounty/pnl/craft-advisor) sharing the same
+  // rate limit — a 25-member troop-radar fetch was observed taking 100+ seconds
+  // because it queued FIFO behind unrelated background traffic. Within a
+  // priority tier, order is still FIFO. 'high' cannot starve 'normal' forever:
+  // each drain tick empties whatever's in 'high' first, then serves 'normal' —
+  // it never re-checks 'high' again mid-tick, so a steady trickle of 'normal'
+  // requests always keeps making progress.
+  function refillBucket(bucket) {
     const nowMs = Date.now();
-    const elapsed = nowMs - officialBucket.lastRefill;
-    officialBucket.tokens = Math.min(officialBucket.maxTokens, officialBucket.tokens + elapsed * officialBucket.refillRate);
-    officialBucket.lastRefill = nowMs;
+    const elapsed = Math.max(0, nowMs - bucket.lastRefill);
+    bucket.tokens = Math.min(bucket.maxTokens, bucket.tokens + elapsed * bucket.refillRate);
+    bucket.lastRefill = nowMs;
+  }
 
-    if (officialBucket.tokens >= 1) {
-      officialBucket.tokens -= 1;
-      return 0;
+  function drainBucketQueue(bucket, q) {
+    refillBucket(bucket);
+    while (bucket.tokens >= 1 && (q.high.length || q.normal.length)) {
+      const grant = q.high.length ? q.high.shift() : q.normal.shift();
+      bucket.tokens -= 1;
+      grant();
     }
+    if (q.high.length || q.normal.length) {
+      const needed = 1 - bucket.tokens;
+      const waitMs = Math.max(16, needed / bucket.refillRate);
+      q.timer = setTimeout(() => { q.timer = null; drainBucketQueue(bucket, q); }, waitMs);
+    } else if (q.timer) {
+      clearTimeout(q.timer);
+      q.timer = null;
+    }
+  }
 
-    const needed = 1 - officialBucket.tokens;
-    const waitMs = needed / officialBucket.refillRate;
-    officialBucket.tokens = 0;
-    officialBucket.lastRefill = nowMs + waitMs;
+  function acquireFromBucket(bucket, q, priority) {
+    refillBucket(bucket);
+    // Only grant immediately when nobody is already waiting — otherwise a steady
+    // stream of arriving 'high' calls could keep bypassing an already-queued
+    // 'normal' caller forever (never actually FIFO for it).
+    if (!q.high.length && !q.normal.length && bucket.tokens >= 1) {
+      bucket.tokens -= 1;
+      return Promise.resolve(0);
+    }
+    return new Promise((resolve) => {
+      (priority === 'high' ? q.high : q.normal).push(() => resolve(0));
+      if (!q.timer) drainBucketQueue(bucket, q);
+    });
+  }
 
-    return new Promise((resolve) => setTimeout(resolve, waitMs));
+  const officialQueue = { high: [], normal: [], timer: null };
+
+  function acquireOfficialToken(priority = 'normal') {
+    updateBucketRate();
+    return acquireFromBucket(officialBucket, officialQueue, priority);
   }
 
   // ── Token Bucket Rate Limiter for Gateway API ──
@@ -2177,24 +2322,10 @@
     refillRate: 100 / (60 * 1000), // constant 100 rpm limit for gateway
     lastRefill: Date.now()
   };
+  const gatewayQueue = { high: [], normal: [], timer: null };
 
-  async function acquireGatewayToken() {
-    const nowMs = Date.now();
-    const elapsed = nowMs - gatewayBucket.lastRefill;
-    gatewayBucket.tokens = Math.min(gatewayBucket.maxTokens, gatewayBucket.tokens + elapsed * gatewayBucket.refillRate);
-    gatewayBucket.lastRefill = nowMs;
-
-    if (gatewayBucket.tokens >= 1) {
-      gatewayBucket.tokens -= 1;
-      return 0;
-    }
-
-    const needed = 1 - gatewayBucket.tokens;
-    const waitMs = needed / gatewayBucket.refillRate;
-    gatewayBucket.tokens = 0;
-    gatewayBucket.lastRefill = nowMs + waitMs;
-
-    return new Promise((resolve) => setTimeout(resolve, waitMs));
+  function acquireGatewayToken(priority = 'normal') {
+    return acquireFromBucket(gatewayBucket, gatewayQueue, priority);
   }
 
   function isGateway(base) {
@@ -2246,13 +2377,18 @@
         if (!opts.skipThrottle) {
           const throttleStart = Date.now();
           if (isGateway(base)) {
-            await acquireGatewayToken();
+            await acquireGatewayToken(opts.priority);
           } else {
-            await acquireOfficialToken();
+            await acquireOfficialToken(opts.priority);
           }
           ApiMonitor.trackWait(callEntry, Date.now() - throttleStart);
         }
-        res = await gmRequest({ method: 'GET', url: trpcUrl(base, procedure, args), headers: headersForBase(base) });
+        res = await gmRequest({
+          method: 'GET',
+          url: trpcUrl(base, procedure, args),
+          headers: headersForBase(base),
+          timeout: CONFIG.requestTimeoutMs,
+        });
         if (res.status === 429) {
           dbg('api', 'warn', `base ${base} rate-limited (429) for ${procedure}, attempting fallback base`);
           tripRateLimit();
@@ -2274,7 +2410,7 @@
         throw new Error('HTTP ' + res.status);
       } catch (e) {
         lastErr = e;
-        dbg('api', 'warn', `resolveApiBase ${procedure} failed on ${base}: ${e.message}`);
+        reportApiAttemptFailure('resolveApiBase', procedure, base, e);
       }
     }
     ApiMonitor.trackResult(callEntry, res, Date.now() - startTime, lastErr);
@@ -2309,9 +2445,9 @@
         if (!opts.skipThrottle) {
           const throttleStart = Date.now();
           if (isGateway(base)) {
-            await acquireGatewayToken();
+            await acquireGatewayToken(opts.priority);
           } else {
-            await acquireOfficialToken();
+            await acquireOfficialToken(opts.priority);
           }
           ApiMonitor.trackWait(callEntry, Date.now() - throttleStart);
         }
@@ -2325,7 +2461,8 @@
           method: 'POST',
           url,
           headers,
-          data: JSON.stringify(args)
+          data: JSON.stringify(args),
+          timeout: CONFIG.requestTimeoutMs,
         });
         if (res.status === 429) {
           dbg('api', 'warn', `base ${base} rate-limited (429) for ${procedure}, attempting fallback base`);
@@ -2348,7 +2485,7 @@
         throw new Error('HTTP ' + res.status);
       } catch (e) {
         lastErr = e;
-        dbg('api', 'warn', `resolveApiPost ${procedure} failed on ${base}: ${e.message}`);
+        reportApiAttemptFailure('resolveApiPost', procedure, base, e);
       }
     }
     ApiMonitor.trackResult(callEntry, res, Date.now() - startTime, lastErr);
@@ -2387,7 +2524,7 @@
       if (!isGateway(base)) {
         try {
           dbg('api', 'debug', `resolveApiBatch: splitting batch of size ${batchArgs.length} for non-batch base ${base}`);
-          const promises = batchArgs.map(async (args) => {
+          const results = await mapWithConcurrency(batchArgs, 2, async (args) => {
             try {
               const { payload } = await resolveApiBase(procedure, args, opts);
               return { payload };
@@ -2395,7 +2532,6 @@
               return { error: err };
             }
           });
-          const results = await Promise.all(promises);
           const allFailed = results.every(r => r.error);
           if (allFailed && batchArgs.length > 0) {
             lastErr = results[0].error;
@@ -2421,7 +2557,7 @@
       try {
         if (!opts.skipThrottle) {
           const throttleStart = Date.now();
-          await acquireGatewayToken();
+          await acquireGatewayToken(opts.priority);
           ApiMonitor.trackWait(callEntry, Date.now() - throttleStart);
         }
         const url = `${base}/${encodeURIComponent(procNames)}?input=${batchInput}`;
@@ -3137,6 +3273,9 @@
     globalThis.rejectPriceOutliers = rejectPriceOutliers;
     globalThis.median = median;
     globalThis.ensureCraftingPricesFetched = ensureCraftingPricesFetched;
+    globalThis.mapWithConcurrency = mapWithConcurrency;
+    globalThis.advisorLoadHealth = advisorLoadHealth;
+    globalThis.isTimeoutError = isTimeoutError;
   }
 
   function getLocale() {
@@ -4242,6 +4381,13 @@
     return true;
   }
 
+  // Decide advisor health after a bulk price load. `loaded` = codes whose fetch
+  // returned usable data, `requested` = codes we tried to fetch this pass.
+  function advisorLoadHealth(loaded, requested) {
+    if (requested === 0 || loaded >= requested) return { status: 'ok', reason: '' };
+    return { status: 'warn', reason: `market prices unavailable (${loaded}/${requested} loaded)` };
+  }
+
 
 
 async function scanInventory(force) {
@@ -4407,27 +4553,33 @@ async function scanInventory(force) {
                 dbg('core', 'debug', `Triggering background loads for: ${codesToFetch.join(', ')}`);
               }
 
-              await Promise.all(codesToFetch.map(async (c) => {
-                if (pendingFetches.has(c)) return;
-                pendingFetches.add(c);
+              const uniqueCodesToFetch = codesToFetch.filter(c => !pendingFetches.has(c));
+              uniqueCodesToFetch.forEach(c => pendingFetches.add(c));
+
+              const loadResults = await mapWithConcurrency(uniqueCodesToFetch, CONFIG.itemFetchConcurrency, async (c) => {
                 try {
                   if (CONFIG.debug && CONFIG.verboseDebug) {
                     dbg('core', 'debug', `Background load started for ${c}`);
                   }
-                  await fetchItemTransactions(c, force);
-                  n++;
+                  const data = await fetchItemTransactions(c, force);
                   if (CONFIG.debug && CONFIG.verboseDebug) {
                     dbg('core', 'debug', `Background load finished for ${c}`);
                   }
+                  return Array.isArray(data) && data.length > 0;
                 } catch (e) {
                   log(`Background load failed for ${c}:`, e);
+                  return false;
                 } finally {
                   pendingFetches.delete(c);
                 }
-              }));
+              });
+              n = loadResults.filter(Boolean).length;
 
               const ms = now() - startTime;
               log(`background: fetched ${n}/${N} codes in ${ms}ms (${fromCache} cached)`);
+
+              const health = advisorLoadHealth(n, N);
+              setHealth('advisor', health.status, health.reason || undefined);
 
               // ONE re-render pass over the items!
               const nextPc = readCache(KEYS.priceCache);
@@ -7045,6 +7197,22 @@ function updateObserverTarget() {
     const pagePath = getPagePathname();
     if (pagePath === lastPath) return;
     dbg('orderRadar', 'debug', 'route changed', lastPath, '->', pagePath);
+    // Log the route-detection snapshot alongside the transition itself — without
+    // this, "orderRadar says idle/not-on-country-page while visibly on one" can't
+    // be diagnosed after the fact, since the health panel only shows the LATEST
+    // status, not what getEntityFromRoute()/isCountryPage() actually returned at
+    // the moment of this specific transition.
+    dbg('orderRadar', 'debug', 'route detection', {
+      isCountryPage: isCountryPage(),
+      isMuPage: isMuPage(),
+      isInventoryPage: isInventoryPage(),
+      isMarketPage: isMarketPage(),
+      isBattlePage: isBattlePage(),
+      isUserProfilePage: isUserProfilePage(),
+      entity: getEntityFromRoute(),
+      featOrderRadar: CONFIG.featOrderRadar,
+      featBattleAdvisor: CONFIG.featBattleAdvisor,
+    });
     lastPath = pagePath;
     cachedCards = null;
     lastInventoryCards = null; // Reset fingerprint on route change
@@ -7693,6 +7861,19 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     if (mMu) return { type: 'mu', rawId: mMu[1] };
     const mUser = path.match(/^\/user\/([0-9a-zA-Z_-]+)/);
     if (mUser) return { type: 'user', rawId: mUser[1] };
+
+    // Fallback: if we are on the MU page but the URL path doesn't contain the ID (e.g., /mu),
+    // extract the MU ID from the sub-nav links in the DOM (e.g. /mu/<id>/members).
+    if (/^\/mu(\/|$)/.test(path) && typeof document !== 'undefined') {
+      const links = document.querySelectorAll('a[href*="/mu/"]');
+      for (const link of links) {
+        const href = link.getAttribute('href') || '';
+        const match = href.match(/\/mu\/([a-f0-9]{24})/i);
+        if (match) {
+          return { type: 'mu', rawId: match[1] };
+        }
+      }
+    }
     return null;
   }
 
@@ -7758,7 +7939,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     const activeRoute = route || getEntityFromRoute();
     if (!activeRoute) return null;
 
-    const images = document.querySelectorAll('img[src*="/headerv4/"]');
+    const images = document.querySelectorAll('img[src*="/headerv4/"], img[src*="/headerv"], img[src*="/header/"], img[src*="/headers/"]');
     if (images.length === 0) return null;
 
     let bestAnchor = null;
@@ -7817,7 +7998,8 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       const args = { isActive: true, filter: 'all', limit: 100 };
       if (cursor) { args.cursor = cursor; args.direction = 'forward'; }
       // POST (not batch-GET): batch-GET ignores `limit` → only 10 battles/page.
-      const res = await resolveApiPost('battle.getBattles', args);
+      // high priority: gates order-radar's visible render, cached 45s either way.
+      const res = await resolveApiPost('battle.getBattles', args, { priority: 'high' });
       const payloadObj = (res && res.payload) || res || {};
       const pageItems = payloadObj.items || (payloadObj.json && payloadObj.json.items) || (Array.isArray(payloadObj) ? payloadObj : []);
       items.push(...pageItems);
@@ -7894,7 +8076,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     }
 
     const promise = (async () => {
-      const res = await resolveApiBase('battleOrder.getByBattle', { battleId, side });
+      const res = await resolveApiBase('battleOrder.getByBattle', { battleId, side }, { priority: 'high' });
       const payload = (res && res.payload) || res || [];
       return Array.isArray(payload)
         ? payload
@@ -7914,19 +8096,31 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
   function orderBelongsToEntity(order, entityType, entityId, countryMap) {
     if (!order) return false;
     if (entityType === 'country') return matchesCountry(order.country, entityId, countryMap);
-    return getId(order.mu) === getId(entityId);
+    return String(getId(order.mu) || '').toLowerCase() === String(getId(entityId) || '').toLowerCase();
   }
 
   async function addOrderPriorities(orders, entityType, entityId, countryMap) {
+    // getBattleSideOrderDetails is already cached/deduped per (battleId,side) — but
+    // when many local orders share the same battle+side, logging once per ORDER
+    // spams the identical line dozens of times in a burst, which the loop-heuristic
+    // then misreports as "possible loop". Log each (battleId,side) group once.
+    const loggedGroups = new Set();
     const enriched = await Promise.all((orders || []).map(async (order) => {
+      const groupKey = `${order.battleId}:${order.side}`;
       try {
         const details = await getBattleSideOrderDetails(order.battleId, order.side);
         const matching = details.find((item) => item && item.isActive !== false && orderBelongsToEntity(item, entityType, entityId, countryMap));
         const rawPriority = matching && matching.priority;
-        dbg('orderRadar', 'debug', 'priority detail', order.battleId, order.side, entityType, entityId, 'items', details.length, 'raw', rawPriority || 'no-match');
+        if (!loggedGroups.has(groupKey)) {
+          loggedGroups.add(groupKey);
+          dbg('orderRadar', 'debug', 'priority detail', order.battleId, order.side, entityType, entityId, 'items', details.length, 'raw', rawPriority || 'no-match');
+        }
         return { ...order, priority: normalizeOrderPriority(rawPriority), priorityRaw: rawPriority || null };
       } catch (e) {
-        dbg('orderRadar', 'debug', 'priority fetch failed', order.battleId, order.side, e.message);
+        if (!loggedGroups.has(groupKey)) {
+          loggedGroups.add(groupKey);
+          dbg('orderRadar', 'debug', 'priority fetch failed', order.battleId, order.side, e.message);
+        }
         return { ...order, priority: null };
       }
     }));
@@ -8039,18 +8233,26 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
   // battle.getBattles + battleOrder.getByBattle). Membership => that MU has an active order.
   function filterOrdersForMu(items, muId, countryMap = {}, regionMap = {}) {
     const resultOrders = [];
-    const targetMuId = getId(muId);
+    const targetMuId = String(getId(muId) || '').toLowerCase();
     for (const b of (items || [])) {
       if (!b || !b.isActive) continue;
       for (const side of ['attacker', 'defender']) {
         const sideObj = b[side];
         if (!sideObj) continue;
-        const hasMuOrder = (sideObj.muOrders || []).map(getId).includes(targetMuId);
+        const hasMuOrder = (sideObj.muOrders || []).some(id => String(getId(id) || '').toLowerCase() === targetMuId);
         if (hasMuOrder) resultOrders.push(buildOrderRow(b, side, sideObj, countryMap, regionMap));
       }
     }
     return resultOrders;
   }
+
+  // cacheKey -> in-progress fetchOrdersForEntity promise. Without this, two
+  // overlapping applyOrderRadar triggers for the SAME entity (e.g. the route-change
+  // handler firing at the same moment a mutation-observer retry lands) both see no
+  // cache entry yet — orderRadarCache is only written AFTER the fetch completes,
+  // not before it starts — so both independently re-fetch battles and re-run
+  // addOrderPriorities, doubling API calls and log volume for one logical update.
+  const orderRadarInFlight = new Map();
 
   async function fetchOrdersForEntity(entityType, rawEntityId) {
     const countryMap = await loadCountryMap();
@@ -8063,35 +8265,47 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       return { orders: cached.orders, priorityPromise: cached.priorityPromise || Promise.resolve(cached.orders) };
     }
 
-    // Reuse the shared active-battle list (the bounty poll fetches the same list). Countries
-    // & MUs can set orders on ANY active battle, so we need the full list, not a filtered one.
-    const items = await getActiveBattles();
+    const inFlight = orderRadarInFlight.get(cacheKey);
+    if (inFlight) return inFlight;
 
-    // Dedupe battles by id — pagination can return the same battle on overlapping pages,
-    // which would otherwise render as duplicate rows.
-    const seenBattles = new Set();
-    const uniqueItems = items.filter((b) => {
-      const id = b && b._id;
-      if (!id || seenBattles.has(id)) return false;
-      seenBattles.add(id);
-      return true;
-    });
+    const fetchPromise = (async () => {
+      // Reuse the shared active-battle list (the bounty poll fetches the same list). Countries
+      // & MUs can set orders on ANY active battle, so we need the full list, not a filtered one.
+      const items = await getActiveBattles();
 
-    const baseOrders = entityType === 'country'
-      ? filterOrdersForCountry(uniqueItems, entityId, countryMap, regionMap)
-      : filterOrdersForMu(uniqueItems, entityId, countryMap, regionMap);
-    const initialOrders = sortOrdersByPriority(baseOrders);
-    const priorityPromise = addOrderPriorities(baseOrders, entityType, entityId, countryMap)
-      .then((enriched) => {
-        const current = orderRadarCache.get(cacheKey);
-        if (current && current.priorityPromise === priorityPromise) {
-          current.orders = enriched;
-          current.at = now();
-        }
-        return enriched;
+      // Dedupe battles by id — pagination can return the same battle on overlapping pages,
+      // which would otherwise render as duplicate rows.
+      const seenBattles = new Set();
+      const uniqueItems = items.filter((b) => {
+        const id = b && b._id;
+        if (!id || seenBattles.has(id)) return false;
+        seenBattles.add(id);
+        return true;
       });
-    orderRadarCache.set(cacheKey, { at: now(), orders: initialOrders, priorityPromise });
-    return { orders: initialOrders, priorityPromise };
+
+      const baseOrders = entityType === 'country'
+        ? filterOrdersForCountry(uniqueItems, entityId, countryMap, regionMap)
+        : filterOrdersForMu(uniqueItems, entityId, countryMap, regionMap);
+      const initialOrders = sortOrdersByPriority(baseOrders);
+      const priorityPromise = addOrderPriorities(baseOrders, entityType, entityId, countryMap)
+        .then((enriched) => {
+          const current = orderRadarCache.get(cacheKey);
+          if (current && current.priorityPromise === priorityPromise) {
+            current.orders = enriched;
+            current.at = now();
+          }
+          return enriched;
+        });
+      orderRadarCache.set(cacheKey, { at: now(), orders: initialOrders, priorityPromise });
+      return { orders: initialOrders, priorityPromise };
+    })();
+
+    orderRadarInFlight.set(cacheKey, fetchPromise);
+    try {
+      return await fetchPromise;
+    } finally {
+      orderRadarInFlight.delete(cacheKey);
+    }
   }
 
   let orderRadarLastOrders = [];
@@ -8101,6 +8315,15 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
   let orderRadarResizeObserver = null;
   let orderRadarObservedContainer = null;
   let orderRadarResizeRaf = 0;
+  let orderRadarRetryCount = 0;
+  let orderRadarActiveRouteKey = null;
+  // Timestamp of the last confirmed "zero orders for this entity" result. Without
+  // this, ensureOrderRadarInjected has no terminal state for that case — #wia-order-radar
+  // stays absent (correctly, nothing to show), so neither of its early-returns match,
+  // and it re-schedules applyOrderRadar on EVERY ambient body mutation forever (a live
+  // SPA mutates constantly). This throttles rechecks to the same cadence as the order
+  // fetch cache below, instead of once per mutation.
+  let orderRadarLastZeroCheckAt = 0;
 
   function attachOrderRadarResizeObserver(container) {
     if (typeof ResizeObserver === 'undefined' || !container) return;
@@ -8166,6 +8389,10 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       if (document.getElementById('wia-order-radar')) {
         setHealth('orderRadar', 'ok', `${orderRadarLastOrders.length} orders rendered`);
       }
+      return;
+    }
+    if (orderRadarLastEntity === key && !orderRadarLastOrders.length
+        && now() - orderRadarLastZeroCheckAt < ORDER_RADAR_CACHE_TTL) {
       return;
     }
     scheduleOrderRadar();
@@ -8317,6 +8544,12 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       return;
     }
 
+    const entityKey = `${route.type}:${route.rawId}`;
+    if (orderRadarActiveRouteKey !== entityKey) {
+      orderRadarActiveRouteKey = entityKey;
+      orderRadarRetryCount = 0;
+    }
+
     const requestId = ++orderRadarRequestId;
     const requestedRoute = { type: route.type, rawId: route.rawId };
     try {
@@ -8328,6 +8561,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
 
       if (!orders || orders.length === 0) {
         setHealth('orderRadar', 'idle', 'no active orders for this entity');
+        orderRadarLastZeroCheckAt = now();
         const existing = document.getElementById('wia-order-radar');
         if (existing) existing.remove();
         return;
@@ -8335,8 +8569,13 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
 
       let container = findEntityBannerAnchor(route);
       if (!container) {
-        setHealth('orderRadar', 'warn', 'header container mounting');
-        scheduleOrderRadar();
+        if (orderRadarRetryCount < 10) {
+          orderRadarRetryCount++;
+          setHealth('orderRadar', 'warn', 'header container mounting');
+          scheduleOrderRadar();
+        } else {
+          setHealth('orderRadar', 'fail', 'header container not found');
+        }
         return;
       }
 
@@ -8361,8 +8600,13 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
         setHealth('orderRadar', 'ok', `${orders.length} orders rendered`);
       } else {
         // Banner not settled yet — schedule retry.
-        setHealth('orderRadar', 'warn', 'radar not injected yet');
-        scheduleOrderRadar();
+        if (orderRadarRetryCount < 10) {
+          orderRadarRetryCount++;
+          setHealth('orderRadar', 'warn', 'radar not injected yet');
+          scheduleOrderRadar();
+        } else {
+          setHealth('orderRadar', 'fail', 'radar injection failed');
+        }
       }
     } catch (e) {
       setHealth('orderRadar', 'fail', 'fetch failed: ' + e.message);
@@ -8863,7 +9107,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     if (cached && (now() - cached.at < TROOP_RADAR_TTL_MS)) {
       return cached.roster;
     }
-    const { payload } = await resolveApiBase('mu.getById', { muId });
+    const { payload } = await resolveApiBase('mu.getById', { muId }, { priority: 'high' });
     const members = Array.isArray(payload?.members) ? payload.members : [];
     const commanders = Array.isArray(payload?.roles?.commanders) ? payload.roles.commanders : [];
     const roster = { muId, members, commanders };
@@ -8963,13 +9207,11 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
 
     if (uncachedIds.length > 0) {
       const BATCH_CHUNK_SIZE = 8;
-      const promises = [];
-
       for (let offset = 0; offset < uncachedIds.length; offset += BATCH_CHUNK_SIZE) {
         const chunkIds = uncachedIds.slice(offset, offset + BATCH_CHUNK_SIZE);
         const chunkIndices = uncachedIndices.slice(offset, offset + BATCH_CHUNK_SIZE);
 
-        promises.push((async () => {
+        await (async () => {
           try {
             const batchArgs = chunkIds.map((userId) => ({ userId }));
             const batchResults = await resolveApiBatch('user.getUserById', batchArgs, opts);
@@ -9053,10 +9295,8 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
               }
             });
           }
-        })());
+        })();
       }
-
-      await Promise.all(promises);
     }
 
     return results;
@@ -9074,7 +9314,12 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     const summary = summarizeTroops(membersData);
 
     const detailsPromise = (async () => {
-      const results = await fetchTroopMemberDataBatch(userIds, { skipThrottle: true });
+      // 'high' priority (not skipThrottle): route through the shared bucket so
+      // it's paced against real rate limits, but jump ahead of background pollers
+      // instead of bypassing throttling outright — bypassing entirely just meant
+      // this competed with everyone else for the browser's own connection pool
+      // instead of being coordinated by us at all.
+      const results = await fetchTroopMemberDataBatch(userIds, { priority: 'high' });
       return {
         roster,
         membersData: results,
@@ -10359,16 +10604,26 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       return;
     }
 
-    // 1. Health & Hunger full
+    // 1. Health & Hunger full — edge-triggered, plus a cooldown so a brief
+    //    both100 flicker or a second tab racing the flag can't re-fire (#80).
     if (CONFIG.featPillNotifHnH) {
       if (status.both100) {
         const alreadyNotified = GM_getValue(KEYS.lastNotifiedHnH, false);
-        if (!alreadyNotified) {
+        const cooldownUntil = GM_getValue(KEYS.hnhNotifyCooldownUntil, 0);
+        if (!alreadyNotified && nowVal >= cooldownUntil) {
+          // Claim the cooldown BEFORE the await so a concurrent tick/tab sees it.
           GM_setValue(KEYS.lastNotifiedHnH, true);
+          GM_setValue(KEYS.hnhNotifyCooldownUntil, nowVal + CONFIG.hnhNotifyCooldownMs);
           sendPersonalNtfy('HnH', t('ntfyHnHFullTitle'), t('ntfyHnHFullBody'), 'poultry_leg,heart,white_check_mark');
+        } else if (!alreadyNotified) {
+          // In cooldown from a very recent fire — mark as notified silently so we
+          // don't fire the moment the cooldown lapses while still at 100%.
+          GM_setValue(KEYS.lastNotifiedHnH, true);
         }
       } else {
-        GM_setValue(KEYS.lastNotifiedHnH, false);
+        if (GM_getValue(KEYS.lastNotifiedHnH, false) !== false) {
+          GM_setValue(KEYS.lastNotifiedHnH, false);
+        }
       }
     }
 
@@ -12283,8 +12538,24 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     const tc = readCache(KEYS.transactionsCache) || {};
     const stale = codes.filter((c) => !hasFreshCachedData(c, tc));
     if (!stale.length) return null;
-    dbg('advisor', 'debug', 'craftAdvisor: fetching prices for tier ' + tier, { codes: stale });
-    return Promise.all(stale.map((c) => fetchItemTransactions(c)));
+
+    const toFetch = stale.filter((c) => {
+      if (transactionsInFlight[c]) return false;
+      const lastAttempt = transactionsLastAttempt[c];
+      if (lastAttempt && now() - lastAttempt < CONFIG.rateLimitBackoffMs) return false;
+      return true;
+    });
+
+    if (!toFetch.length) {
+      const inFlightPromises = stale.map((c) => transactionsInFlight[c]).filter(Boolean);
+      if (inFlightPromises.length > 0) {
+        return Promise.all(inFlightPromises);
+      }
+      return null;
+    }
+
+    dbg('advisor', 'debug', 'craftAdvisor: fetching prices for tier ' + tier, { codes: toFetch });
+    return Promise.all(toFetch.map((c) => fetchItemTransactions(c)));
   }
 
   function getCachedPrice(itemCode) {
@@ -12299,6 +12570,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
   function getItemPriceRange(itemCode) {
     let minPrice = null;
     let maxPrice = null;
+    let medianPrice = null;
 
     // Check transaction history cache
     const tc = readCache(KEYS.transactionsCache) || {};
@@ -12317,6 +12589,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       if (prices.length > 0) {
         minPrice = Math.min(...prices);
         maxPrice = Math.max(...prices);
+        medianPrice = median(prices);
       }
     }
 
@@ -12326,10 +12599,11 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       if (floor != null) {
         minPrice = floor;
         maxPrice = floor;
+        medianPrice = floor;
       }
     }
 
-    return { minPrice, maxPrice };
+    return { minPrice, maxPrice, medianPrice };
   }
 
   function formatItemCode(code) {
@@ -12548,20 +12822,24 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     `;
 
     if (!isSpecific) {
-      // Random mode: find min/max profit range among green equipment items of this tier
+      // Random mode: rank items by MEDIAN price, not floor. Floor-ranking picks
+      // whichever item happens to have the highest worst-case sale — with 6
+      // equally-likely outcomes, the item most worth hoping for is the one with
+      // the best TYPICAL price, and floor-only profit made genuinely profitable
+      // items (e.g. boots5 median ~153 vs its own floor ~130, tied with gloves5's
+      // floor) read as a guaranteed loss across the board.
       const itemsInfo = tierItemCodes.map(code => {
         const range = getItemPriceRange(code);
         return { code, range };
-      }).filter(item => item.range.minPrice != null);
+      }).filter(item => item.range.medianPrice != null);
 
       if (itemsInfo.length > 0) {
-        // Sort items by floor price to find best and worst
-        itemsInfo.sort((a, b) => a.range.minPrice - b.range.minPrice);
+        itemsInfo.sort((a, b) => a.range.medianPrice - b.range.medianPrice);
         const worst = itemsInfo[0];
         const best = itemsInfo[itemsInfo.length - 1];
 
-        const worstProfit = worst.range.minPrice - resourceCost;
-        const bestProfit = best.range.minPrice - resourceCost;
+        const worstProfit = worst.range.medianPrice - resourceCost;
+        const bestProfit = best.range.medianPrice - resourceCost;
 
         const worstColor = worstProfit >= 0 ? '#3fb950' : '#ff7b72';
         const bestColor = bestProfit >= 0 ? '#3fb950' : '#ff7b72';
@@ -12571,9 +12849,11 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
             <div style="color: #8b949e; margin-bottom: 2px;">${t('craftProfitRange')}:</div>
             <div style="margin-bottom: 2px;">
               • ${t('craftWorstItem', { item: formatItemCode(worst.code), profit: `<span style="color: ${worstColor}; font-weight: bold;">${worstProfit >= 0 ? '+' : ''}${fmt(worstProfit)} Gold</span>` })}
+              <span style="color: #6e7681; font-size: 90%;">(${t('craftItemRange', { min: fmt(worst.range.minPrice), max: fmt(worst.range.maxPrice) })})</span>
             </div>
             <div>
               • ${t('craftBestItem', { item: formatItemCode(best.code), profit: `<span style="color: ${bestColor}; font-weight: bold;">${bestProfit >= 0 ? '+' : ''}${fmt(bestProfit)} Gold</span>` })}
+              <span style="color: #6e7681; font-size: 90%;">(${t('craftItemRange', { min: fmt(best.range.minPrice), max: fmt(best.range.maxPrice) })})</span>
             </div>
           </div>
         `;
@@ -12586,13 +12866,20 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       if (range.minPrice != null && range.maxPrice != null) {
         const minProfit = range.minPrice - resourceCost;
         const maxProfit = range.maxPrice - resourceCost;
+        const medianProfit = range.medianPrice - resourceCost;
         const minColor = minProfit >= 0 ? '#3fb950' : '#ff7b72';
         const maxColor = maxProfit >= 0 ? '#3fb950' : '#ff7b72';
+        const medianColor = medianProfit >= 0 ? '#3fb950' : '#ff7b72';
 
         html += `
           <div style="margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.06);">
             <div style="margin-bottom: 2px;">
               • ${t('craftMarketRange', { min: fmt(range.minPrice), max: fmt(range.maxPrice) })}
+            </div>
+            <div style="margin-bottom: 2px;">
+              • ${t('craftProfitMedian', {
+                profit: `<span style="color: ${medianColor}; font-weight: bold;">${medianProfit >= 0 ? '+' : ''}${fmt(medianProfit)} Gold</span>`
+              })}
             </div>
             <div>
               • ${t('craftProfitSpecific', {
@@ -14362,23 +14649,37 @@ function checkInventoryDeltaWear() {
   // both cascading ally resolution and human-readable names — no per-country fetches.
   const BOUNTY_MAP_TTL_MS = 86400000;   // 24h
   let countryMapMem = null;
+  // In-flight dedup: 6+ independent call sites (order-radar, bounty identity
+  // resolve, ally-code refresh, per-bounty notify) can all need the country map
+  // at once before countryMapMem is warm — without this, each one races the
+  // empty cache and fires its own country.getAllCountries (observed: ~70
+  // concurrent calls in one burst).
+  let countryMapInFlight = null;
   async function loadCountryMap() {
     if (countryMapMem) return countryMapMem;
     const cached = GM_getValue(KEYS.bountyCountryMap, null);
     if (cached && (now() - cached.at) < BOUNTY_MAP_TTL_MS && cached.map) { countryMapMem = cached.map; return countryMapMem; }
-    const res = await resolveApiBase('country.getAllCountries', {});
-    const list = (res && res.payload) || res || [];
-    const map = {};
-    for (const c of list) {
-      if (c && c._id) map[c._id] = {
-        name: c.name || c.code || c._id, code: c.code,
-        allies: c.allies || [], defensivePacts: c.defensivePacts || [], allianceId: c.allianceId || null,
-      };
+    if (countryMapInFlight) return countryMapInFlight;
+    countryMapInFlight = (async () => {
+      const res = await resolveApiBase('country.getAllCountries', {});
+      const list = (res && res.payload) || res || [];
+      const map = {};
+      for (const c of list) {
+        if (c && c._id) map[c._id] = {
+          name: c.name || c.code || c._id, code: c.code,
+          allies: c.allies || [], defensivePacts: c.defensivePacts || [], allianceId: c.allianceId || null,
+        };
+      }
+      countryMapMem = map;
+      GM_setValue(KEYS.bountyCountryMap, { at: now(), map });
+      dbg('bountyNotify', 'debug', 'country map loaded', Object.keys(map).length);
+      return map;
+    })();
+    try {
+      return await countryMapInFlight;
+    } finally {
+      countryMapInFlight = null;
     }
-    countryMapMem = map;
-    GM_setValue(KEYS.bountyCountryMap, { at: now(), map });
-    dbg('bountyNotify', 'debug', 'country map loaded', Object.keys(map).length);
-    return map;
   }
 
   async function resolveCountryName(id) {

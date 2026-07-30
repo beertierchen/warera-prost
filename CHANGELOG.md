@@ -1,5 +1,25 @@
 # CHANGELOG
 
+## 2026-07-30 | Fixes: Crafting-Berater, Order-/Truppen-Radar & Benachrichtigungen (v0.10.5)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`
+
+**Änderungen (Deutsch):**
+- **Crafting-Berater lädt zuverlässiger**: Marktdaten fehlten teils komplett, wenn viele Items gleichzeitig geladen werden mussten — die Massen-Abfrage überlastete die Datenquelle. Ein Endlos-Neu-Render, der die Seite spürbar verlangsamte, ist ebenfalls behoben.
+- **Crafting-Berater: realistischere Gewinn/Verlust-Anzeige**: Die Bewertung nutzt jetzt den typischen (Median-)Verkaufspreis statt des reinen Tiefstpreises. Zuvor wirkten Zufalls-Craftings pauschal wie ein Verlustgeschäft, obwohl einzelne Ausrüstungsteile bei realistischem Verkaufspreis tatsächlich profitabel sind.
+- **Order-Radar**: Ein Fehler, durch den bei Ländern/Militäreinheiten ohne aktive Orders dauerhaft im Hintergrund nachgeladen wurde, ist behoben. Direktlinks auf Militäreinheiten-Seiten ohne ID in der URL werden jetzt korrekt erkannt.
+- **Truppen-Radar lädt wieder schnell**: Auf Militäreinheiten-Seiten konnte das Laden der Mitgliederliste teils über eine Minute dauern, wenn im Hintergrund viel andere Netzwerk-Aktivität lief. Truppen- und Order-Radar bekommen jetzt Vorrang und laden wieder in wenigen Sekunden.
+- **"Leben & Hunger voll"-Benachrichtigung**: Konnte mehrfach hintereinander auslösen — feuert jetzt nur noch einmal mit Cooldown.
+- **Allgemeine Stabilität**: Mehrere unnötige doppelte Hintergrund-Abfragen (Länder-/Bounty-Daten) behoben, die ohne Nutzen Last erzeugt haben.
+
+**Changes (English):**
+- **Crafting Advisor loads more reliably**: Market data was sometimes missing entirely when many items needed loading at once, overloading the data source. A runaway re-render loop that noticeably slowed the page down is also fixed.
+- **Crafting Advisor: more realistic profit/loss display**: Evaluation now uses the typical (median) recent sale price instead of the bare floor price. Random crafting previously looked like a blanket loss even when specific items were realistically profitable.
+- **Order Radar**: Fixed a bug that caused countries/military units with no active orders to keep reloading in the background indefinitely. Direct links to military unit pages without an ID in the URL are now recognized correctly.
+- **Troop Radar loads fast again**: On military unit pages, loading the member roster could take over a minute when other background network activity was heavy. Troop Radar and Order Radar now get priority and load in a few seconds again.
+- **"Health & Hunger full" notification**: Could fire multiple times in a row — now fires once with a cooldown.
+- **General stability**: Fixed several unnecessary duplicate background requests (country/bounty data) that were creating load with no benefit.
+
 ## 2026-07-29 | Feature: Responsiver Truppen-Radar mit Leben & Hunger und Live-Horizont (v0.10.4)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/test-troop-radar.js`
