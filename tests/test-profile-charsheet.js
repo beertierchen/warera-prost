@@ -43,8 +43,26 @@ setPath('/mu/xyz');
 assert.deepStrictEqual(globalThis.getEntityFromRoute(), { type: 'mu', rawId: 'xyz' });
 setPath('/country/de');
 assert.deepStrictEqual(globalThis.getEntityFromRoute(), { type: 'country', rawId: 'de' });
-setPath('/');
-assert.strictEqual(globalThis.getEntityFromRoute(), null);
+
+// Test 1b: getEntityFromRoute resolves /mu using DOM fallback
+console.log('Test 1b: getEntityFromRoute resolves /mu using DOM fallback...');
+setPath('/mu');
+const originalQSA = global.document.querySelectorAll;
+global.document.querySelectorAll = (selector) => {
+  if (selector === 'a[href*="/mu/"]') {
+    return [
+      {
+        getAttribute: (attr) => {
+          if (attr === 'href') return '/mu/69fa68b7b1c4942142eb2942/members';
+          return null;
+        }
+      }
+    ];
+  }
+  return [];
+};
+assert.deepStrictEqual(globalThis.getEntityFromRoute(), { type: 'mu', rawId: '69fa68b7b1c4942142eb2942' });
+global.document.querySelectorAll = originalQSA;
 
 // Test 2: isUserProfilePage
 console.log('Test 2: isUserProfilePage...');

@@ -1225,7 +1225,7 @@ try {
     
     await globalThis.pollBountyTopic();
     
-    const postReqs = mirrorRequests.filter(r => r.method === 'POST');
+    const postReqs = mirrorRequests.filter(r => r.method === 'POST' && r.url.includes('my-personal-topic'));
     assert.strictEqual(postReqs.length, 1, 'Bounty notification should be mirrored');
     assert.ok(postReqs[0].url.includes('my-personal-topic'), 'Should mirror to personal topic');
     assert.strictEqual(postReqs[0].data, 'Fight for Germany (Attacker) · Pool 100.00 · 0.10/1k', 'Body should be preserved');
@@ -1234,7 +1234,7 @@ try {
     // 3. Test duplicate prevention
     mirrorRequests = [];
     await globalThis.pollBountyTopic();
-    const dupPostReqs = mirrorRequests.filter(r => r.method === 'POST');
+    const dupPostReqs = mirrorRequests.filter(r => r.method === 'POST' && r.url.includes('my-personal-topic'));
     assert.strictEqual(dupPostReqs.length, 0, 'Duplicate message should not be mirrored');
     
     // 4. Test format validation rejection
@@ -1257,14 +1257,13 @@ try {
     globalThis.GM_setValue('wia.bountyMirrorLastPollAt', 0);
     globalThis.GM_setValue('wia.bountyMirrorPollLock', 0);
     await globalThis.pollBountyTopic();
-    assert.strictEqual(mirrorRequests.filter(r => r.method === 'POST').length, 0, 'Invalid title format should be rejected');
-  })().catch(err => {
+    assert.strictEqual(mirrorRequests.filter(r => r.method === 'POST' && r.url.includes('my-personal-topic')).length, 0, 'Invalid title format should be rejected');
+  })().then(() => {
+    delete global.GM_xmlhttpRequest;
+  }).catch(err => {
     console.error('Notification Hub tests failed:', err);
     process.exit(1);
   });
-
-  // Cleanup mocked functions
-  delete global.GM_xmlhttpRequest;
 
   globalThis.removeHnHBudget();
   Date.now = originalNow;
@@ -2985,6 +2984,115 @@ try {
       oneStaleFetch.catch(() => {}); // don't await, same reason as above
 
       console.log('Crafting advisor T5/T6 price fetch + skin resolution tests passed successfully.');
+
+      // ── mapWithConcurrency (Task 1) ──
+      {
+        const mapWithConcurrency = globalThis.mapWithConcurrency;
+        assert.strictEqual(typeof mapWithConcurrency, 'function', 'mapWithConcurrency should be exposed for tests');
+
+        // Order preservation + all items processed
+        const out = await mapWithConcurrency([10, 20, 30], 2, async (n, i) => n + i);
+        assert.deepStrictEqual(out, [10, 21, 32], 'results returned in input order with correct index');
+
+        // Concurrency cap: never more than `limit` workers in flight
+        let inFlight = 0, peak = 0;
+        const tick = () => new Promise((r) => setTimeout(r, 5));
+        await mapWithConcurrency([1, 2, 3, 4, 5, 6, 7, 8], 3, async () => {
+          inFlight++; peak = Math.max(peak, inFlight);
+          await tick();
+          inFlight--;
+        });
+        assert.ok(peak <= 3, `peak concurrency ${peak} must not exceed limit 3`);
+        assert.ok(peak >= 2, `peak concurrency ${peak} should actually parallelize (>=2)`);
+
+        // Empty input is a no-op
+        assert.deepStrictEqual(await mapWithConcurrency([], 3, async () => 1), [], 'empty input → empty array');
+      }
+
+      // ── advisorLoadHealth (Task 2) ──
+      {
+        const advisorLoadHealth = globalThis.advisorLoadHealth;
+        assert.strictEqual(typeof advisorLoadHealth, 'function', 'advisorLoadHealth should be exposed for tests');
+        assert.deepStrictEqual(advisorLoadHealth(5, 5), { status: 'ok', reason: '' },
+          'all loaded → ok');
+        assert.deepStrictEqual(advisorLoadHealth(0, 0), { status: 'ok', reason: '' },
+          'nothing to load → ok');
+        assert.deepStrictEqual(advisorLoadHealth(2, 5),
+          { status: 'warn', reason: 'market prices unavailable (2/5 loaded)' },
+          'partial load → warn with counts');
+        assert.deepStrictEqual(advisorLoadHealth(0, 5),
+          { status: 'warn', reason: 'market prices unavailable (0/5 loaded)' },
+          'total failure → warn');
+      }
+
+      // ── isTimeoutError (Task 3) ──
+      {
+        const isTimeoutError = globalThis.isTimeoutError;
+        assert.strictEqual(typeof isTimeoutError, 'function', 'isTimeoutError should be exposed for tests');
+        assert.strictEqual(isTimeoutError(new Error('timeout: https://gateway.warerastats.io/trpc/x')), true,
+          'timeout: prefix is a timeout');
+        assert.strictEqual(isTimeoutError(new Error('network error: https://gateway.warerastats.io/trpc/x')), false,
+          'network error is not a timeout');
+        assert.strictEqual(isTimeoutError(new Error('429')), false, '429 is not a timeout');
+        assert.strictEqual(isTimeoutError(null), false, 'null is not a timeout');
+      }
+
+      // ── H&H-full notification dedup + cooldown (Task 4) ──
+      {
+        const testRequests = [];
+        const oldXmlHttpRequest = global.GM_xmlhttpRequest;
+        global.GM_xmlhttpRequest = (opts) => {
+          testRequests.push(opts);
+          if (opts.onload) {
+            opts.onload({ status: 200, statusText: 'OK', responseText: '{}' });
+          }
+        };
+
+        document.body.appendChild(hpWrap);
+        document.body.appendChild(hungerWrap);
+
+        // Setup initial full state
+        hpText.textContent = '130/130';
+        hungerText.textContent = '4/4';
+        
+        // Setup clean state
+        globalThis.teardownPillReminder();
+        globalThis.CONFIG.featPillReminder = true;
+        globalThis.CONFIG.featPillNotifHnH = true;
+        globalThis.CONFIG.personalTopic = 'wia-user-test-user-123';
+        globalThis.GM_setValue('wia.lastNotifiedHnH', false);
+        globalThis.GM_setValue('wia.hnhNotifyCooldownUntil', 0);
+        
+        // Cold start seeding
+        globalThis.checkPersonalNotifications();
+        
+        // Drop H&H below full to clear the notified flag
+        hpText.textContent = '120/130';
+        globalThis.checkPersonalNotifications();
+        
+        // Reset our captured requests array
+        testRequests.length = 0;
+        
+        // Rise to 100% full -> should fire notification
+        hpText.textContent = '130/130';
+        globalThis.checkPersonalNotifications();
+        
+        // Call it again -> should NOT fire again
+        globalThis.checkPersonalNotifications();
+        assert.strictEqual(testRequests.length, 1, 'H&H-full notification must fire exactly once on initial full');
+        
+        // Drop below 100% and back to 100% rapidly (simulating flicker / multi-tab race within cooldown)
+        hpText.textContent = '120/130';
+        globalThis.checkPersonalNotifications();
+        hpText.textContent = '130/130';
+        globalThis.checkPersonalNotifications();
+        
+        assert.strictEqual(testRequests.length, 1, 'H&H-full notification must not refire within cooldown period');
+
+        hpWrap.remove();
+        hungerWrap.remove();
+        global.GM_xmlhttpRequest = oldXmlHttpRequest;
+      }
 
       console.log('Compliance tests passed successfully.');
 
