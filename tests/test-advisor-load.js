@@ -3158,6 +3158,7 @@ try {
       };
 
       globalThis.attachNoteIcon(linkNoNote, '123');
+      global.GM_getValue = oldGetVal; // Restore immediately to avoid interfering with async tests
       
       assert.strictEqual(injectedElements.length, 1, 'Should inject note icon');
       const iconNoNote = injectedElements[0];
@@ -3193,14 +3194,13 @@ try {
       };
       
       globalThis.attachNoteIcon(linkWithNote, '456');
+      global.GM_getValue = oldGetVal; // Restore immediately
+      
       assert.strictEqual(injectedElementsWithNote.length, 1, 'Should inject note icon');
       const iconWithNote = injectedElementsWithNote[0];
       assert.ok(iconWithNote.classList.contains('has-note'), 'Icon for link with note should have has-note class');
       assert.ok(!iconWithNote.classList.contains('hover-gated'), 'Icon for link with note should not have hover-gated class');
       assert.strictEqual(iconWithNote.textContent, '📒', 'Icon for link with note should be a book');
-
-      // Restore original GM_getValue
-      global.GM_getValue = oldGetVal;
 
       console.log('Compliance tests passed successfully.');
 

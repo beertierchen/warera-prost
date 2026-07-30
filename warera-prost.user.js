@@ -5028,8 +5028,8 @@ async function scanInventory(force) {
         background: rgba(148,163,184,.18); color: #facc15; outline: none;
       }
       .warera-note-icon.has-note { color: #facc15; }
-      .warera-note-icon.hover-gated { opacity: 0; pointer-events: none; transition: opacity .15s ease; }
-      .warera-note-icon.hover-gated.is-visible { opacity: 1; pointer-events: auto; }
+      .warera-note-icon.hover-gated { display: none; }
+      .warera-note-icon.hover-gated.is-visible { display: inline-flex; }
       .warera-note-backdrop {
         position: fixed; inset: 0; z-index: 2147483646;
         display: none; align-items: center; justify-content: center;
