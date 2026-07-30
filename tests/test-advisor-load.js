@@ -701,16 +701,20 @@ try {
   assert.ok(modalEl, 'Settings modal should be rendered');
 
   const hintBtns = bg.querySelectorAll('.wia-hint-toggle');
-  assert.strictEqual(hintBtns.length, 8, 'Should have exactly 8 hint toggle buttons (Notes, Battle, Profile Charsheet, Pill Reminder, Market Graph, P&L Tracker, Order Radar, Troop Radar)');
+  assert.strictEqual(hintBtns.length, 10, 'Should have exactly 10 hint toggle buttons (Notes, Battle, Profile Charsheet, Pill Reminder, Market Graph, P&L Tracker, Order Radar, Troop Radar, Item Advisor, Crafting Advisor)');
 
   const featPillCheckbox = bg.querySelector('.wia-feat-pill');
   const featMarketGraphCheckbox = bg.querySelector('.wia-feat-market-graph');
   const featPnlTrackerCheckbox = bg.querySelector('.wia-feat-pnl-tracker');
   const featOrderRadarCheckbox = bg.querySelector('.wia-feat-order-radar');
+  const featItemAdvisorCheckbox = bg.querySelector('.wia-feat-item-advisor');
+  const featCraftingAdvisorCheckbox = bg.querySelector('.wia-feat-crafting-advisor');
   assert.ok(featPillCheckbox, 'Pill reminder checkbox should be present');
   assert.ok(featMarketGraphCheckbox, 'Market graph checkbox should be present');
   assert.ok(featPnlTrackerCheckbox, 'P&L Tracker checkbox should be present');
   assert.ok(featOrderRadarCheckbox, 'Order Radar checkbox should be present');
+  assert.ok(featItemAdvisorCheckbox, 'Item Advisor checkbox should be present');
+  assert.ok(featCraftingAdvisorCheckbox, 'Crafting Advisor checkbox should be present');
 
   const highCritCheckbox = bg.querySelector('.wia-high-crit');
   assert.strictEqual(highCritCheckbox, null, 'High crit checkbox should be removed');

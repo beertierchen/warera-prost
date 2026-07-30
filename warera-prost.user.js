@@ -375,6 +375,10 @@
         noteUserLabel: 'User',
         settingsFeatNotesCheckbox: 'User notes on player links 📒 (experimental)',
         settingsFeatNotesHint: 'Adds a note icon next to player links. Disable if the standalone Warera User Notes script is also active.',
+        settingsFeatItemAdvisorCheckbox: 'Item Advisor (KEEP/SELL/SCRAP badges)',
+        settingsFeatItemAdvisorHint: 'Show KEEP/SELL/SCRAP advice badges on inventory and market item cards.',
+        settingsFeatCraftingAdvisorCheckbox: 'Crafting Advisor',
+        settingsFeatCraftingAdvisorHint: 'Show worst-case/best-case profit advice inside the in-game crafting dialog.',
         settingsFeatBattleCheckbox: 'Battle advisor ⚔️ (experimental)',
         settingsFeatBattleHint: 'Highlights the button for your side on battle pages using automatically resolved allied country codes.',
         settingsTitle: 'WareEra Inventory Advisor',
@@ -691,6 +695,10 @@
         noteUserLabel: 'Benutzer',
         settingsFeatNotesCheckbox: 'Spieler-Notizen bei Spieler-Links 📒 (experimentell)',
         settingsFeatNotesHint: 'Fügt ein Notiz-Icon neben Spieler-Links hinzu. Deaktivieren, wenn das separate Warera User Notes-Script ebenfalls aktiv ist.',
+        settingsFeatItemAdvisorCheckbox: 'Item Advisor (KEEP/SELL/SCRAP Badges)',
+        settingsFeatItemAdvisorHint: 'Zeigt KEEP/SELL/SCRAP-Empfehlungs-Badges auf Inventar- und Markt-Item-Karten an.',
+        settingsFeatCraftingAdvisorCheckbox: 'Crafting-Berater',
+        settingsFeatCraftingAdvisorHint: 'Zeigt Worst-Case/Best-Case-Gewinnberatung im Crafting-Dialog des Spiels an.',
         settingsFeatBattleCheckbox: 'Battle-Advisor ⚔️ (experimentell)',
         settingsFeatBattleHint: 'Hebt den richtigen Angriffs-/Verteidigungsbutton auf Kampfseiten hervor unter Verwendung automatisch ermittelter verbündeter Ländercodes.',
         settingsTitle: 'WareEra Inventory Advisor',
@@ -5789,6 +5797,8 @@ async function scanInventory(force) {
     const prevFeatMuHealDim = bg.querySelector('.wia-feat-mu-heal-dim')?.checked ?? CONFIG.featMuHealDim;
     const prevFeatMarketGraph = bg.querySelector('.wia-feat-market-graph')?.checked ?? CONFIG.featMarketGraph;
     const prevFeatPnlTracker = bg.querySelector('.wia-feat-pnl-tracker')?.checked ?? CONFIG.featPnlTracker;
+    const prevFeatItemAdvisor = bg.querySelector('.wia-feat-item-advisor')?.checked ?? CONFIG.featItemAdvisor;
+    const prevFeatCraftingAdvisor = bg.querySelector('.wia-feat-crafting-advisor')?.checked ?? CONFIG.featCraftingAdvisor;
     const prevFeatOrderRadar = bg.querySelector('.wia-feat-order-radar')?.checked ?? CONFIG.featOrderRadar;
     const prevFeatTroopRadar = bg.querySelector('.wia-feat-troop-radar')?.checked ?? CONFIG.featTroopRadar;
     const prevFeatProfileCharsheet = bg.querySelector('.wia-feat-profile-charsheet')?.checked ?? CONFIG.featProfileCharsheet;
@@ -5852,6 +5862,22 @@ async function scanInventory(force) {
             <div style="font-size: 10px; color: #8b949e; margin-top: 2px;">${t('settingsStockKeepCountSub')}</div>
           </div>
         </details>
+        <div class="wia-feat-row" style="margin-top: 6px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <input type="checkbox" class="wia-feat-item-advisor" style="width: auto;" ${prevFeatItemAdvisor ? 'checked' : ''} />
+            <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatItemAdvisorCheckbox')}</label>
+            <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
+          </div>
+          <div class="wia-hint" hidden>${t('settingsFeatItemAdvisorHint')}</div>
+        </div>
+        <div class="wia-feat-row" style="margin-top: 6px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <input type="checkbox" class="wia-feat-crafting-advisor" style="width: auto;" ${prevFeatCraftingAdvisor ? 'checked' : ''} />
+            <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatCraftingAdvisorCheckbox')}</label>
+            <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
+          </div>
+          <div class="wia-hint" hidden>${t('settingsFeatCraftingAdvisorHint')}</div>
+        </div>
         <div class="wia-feat-row" style="margin-top: 6px;">
           <div style="display: flex; align-items: center; gap: 8px;">
             <input type="checkbox" class="wia-feat-notes" style="width: auto;" ${prevFeatNotes ? 'checked' : ''} />
@@ -6423,6 +6449,16 @@ async function scanInventory(force) {
       GM_setValue(KEYS.featPnlTracker, featPnlTracker);
       CONFIG.featPnlTracker = featPnlTracker;
       if (featPnlTracker) { initPnlTracker(); } else { teardownPnlTracker(); }
+
+      const featItemAdvisor = bg.querySelector('.wia-feat-item-advisor').checked;
+      GM_setValue(KEYS.featItemAdvisor, featItemAdvisor);
+      CONFIG.featItemAdvisor = featItemAdvisor;
+      if (!featItemAdvisor) { teardownAdvisor(); } else { guard('advisor', () => scanInventory(false)); }
+
+      const featCraftingAdvisor = bg.querySelector('.wia-feat-crafting-advisor').checked;
+      GM_setValue(KEYS.featCraftingAdvisor, featCraftingAdvisor);
+      CONFIG.featCraftingAdvisor = featCraftingAdvisor;
+      if (!featCraftingAdvisor) { teardownCraftingAdvisor(); } else { guard('craftAdvisor', triggerCraftingAdvisorCheck); }
 
       const featBounty = bg.querySelector('.wia-feat-bounty').checked;
       const featBountyNotif = featBounty && bg.querySelector('.wia-feat-bounty-notif').checked;
