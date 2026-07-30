@@ -153,14 +153,17 @@ class MockElement {
   }
 
   dispatchEvent(event, data = {}) {
+    const e = {
+      target: data.target || this,
+      preventDefault: () => {},
+      stopPropagation: () => {},
+      ...data
+    };
     if (this.listeners && this.listeners[event]) {
-      const e = {
-        target: data.target || this,
-        preventDefault: () => {},
-        stopPropagation: () => {},
-        ...data
-      };
       this.listeners[event].forEach(cb => cb(e));
+    }
+    if (event === 'click' && typeof this.onclick === 'function') {
+      this.onclick(e);
     }
   }
 
@@ -3093,6 +3096,29 @@ try {
         hungerWrap.remove();
         global.GM_xmlhttpRequest = oldXmlHttpRequest;
       }
+
+      // Test Task 1 & 2: renderHealthPanel idle-row filter, config defaults, health registration
+      console.log('--- Testing renderHealthPanel idle-row filter & config defaults ---');
+      assert.ok(globalThis.CONFIG.featItemAdvisor === true, 'CONFIG.featItemAdvisor should be true by default');
+      assert.ok(globalThis.CONFIG.featCraftingAdvisor === true, 'CONFIG.featCraftingAdvisor should be true by default');
+      assert.ok(globalThis.Health.craftAdvisor, 'craftAdvisor should be registered in Health registry');
+
+      globalThis.regFeature('testOk', 'Test OK');
+      globalThis.setHealth('testOk', 'ok', '');
+      globalThis.regFeature('testIdle', 'Test Idle');
+      globalThis.setHealth('testIdle', 'idle', 'not on this page');
+
+      const panelEl = new MockElement('div');
+      globalThis.renderHealthPanel(panelEl);
+      assert.ok(panelEl.innerHTML.includes('Test OK'), 'ok-status feature should be visible by default');
+      assert.ok(!panelEl.innerHTML.includes('Test Idle'), 'idle-status feature should be hidden by default');
+      assert.ok(panelEl.innerHTML.includes('idle anzeigen'), 'toggle button should offer to reveal idle rows');
+
+      const toggleBtn = panelEl.querySelector('.wia-health-idle-toggle');
+      assert.ok(toggleBtn, 'Toggle button should exist');
+      toggleBtn.dispatchEvent('click', { target: toggleBtn, preventDefault: () => {} });
+      assert.ok(panelEl.innerHTML.includes('Test Idle'), 'idle row should appear after clicking the toggle');
+      assert.ok(panelEl.innerHTML.includes('max-height:320px'), 'panel must cap its own height so it cannot overflow the viewport');
 
       console.log('Compliance tests passed successfully.');
 

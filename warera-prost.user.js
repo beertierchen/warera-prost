@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         PROST
+// @name         TEST PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.10.5
+// @version      0.10.5-unstable
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -78,6 +78,8 @@
     featMarketGraph: false,
     featTour: true,                      // interactive API-token onboarding overlay (issue #50)
     featPnlTracker: false,
+    featItemAdvisor: true,
+    featCraftingAdvisor: true,
     stockKeepCount: 3,
 
     // --- caching / rate-limit ---
@@ -1029,6 +1031,8 @@
     resourceTransactionsCache: NS + 'resTxsCache',
     persistedAdvice: NS + 'persistedAdvice',
     featPnlTracker: NS + 'featPnlTracker',
+    featItemAdvisor: NS + 'featItemAdvisor',
+    featCraftingAdvisor: NS + 'featCraftingAdvisor',
     pnlLedger: NS + 'pnl.ledger',
     pnlYesterday: NS + 'pnl.yesterday',
     pnlCostBasis: NS + 'pnl.costBasis',
@@ -1611,12 +1615,24 @@
   }
 
   const HEALTH_DOT = { ok: '#3fb950', warn: '#d29922', fail: '#f85149', idle: '#6e7681' };
+  let healthShowIdle = false; // session-only; hides idle (not-applicable) rows by default
+
   // Render the feature ampel list into a container element (in-game Diagnose panel).
   function renderHealthPanel(el) {
     if (!el) return;
     const ids = Object.keys(Health);
     if (!ids.length) { el.innerHTML = '<div style="color:#8b949e; font-size:12px;">keine Features registriert</div>'; return; }
-    const rows = ids.map((id) => {
+
+    const idleIds = ids.filter((id) => Health[id].status === 'idle');
+    const visibleIds = healthShowIdle ? ids : ids.filter((id) => Health[id].status !== 'idle');
+
+    const toggleBtn = idleIds.length
+      ? `<button type="button" class="wia-health-idle-toggle" style="font-size:10px; padding:2px 6px; margin-bottom:6px; cursor:pointer; background:#21262d; color:#8b949e; border:1px solid #30363d; border-radius:4px;">${
+          healthShowIdle ? 'idle ausblenden' : `idle anzeigen (${idleIds.length})`
+        }</button>`
+      : '';
+
+    const rows = visibleIds.map((id) => {
       const h = Health[id];
       const color = HEALTH_DOT[h.status] || HEALTH_DOT.idle;
       const reason = h.reason ? `-<span style="color:#8b949e;">${String(h.reason).replace(/</g, '&lt;')}</span>` : '';
@@ -1649,7 +1665,12 @@
       </div>
     `;
 
-    el.innerHTML = `<div style="background:#0d1117; border:1px solid rgba(148,163,184,.25); border-radius:6px; padding:8px;">${rows}${perfRow}</div>`;
+    el.innerHTML = `<div style="background:#0d1117; border:1px solid rgba(148,163,184,.25); border-radius:6px; padding:8px; max-height:320px; overflow-y:auto;">${toggleBtn}${rows}${perfRow}</div>`;
+
+    const idleToggleBtn = el.querySelector('.wia-health-idle-toggle');
+    if (idleToggleBtn) {
+      idleToggleBtn.onclick = (e) => { e.preventDefault(); healthShowIdle = !healthShowIdle; renderHealthPanel(el); };
+    }
   }
 
   // ── Phase 2: route-aware probes ──────────────────────────────────────────
@@ -1658,6 +1679,7 @@
   // stale on SPA navigation). Run on "Aktualisieren" and on every route change.
   const PROBES = {
     advisor() {
+      if (!CONFIG.featItemAdvisor) return ['idle', 'disabled in settings'];
       if (!(isInventoryPage() || isMarketPage())) return ['idle', 'not on inventory/market'];
       let cards;
       try { cards = (globalThis.findItemCards || findItemCards)(false); } catch (e) { return ['fail', 'findItemCards threw: ' + e.message]; }
@@ -1741,6 +1763,12 @@
       if (!CONFIG.featMarketGraph) return ['idle', 'disabled in settings'];
       if (!isMarketPage()) return ['idle', 'not on market page'];
       return document.querySelector('.wia-mkt-overlay-svg') ? ['ok', ''] : ['warn', 'graph not drawn yet'];
+    },
+    craftAdvisor() {
+      if (!CONFIG.featCraftingAdvisor) return ['idle', 'disabled in settings'];
+      const modal = document.querySelector('div[id^="headlessui-dialog-panel-"]');
+      if (!modal) return ['idle', 'crafting modal not open'];
+      return modal.querySelector('.wia-craft-advisor-panel') ? ['ok', ''] : ['warn', 'panel not rendered yet'];
     },
     notes() {
       if (!CONFIG.featNotes) return ['idle', 'disabled in settings'];
@@ -3175,6 +3203,9 @@
     globalThis.isProcedureGated = isProcedureGated;
     globalThis.sanitizeGatedProcedures = sanitizeGatedProcedures;
     globalThis.Health = Health;
+    globalThis.renderHealthPanel = renderHealthPanel;
+    globalThis.regFeature = regFeature;
+    globalThis.setHealth = setHealth;
     globalThis.parseStats = parseStats;
     globalThis.getItemState = getItemState;
     globalThis.isInsideProfileEquipment = isInsideProfileEquipment;
@@ -4391,6 +4422,7 @@
 
 
 async function scanInventory(force) {
+    if (!CONFIG.featItemAdvisor) return;
     if (force) {
       cachedCards = null;
     }
@@ -4695,6 +4727,11 @@ async function scanInventory(force) {
     } finally {
       scanning = false;
     }
+  }
+
+  function teardownAdvisor() {
+    document.querySelectorAll('.wia-badge').forEach((el) => el.remove());
+    setHealth('advisor', 'idle', 'disabled in settings');
   }
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -7232,12 +7269,16 @@ function updateObserverTarget() {
 
     if (isInventoryPage()) {
       updateObserverTarget();
-      if (document.querySelector("[id^='item-code-selector-']") || findItemCards().size > 0) {
-        log('Route change: cards exist immediately, scanning');
-        guard('advisor', () => scanInventory(false));
+      if (CONFIG.featItemAdvisor) {
+        if (document.querySelector("[id^='item-code-selector-']") || findItemCards().size > 0) {
+          log('Route change: cards exist immediately, scanning');
+          guard('advisor', () => scanInventory(false));
+        } else {
+          initBootstrapObserver();
+          startRoutePolling();
+        }
       } else {
-        initBootstrapObserver();
-        startRoutePolling();
+        setHealth('advisor', 'idle', 'disabled in settings');
       }
     } else if (isMarketPage()) {
       observer.disconnect();
@@ -7502,7 +7543,11 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       if (CONFIG.featProfileCharsheet && isUserProfilePage()) {
         ensureProfileCharsheetInjected();
       }
-      triggerCraftingAdvisorCheck();
+      if (CONFIG.featCraftingAdvisor) {
+        guard('craftAdvisor', triggerCraftingAdvisorCheck);
+      } else {
+        setHealth('craftAdvisor', 'idle', 'disabled in settings');
+      }
     });
     sharedBodyObserver.observe(document.body, { childList: true, subtree: true });
   }
@@ -12766,6 +12811,17 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     }
   }
 
+  function teardownCraftingAdvisor() {
+    if (craftingAdvisorInterval) {
+      clearInterval(craftingAdvisorInterval);
+      craftingAdvisorInterval = null;
+    }
+    const panel = document.querySelector('.wia-craft-advisor-panel');
+    if (panel) panel.remove();
+    lastCraftState = null;
+    setHealth('craftAdvisor', 'idle', 'disabled in settings');
+  }
+
   function renderCraftingAdvisor(modal, state) {
     const closeBtn = Array.from(modal.querySelectorAll('button')).find(btn => btn.textContent.trim() === 'Close' || btn.textContent.trim() === 'Schließen');
     if (!closeBtn) return;
@@ -16022,6 +16078,7 @@ function checkInventoryDeltaWear() {
     if (typeof location !== 'undefined' && /(?:^|[#&])wia-debug/.test(location.hash)) CONFIG.debug = true;
     // Register all features so the registry/HUD knows about them up front.
     regFeature('advisor', 'Item Advisor');
+    regFeature('craftAdvisor', 'Crafting Advisor');
     regFeature('pnl', 'P&L Tracker');
     regFeature('marketGraph', 'Market Graph');
     regFeature('battleAdvisor', 'Battle Advisor');
@@ -16068,6 +16125,8 @@ function checkInventoryDeltaWear() {
     CONFIG.bountyScope = GM_getValue(KEYS.bountyScope, CONFIG.bountyScope || 'cascade') || 'cascade';
     CONFIG.featMarketGraph = GM_getValue(KEYS.featMarketGraph, false);
     CONFIG.featPnlTracker = GM_getValue(KEYS.featPnlTracker, false);
+    CONFIG.featItemAdvisor = GM_getValue(KEYS.featItemAdvisor, true);
+    CONFIG.featCraftingAdvisor = GM_getValue(KEYS.featCraftingAdvisor, true);
     CONFIG.featSystemAlerts = GM_getValue(KEYS.featSystemAlerts, true);
     CONFIG.pillBuffH = GM_getValue(KEYS.pillBuffH, CONFIG.pillBuffH);
     CONFIG.pillKnifeH = GM_getValue(KEYS.pillKnifeH, CONFIG.pillKnifeH);
@@ -16117,8 +16176,12 @@ function checkInventoryDeltaWear() {
     observer = new MutationObserver(() => triggerScan(false));
     if (isInventoryPage()) {
       updateObserverTarget();
-      guard('advisor', () => scanInventory(false));
-      startRoutePolling();
+      if (CONFIG.featItemAdvisor) {
+        guard('advisor', () => scanInventory(false));
+        startRoutePolling();
+      } else {
+        setHealth('advisor', 'idle', 'disabled in settings');
+      }
     }
 
     // Intercept pushState / replaceState for instant route detection in Next.js SPA
@@ -16158,7 +16221,11 @@ function checkInventoryDeltaWear() {
     }, 4000);
 
     // Trigger crafting advisor check once on startup if the modal is open
-    triggerCraftingAdvisorCheck();
+    if (CONFIG.featCraftingAdvisor) {
+      guard('craftAdvisor', triggerCraftingAdvisorCheck);
+    } else {
+      setHealth('craftAdvisor', 'idle', 'disabled in settings');
+    }
   }
 
   start();
