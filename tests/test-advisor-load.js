@@ -716,6 +716,18 @@ try {
   assert.ok(featItemAdvisorCheckbox, 'Item Advisor checkbox should be present');
   assert.ok(featCraftingAdvisorCheckbox, 'Crafting Advisor checkbox should be present');
 
+  // Verify category containers and correct nesting of checkboxes
+  const categoryWar = bg.querySelector('.wia-category-war');
+  const categoryEco = bg.querySelector('.wia-category-eco');
+  const categoryMisc = bg.querySelector('.wia-category-misc');
+  assert.ok(categoryWar, 'War category accordion should be present');
+  assert.ok(categoryEco, 'Eco category accordion should be present');
+  assert.ok(categoryMisc, 'Misc category accordion should be present');
+
+  assert.ok(categoryWar.querySelector('.wia-feat-profile-charsheet'), 'Profile Charsheet should be inside War category');
+  assert.ok(categoryEco.querySelector('.wia-feat-item-advisor'), 'Item Advisor should be inside Eco category');
+  assert.ok(categoryMisc.querySelector('.wia-feat-notes'), 'Notes should be inside Misc category');
+
   const highCritCheckbox = bg.querySelector('.wia-high-crit');
   assert.strictEqual(highCritCheckbox, null, 'High crit checkbox should be removed');
 

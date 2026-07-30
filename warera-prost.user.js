@@ -389,6 +389,9 @@
         settingsDesc: 'The Inventory Advisor gives a quick overview of whether items should be kept (KEEP/HOLD), sold (SELL), or salvaged (SCRAP).',
         settingsHeaderFeature: 'Feature / Option',
         settingsHeaderNotif: '🔔 Notif',
+        settingsCategoryWar: '⚔️ War',
+        settingsCategoryEco: '💰 Economy',
+        settingsCategoryMisc: '🔧 Other',
         settingsApiToken: 'API Key (api2.warera.io)',
         settingsTokenPlaceholder: 'API Key',
         settingsTokenNote: 'API key — required for all official-API features. Without it the script only uses the community gateway (prices, transactions, battles); alliance- and search-based features stay off. Never your game session.',
@@ -709,6 +712,9 @@
         settingsDesc: 'Der Inventory Advisor soll eine schnelle Übersicht geben, ob Items behalten (KEEP/HOLD), gewinnbringend verkauft (SELL) oder zerschreddert (SCRAP) werden sollten.',
         settingsHeaderFeature: 'Feature / Option',
         settingsHeaderNotif: '🔔 Benachr.',
+        settingsCategoryWar: '⚔️ Krieg',
+        settingsCategoryEco: '💰 Wirtschaft',
+        settingsCategoryMisc: '🔧 Sonstiges',
         settingsApiToken: 'API-Key (api2.warera.io)',
         settingsTokenPlaceholder: 'API-Key',
         settingsTokenNote: 'API-Key — erforderlich für alle offiziellen API-Funktionen. Ohne Key nutzt das Skript nur das Community-Gateway (Preise, Transaktionen, Schlachten); Allianz- und Suchfunktionen bleiben deaktiviert. Niemals deine Spiel-Session.',
@@ -5852,230 +5858,245 @@ async function scanInventory(force) {
           <span>${t('settingsHeaderFeature')}</span>
           <span style="margin-right: 4px;">${t('settingsHeaderNotif')}</span>
         </div>
-        <details class="wia-advisor-settings" style="margin-top: 6px; margin-left: 24px;">
-          <summary style="font-size: 11px; color: #8b949e; cursor: pointer; user-select: none; font-weight: bold; outline: none; margin-bottom: 6px;">
-            🔧 ${t('settingsAdvisorSettingsLabel')}
+        <details class="wia-category-war" style="margin-top: 10px; border-top: 1px solid rgba(148,163,184,.15); padding-top: 10px;">
+          <summary style="font-size: 12px; color: #c9d1d9; cursor: pointer; user-select: none; font-weight: bold; outline: none; margin-bottom: 6px;">
+            ${t('settingsCategoryWar')}
           </summary>
-          <div style="margin-top: 4px;">
-            <label style="font-size: 11px; color: #8b949e; display: block; margin: 0 0 2px;">${t('settingsStockKeepCountLabel')}</label>
-            <input type="number" min="1" max="10" class="wia-stock-keep-count" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;" value="${prevStockKeepCount}" />
-            <div style="font-size: 10px; color: #8b949e; margin-top: 2px;">${t('settingsStockKeepCountSub')}</div>
+          <div class="wia-feat-row" style="margin-top: 6px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <input type="checkbox" class="wia-feat-battle" style="width: auto;" ${prevFeatBattle ? 'checked' : ''} />
+              <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatBattleCheckbox')}</label>
+              <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
+            </div>
+            <div class="wia-hint" hidden>${t('settingsFeatBattleHint')}</div>
+            <details class="wia-battle-settings-row" style="margin-top: 6px; margin-left: 24px;" ${prevFeatBattle ? 'open' : ''}>
+              <summary style="font-size: 11px; color: #8b949e; cursor: pointer; user-select: none; font-weight: bold; outline: none; margin-bottom: 6px;">
+                ${t('settingsBattleSettingsLabel')}
+              </summary>
+              <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+                <input type="checkbox" class="wia-feat-order-radar" style="width: auto;" ${prevFeatOrderRadar ? 'checked' : ''} />
+                <label style="margin: 0; font-weight: normal; cursor: pointer; font-size: 11px;">${t('settingsFeatOrderRadarCheckbox')}</label>
+                <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
+              </div>
+              <div class="wia-hint" hidden>${t('settingsFeatOrderRadarHint')}</div>
+              <div style="display: flex; align-items: center; gap: 8px; margin-top: 6px;">
+                <input type="checkbox" class="wia-feat-troop-radar" style="width: auto;" ${prevFeatTroopRadar ? 'checked' : ''} />
+                <label style="margin: 0; font-weight: normal; cursor: pointer; font-size: 11px;">${t('settingsFeatTroopRadarCheckbox')}</label>
+                <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
+              </div>
+              <div class="wia-hint" hidden>${t('settingsFeatTroopRadarHint')}</div>
+            </details>
+          </div>
+          <div class="wia-feat-row" style="margin-top: 6px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <input type="checkbox" class="wia-feat-profile-charsheet" style="width: auto;" ${prevFeatProfileCharsheet ? 'checked' : ''} />
+              <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatProfileCharsheetCheckbox')}</label>
+              <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
+            </div>
+            <div class="wia-hint" hidden>${t('settingsFeatProfileCharsheetHint')}</div>
+          </div>
+          <div class="wia-feat-row" style="margin-top: 6px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <input type="checkbox" class="wia-feat-pill" style="width: auto;" ${prevFeatPill ? 'checked' : ''} />
+                <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatPillCheckbox')}</label>
+                <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
+              </div>
+              <input type="checkbox" class="wia-feat-pill-notif" style="width: auto; margin-right: 8px;" ${(prevPillNotifHnH || prevPillNotifWindow || prevPillNotifDebuff) ? 'checked' : ''} />
+            </div>
+            <div class="wia-hint" hidden>${t('settingsFeatPillHint')}</div>
+            <details class="wia-pill-settings-row" style="margin-top: 6px; margin-left: 24px;">
+              <summary style="font-size: 11px; color: #8b949e; cursor: pointer; user-select: none; font-weight: bold; outline: none; margin-bottom: 6px;">
+                ${t('settingsPillSettingsLabel')}
+              </summary>
+              <div style="display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 6px; margin-top: 4px;">
+                <div style="flex: 1; min-width: 80px;">
+                  <label style="font-size: 11px; color: #8b949e; display: block; margin: 0 0 2px;">${t('settingsPillBuffLabel')}</label>
+                  <input type="number" step="0.1" class="wia-pill-buff" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;" value="${prevPillBuff}" />
+                </div>
+                <div style="flex: 1; min-width: 80px;">
+                  <label style="font-size: 11px; color: #8b949e; display: block; margin: 0 0 2px;">${t('settingsPillKnifeLabel')}</label>
+                  <input type="number" step="0.1" class="wia-pill-knife" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;" value="${prevPillKnife}" />
+                </div>
+                <div style="flex: 1; min-width: 80px;">
+                  <label style="font-size: 11px; color: #8b949e; display: block; margin: 0 0 2px;">${t('settingsPillDebuffLabel')}</label>
+                  <input type="number" step="0.1" class="wia-pill-debuff" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;" value="${prevPillDebuff}" />
+                </div>
+              </div>
+              <div style="display: flex; gap: 12px;">
+                <div style="flex: 1;">
+                  <label style="font-size: 11px; color: #8b949e; display: block; margin: 0 0 2px;">${t('settingsPillPrefFromLabel')}</label>
+                  <input type="text" class="wia-pill-pref-from" placeholder="19:00" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;" value="${prevPillPrefFrom}" />
+                </div>
+                <div style="flex: 1;">
+                  <label style="font-size: 11px; color: #8b949e; display: block; margin: 0 0 2px;">${t('settingsPillPrefToLabel')}</label>
+                  <input type="text" class="wia-pill-pref-to" placeholder="20:00" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;" value="${prevPillPrefTo}" />
+                </div>
+              </div>
+              <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 6px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                  <label style="margin: 0; font-weight: normal; cursor: pointer; font-size: 11px;">${t('settingsFeatPillNotifHnH')}</label>
+                  <input type="checkbox" class="wia-feat-pill-notif-hnh" style="width: auto; margin-right: 8px;" ${prevPillNotifHnH ? 'checked' : ''} />
+                </div>
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                  <label style="margin: 0; font-weight: normal; cursor: pointer; font-size: 11px;">${t('settingsFeatPillNotifWindow')}</label>
+                  <input type="checkbox" class="wia-feat-pill-notif-window" style="width: auto; margin-right: 8px;" ${prevPillNotifWindow ? 'checked' : ''} />
+                </div>
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                  <label style="margin: 0; font-weight: normal; cursor: pointer; font-size: 11px;">${t('settingsFeatPillNotifDebuff')}</label>
+                  <input type="checkbox" class="wia-feat-pill-notif-debuff" style="width: auto; margin-right: 8px;" ${prevPillNotifDebuff ? 'checked' : ''} />
+                </div>
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                  <label style="margin: 0; font-weight: normal; cursor: pointer; font-size: 11px;">${t('settingsFeatMuHealDim')}</label>
+                  <input type="checkbox" class="wia-feat-mu-heal-dim" style="width: auto; margin-right: 8px;" ${prevFeatMuHealDim ? 'checked' : ''} />
+                </div>
+              </div>
+            </details>
+          </div>
+          <div class="wia-feat-row" style="margin-top: 6px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <input type="checkbox" class="wia-feat-bounty" style="width: auto;" ${prevFeatBounty ? 'checked' : ''} />
+                <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatBounty')}</label>
+              </div>
+              <input type="checkbox" class="wia-feat-bounty-notif" style="width: auto; margin-right: 8px;" ${prevFeatBountyNotif ? 'checked' : ''} />
+            </div>
+            <details class="wia-bounty-settings-row" style="margin-top: 6px; margin-left: 24px;">
+              <summary style="font-size: 11px; color: #8b949e; cursor: pointer; user-select: none; font-weight: bold; outline: none; margin-bottom: 6px;">
+                Bounty Options
+              </summary>
+              <div style="margin-top: 4px;">
+                <label style="font-size: 11px; color: #8b949e; display: block; margin: 0 0 2px;">${t('settingsBountyScope')}</label>
+                <select class="wia-bounty-scope" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px; outline: none; cursor: pointer;">
+                  <option value="cascade" ${!hasKey ? 'disabled' : ''} ${prevBountyScope === 'cascade' ? 'selected' : ''}>${t('bountyScopeCascade')}${!hasKey ? ' (' + t('apiKeyRequiredSuffix') + ')' : ''}</option>
+                  <option value="allies" ${!hasKey ? 'disabled' : ''} ${prevBountyScope === 'allies' ? 'selected' : ''}>${t('bountyScopeAllies')}${!hasKey ? ' (' + t('apiKeyRequiredSuffix') + ')' : ''}</option>
+                  <option value="all" ${prevBountyScope === 'all' ? 'selected' : ''}>${t('bountyScopeAll')}</option>
+                </select>
+              </div>
+              <div style="margin-top: 4px;">
+                <label style="font-size: 11px; color: #8b949e; display: block; margin: 0 0 2px;">${t('settingsBountyOwnCountry')}</label>
+                <input type="text" class="wia-bounty-own" placeholder="name or id,id,id..." ${!hasKey ? 'disabled style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px; opacity: 0.5; cursor: not-allowed;"' : 'style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;"'} value="${prevBountyOwn}" />
+                <div class="wia-bounty-detected-identity" style="font-size: 10px; color: #8b949e; margin-top: 2px;">Erkenne Identität...</div>
+              </div>
+              <div style="margin-top: 6px; display: flex; align-items: center; gap: 8px;">
+                <input type="checkbox" class="wia-bounty-mute-debuff" style="width: auto;" ${prevBountyMuteDebuff ? 'checked' : ''} />
+                <label style="font-size: 11px; color: #8b949e; margin: 0; font-weight: normal; cursor: pointer;">${t('settingsBountyMuteDebuff')}</label>
+              </div>
+            </details>
           </div>
         </details>
-        <div class="wia-feat-row" style="margin-top: 6px;">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <input type="checkbox" class="wia-feat-item-advisor" style="width: auto;" ${prevFeatItemAdvisor ? 'checked' : ''} />
-            <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatItemAdvisorCheckbox')}</label>
-            <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
-          </div>
-          <div class="wia-hint" hidden>${t('settingsFeatItemAdvisorHint')}</div>
-        </div>
-        <div class="wia-feat-row" style="margin-top: 6px;">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <input type="checkbox" class="wia-feat-crafting-advisor" style="width: auto;" ${prevFeatCraftingAdvisor ? 'checked' : ''} />
-            <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatCraftingAdvisorCheckbox')}</label>
-            <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
-          </div>
-          <div class="wia-hint" hidden>${t('settingsFeatCraftingAdvisorHint')}</div>
-        </div>
-        <div class="wia-feat-row" style="margin-top: 6px;">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <input type="checkbox" class="wia-feat-notes" style="width: auto;" ${prevFeatNotes ? 'checked' : ''} />
-            <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatNotesCheckbox')}</label>
-            <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
-          </div>
-          <div class="wia-hint" hidden>${t('settingsFeatNotesHint')}</div>
-        </div>
-        <div class="wia-feat-row" style="margin-top: 6px;">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <input type="checkbox" class="wia-feat-battle" style="width: auto;" ${prevFeatBattle ? 'checked' : ''} />
-            <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatBattleCheckbox')}</label>
-            <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
-          </div>
-          <div class="wia-hint" hidden>${t('settingsFeatBattleHint')}</div>
-          <details class="wia-battle-settings-row" style="margin-top: 6px; margin-left: 24px;" ${prevFeatBattle ? 'open' : ''}>
-            <summary style="font-size: 11px; color: #8b949e; cursor: pointer; user-select: none; font-weight: bold; outline: none; margin-bottom: 6px;">
-              ${t('settingsBattleSettingsLabel')}
-            </summary>
-            <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
-              <input type="checkbox" class="wia-feat-order-radar" style="width: auto;" ${prevFeatOrderRadar ? 'checked' : ''} />
-              <label style="margin: 0; font-weight: normal; cursor: pointer; font-size: 11px;">${t('settingsFeatOrderRadarCheckbox')}</label>
-              <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
-            </div>
-            <div class="wia-hint" hidden>${t('settingsFeatOrderRadarHint')}</div>
-            <div style="display: flex; align-items: center; gap: 8px; margin-top: 6px;">
-              <input type="checkbox" class="wia-feat-troop-radar" style="width: auto;" ${prevFeatTroopRadar ? 'checked' : ''} />
-              <label style="margin: 0; font-weight: normal; cursor: pointer; font-size: 11px;">${t('settingsFeatTroopRadarCheckbox')}</label>
-              <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
-            </div>
-            <div class="wia-hint" hidden>${t('settingsFeatTroopRadarHint')}</div>
-          </details>
-        </div>
-        <div class="wia-feat-row" style="margin-top: 6px;">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <input type="checkbox" class="wia-feat-profile-charsheet" style="width: auto;" ${prevFeatProfileCharsheet ? 'checked' : ''} />
-            <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatProfileCharsheetCheckbox')}</label>
-            <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
-          </div>
-          <div class="wia-hint" hidden>${t('settingsFeatProfileCharsheetHint')}</div>
-        </div>
-        <div class="wia-feat-row" style="margin-top: 6px;">
-          <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%;">
+        <details class="wia-category-eco" style="margin-top: 10px; border-top: 1px solid rgba(148,163,184,.15); padding-top: 10px;">
+          <summary style="font-size: 12px; color: #c9d1d9; cursor: pointer; user-select: none; font-weight: bold; outline: none; margin-bottom: 6px;">
+            ${t('settingsCategoryEco')}
+          </summary>
+          <div class="wia-feat-row" style="margin-top: 6px;">
             <div style="display: flex; align-items: center; gap: 8px;">
-              <input type="checkbox" class="wia-feat-pill" style="width: auto;" ${prevFeatPill ? 'checked' : ''} />
-              <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatPillCheckbox')}</label>
+              <input type="checkbox" class="wia-feat-item-advisor" style="width: auto;" ${prevFeatItemAdvisor ? 'checked' : ''} />
+              <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatItemAdvisorCheckbox')}</label>
               <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
             </div>
-            <input type="checkbox" class="wia-feat-pill-notif" style="width: auto; margin-right: 8px;" ${(prevPillNotifHnH || prevPillNotifWindow || prevPillNotifDebuff) ? 'checked' : ''} />
+            <div class="wia-hint" hidden>${t('settingsFeatItemAdvisorHint')}</div>
+            <details class="wia-advisor-settings" style="margin-top: 6px; margin-left: 24px;">
+              <summary style="font-size: 11px; color: #8b949e; cursor: pointer; user-select: none; font-weight: bold; outline: none; margin-bottom: 6px;">
+                🔧 ${t('settingsAdvisorSettingsLabel')}
+              </summary>
+              <div style="margin-top: 4px;">
+                <label style="font-size: 11px; color: #8b949e; display: block; margin: 0 0 2px;">${t('settingsStockKeepCountLabel')}</label>
+                <input type="number" min="1" max="10" class="wia-stock-keep-count" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;" value="${prevStockKeepCount}" />
+                <div style="font-size: 10px; color: #8b949e; margin-top: 2px;">${t('settingsStockKeepCountSub')}</div>
+              </div>
+            </details>
           </div>
-          <div class="wia-hint" hidden>${t('settingsFeatPillHint')}</div>
-          <details class="wia-pill-settings-row" style="margin-top: 6px; margin-left: 24px;">
+          <div class="wia-feat-row" style="margin-top: 6px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <input type="checkbox" class="wia-feat-crafting-advisor" style="width: auto;" ${prevFeatCraftingAdvisor ? 'checked' : ''} />
+              <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatCraftingAdvisorCheckbox')}</label>
+              <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
+            </div>
+            <div class="wia-hint" hidden>${t('settingsFeatCraftingAdvisorHint')}</div>
+          </div>
+          <div class="wia-feat-row" style="margin-top: 6px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <input type="checkbox" class="wia-feat-market-graph" style="width: auto;" ${prevFeatMarketGraph ? 'checked' : ''} />
+              <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatMarketGraphCheckbox')}</label>
+              <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
+            </div>
+            <div class="wia-hint" hidden>${t('settingsFeatMarketGraphHint')}</div>
+          </div>
+          <div class="wia-feat-row" style="margin-top: 6px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <input type="checkbox" class="wia-feat-pnl-tracker" style="width: auto;" ${prevFeatPnlTracker ? 'checked' : ''} />
+              <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatPnlTrackerCheckbox')}</label>
+              <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
+            </div>
+            <div class="wia-hint" hidden>${t('settingsFeatPnlTrackerHint')}</div>
+          </div>
+        </details>
+        <details class="wia-category-misc" style="margin-top: 10px; border-top: 1px solid rgba(148,163,184,.15); padding-top: 10px; margin-bottom: 10px;">
+          <summary style="font-size: 12px; color: #c9d1d9; cursor: pointer; user-select: none; font-weight: bold; outline: none; margin-bottom: 6px;">
+            ${t('settingsCategoryMisc')}
+          </summary>
+          <div class="wia-feat-row" style="margin-top: 6px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <input type="checkbox" class="wia-feat-notes" style="width: auto;" ${prevFeatNotes ? 'checked' : ''} />
+              <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatNotesCheckbox')}</label>
+              <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
+            </div>
+            <div class="wia-hint" hidden>${t('settingsFeatNotesHint')}</div>
+          </div>
+          <details class="wia-notif-settings-row" style="margin-top: 6px;">
             <summary style="font-size: 11px; color: #8b949e; cursor: pointer; user-select: none; font-weight: bold; outline: none; margin-bottom: 6px;">
-              ${t('settingsPillSettingsLabel')}
+              🔔 ${t('settingsNotifTitle')}
             </summary>
             <div style="display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 6px; margin-top: 4px;">
-              <div style="flex: 1; min-width: 80px;">
-                <label style="font-size: 11px; color: #8b949e; display: block; margin: 0 0 2px;">${t('settingsPillBuffLabel')}</label>
-                <input type="number" step="0.1" class="wia-pill-buff" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;" value="${prevPillBuff}" />
+              <div style="flex: 1; min-width: 120px;">
+                <label style="font-size: 11px; color: #8b949e; display: block; margin: 0 0 2px;">${t('settingsPersonalTopic')}</label>
+                <input type="text" class="wia-personal-topic" placeholder="${defaultPersonalTopic}" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;" value="${prevPersonalTopic}" />
               </div>
-              <div style="flex: 1; min-width: 80px;">
-                <label style="font-size: 11px; color: #8b949e; display: block; margin: 0 0 2px;">${t('settingsPillKnifeLabel')}</label>
-                <input type="number" step="0.1" class="wia-pill-knife" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;" value="${prevPillKnife}" />
-              </div>
-              <div style="flex: 1; min-width: 80px;">
-                <label style="font-size: 11px; color: #8b949e; display: block; margin: 0 0 2px;">${t('settingsPillDebuffLabel')}</label>
-                <input type="number" step="0.1" class="wia-pill-debuff" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;" value="${prevPillDebuff}" />
+              <div style="flex: 1; min-width: 120px;">
+                <label style="font-size: 11px; color: #8b949e; display: block; margin: 0 0 2px;">${t('settingsPersonalTopicSecret')}</label>
+                <input type="text" class="wia-personal-secret" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;" value="${prevPersonalSecret}" />
               </div>
             </div>
-            <div style="display: flex; gap: 12px;">
-              <div style="flex: 1;">
-                <label style="font-size: 11px; color: #8b949e; display: block; margin: 0 0 2px;">${t('settingsPillPrefFromLabel')}</label>
-                <input type="text" class="wia-pill-pref-from" placeholder="19:00" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;" value="${prevPillPrefFrom}" />
-              </div>
-              <div style="flex: 1;">
-                <label style="font-size: 11px; color: #8b949e; display: block; margin: 0 0 2px;">${t('settingsPillPrefToLabel')}</label>
-                <input type="text" class="wia-pill-pref-to" placeholder="20:00" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;" value="${prevPillPrefTo}" />
-              </div>
+            <div style="margin-top: 2px; margin-bottom: 6px;">
+              <a class="wia-personal-topic-link" href="${personalTopicUrl}" target="_blank" style="font-size: 10px; color: #58a6ff; text-decoration: none; font-weight: bold; display: inline-block;">
+                🔗 ${t('settingsPersonalTopicLinkText')}: ${personalTopicUrl}
+              </a>
             </div>
-            <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 6px;">
-              <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-                <label style="margin: 0; font-weight: normal; cursor: pointer; font-size: 11px;">${t('settingsFeatPillNotifHnH')}</label>
-                <input type="checkbox" class="wia-feat-pill-notif-hnh" style="width: auto; margin-right: 8px;" ${prevPillNotifHnH ? 'checked' : ''} />
-              </div>
-              <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-                <label style="margin: 0; font-weight: normal; cursor: pointer; font-size: 11px;">${t('settingsFeatPillNotifWindow')}</label>
-                <input type="checkbox" class="wia-feat-pill-notif-window" style="width: auto; margin-right: 8px;" ${prevPillNotifWindow ? 'checked' : ''} />
-              </div>
-              <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-                <label style="margin: 0; font-weight: normal; cursor: pointer; font-size: 11px;">${t('settingsFeatPillNotifDebuff')}</label>
-                <input type="checkbox" class="wia-feat-pill-notif-debuff" style="width: auto; margin-right: 8px;" ${prevPillNotifDebuff ? 'checked' : ''} />
-              </div>
-              <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-                <label style="margin: 0; font-weight: normal; cursor: pointer; font-size: 11px;">${t('settingsFeatMuHealDim')}</label>
-                <input type="checkbox" class="wia-feat-mu-heal-dim" style="width: auto; margin-right: 8px;" ${prevFeatMuHealDim ? 'checked' : ''} />
-              </div>
+            <div style="margin-top: 6px; display: flex; align-items: center; gap: 8px; border-top: 1px dashed rgba(148,163,184,0.15); padding-top: 6px;">
+              <input type="checkbox" class="wia-feat-system-alerts" style="width: auto;" ${prevFeatSystemAlerts ? 'checked' : ''} />
+              <label style="font-size: 11px; color: #8b949e; margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatSystemAlerts')}</label>
             </div>
           </details>
-        </div>
-        <div class="wia-feat-row" style="margin-top: 6px;">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <input type="checkbox" class="wia-feat-market-graph" style="width: auto;" ${prevFeatMarketGraph ? 'checked' : ''} />
-            <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatMarketGraphCheckbox')}</label>
-            <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
-          </div>
-          <div class="wia-hint" hidden>${t('settingsFeatMarketGraphHint')}</div>
-        </div>
-        <div class="wia-feat-row" style="margin-top: 6px;">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <input type="checkbox" class="wia-feat-pnl-tracker" style="width: auto;" ${prevFeatPnlTracker ? 'checked' : ''} />
-            <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatPnlTrackerCheckbox')}</label>
-            <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
-          </div>
-          <div class="wia-hint" hidden>${t('settingsFeatPnlTrackerHint')}</div>
-        </div>
-        <div class="wia-feat-row" style="margin-top: 6px;">
-          <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%;">
+          <div class="wia-feat-row" style="margin-top: 10px; border-top: 1px solid rgba(148,163,184,.2); padding-top: 10px;">
             <div style="display: flex; align-items: center; gap: 8px;">
-              <input type="checkbox" class="wia-feat-bounty" style="width: auto;" ${prevFeatBounty ? 'checked' : ''} />
-              <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatBounty')}</label>
+              <input type="checkbox" class="wia-debug" style="width: auto;" ${CONFIG.debug ? 'checked' : ''} />
+              <label style="margin: 0; font-weight: normal; cursor: pointer;">🐞 Debug-Logging (Konsole + Diagnose)</label>
             </div>
-            <input type="checkbox" class="wia-feat-bounty-notif" style="width: auto; margin-right: 8px;" ${prevFeatBountyNotif ? 'checked' : ''} />
-          </div>
-          <details class="wia-bounty-settings-row" style="margin-top: 6px; margin-left: 24px;">
-            <summary style="font-size: 11px; color: #8b949e; cursor: pointer; user-select: none; font-weight: bold; outline: none; margin-bottom: 6px;">
-              Bounty Options
-            </summary>
-            <div style="margin-top: 4px;">
-              <label style="font-size: 11px; color: #8b949e; display: block; margin: 0 0 2px;">${t('settingsBountyScope')}</label>
-              <select class="wia-bounty-scope" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px; outline: none; cursor: pointer;">
-                <option value="cascade" ${!hasKey ? 'disabled' : ''} ${prevBountyScope === 'cascade' ? 'selected' : ''}>${t('bountyScopeCascade')}${!hasKey ? ' (' + t('apiKeyRequiredSuffix') + ')' : ''}</option>
-                <option value="allies" ${!hasKey ? 'disabled' : ''} ${prevBountyScope === 'allies' ? 'selected' : ''}>${t('bountyScopeAllies')}${!hasKey ? ' (' + t('apiKeyRequiredSuffix') + ')' : ''}</option>
-                <option value="all" ${prevBountyScope === 'all' ? 'selected' : ''}>${t('bountyScopeAll')}</option>
-              </select>
-            </div>
-            <div style="margin-top: 4px;">
-              <label style="font-size: 11px; color: #8b949e; display: block; margin: 0 0 2px;">${t('settingsBountyOwnCountry')}</label>
-              <input type="text" class="wia-bounty-own" placeholder="name or id,id,id..." ${!hasKey ? 'disabled style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px; opacity: 0.5; cursor: not-allowed;"' : 'style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;"'} value="${prevBountyOwn}" />
-              <div class="wia-bounty-detected-identity" style="font-size: 10px; color: #8b949e; margin-top: 2px;">Erkenne Identität...</div>
-            </div>
-            <div style="margin-top: 6px; display: flex; align-items: center; gap: 8px;">
-              <input type="checkbox" class="wia-bounty-mute-debuff" style="width: auto;" ${prevBountyMuteDebuff ? 'checked' : ''} />
-              <label style="font-size: 11px; color: #8b949e; margin: 0; font-weight: normal; cursor: pointer;">${t('settingsBountyMuteDebuff')}</label>
-            </div>
-          </details>
-        </div>
-        <details class="wia-notif-settings-row" style="margin-top: 10px; border-top: 1px solid rgba(148,163,184,.15); padding-top: 10px;">
-          <summary style="font-size: 11px; color: #8b949e; cursor: pointer; user-select: none; font-weight: bold; outline: none; margin-bottom: 6px;">
-            🔔 ${t('settingsNotifTitle')}
-          </summary>
-          <div style="display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 6px; margin-top: 4px;">
-            <div style="flex: 1; min-width: 120px;">
-              <label style="font-size: 11px; color: #8b949e; display: block; margin: 0 0 2px;">${t('settingsPersonalTopic')}</label>
-              <input type="text" class="wia-personal-topic" placeholder="${defaultPersonalTopic}" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;" value="${prevPersonalTopic}" />
-            </div>
-            <div style="flex: 1; min-width: 120px;">
-              <label style="font-size: 11px; color: #8b949e; display: block; margin: 0 0 2px;">${t('settingsPersonalTopicSecret')}</label>
-              <input type="text" class="wia-personal-secret" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;" value="${prevPersonalSecret}" />
-            </div>
-          </div>
-          <div style="margin-top: 2px; margin-bottom: 6px;">
-            <a class="wia-personal-topic-link" href="${personalTopicUrl}" target="_blank" style="font-size: 10px; color: #58a6ff; text-decoration: none; font-weight: bold; display: inline-block;">
-              🔗 ${t('settingsPersonalTopicLinkText')}: ${personalTopicUrl}
-            </a>
-          </div>
-          <div style="margin-top: 6px; display: flex; align-items: center; gap: 8px; border-top: 1px dashed rgba(148,163,184,0.15); padding-top: 6px;">
-            <input type="checkbox" class="wia-feat-system-alerts" style="width: auto;" ${prevFeatSystemAlerts ? 'checked' : ''} />
-            <label style="font-size: 11px; color: #8b949e; margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatSystemAlerts')}</label>
+            <details class="wia-health-details" style="margin-top: 6px;">
+              <summary style="font-size: 11px; color: #8b949e; cursor: pointer; user-select: none; font-weight: bold; outline: none;">Feature-Health / Diagnose</summary>
+              <button type="button" class="wia-health-btn" style="margin: 6px 0; font-size: 11px; padding: 3px 8px; cursor: pointer;">Aktualisieren</button>
+              <button type="button" class="wia-debug-export-btn" style="margin: 6px 4px; font-size: 11px; padding: 3px 8px; cursor: pointer; color: #10b981; background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.2); border-radius: 3px;">📋 Debug-Log kopieren</button>
+              <button type="button" class="wia-pnl-print-btn" style="margin: 6px 4px; font-size: 11px; padding: 3px 8px; cursor: pointer; color: #58a6ff; background: rgba(88,166,255,0.1); border: 1px solid rgba(88,166,255,0.2); border-radius: 3px;">P&L Kassenzettel (Konsole)</button>
+              <button type="button" class="wia-skins-dump-btn" style="margin: 6px 4px; font-size: 11px; padding: 3px 8px; cursor: pointer; color: #ff9800; background: rgba(255,152,0,0.1); border: 1px solid rgba(255,152,0,0.2); border-radius: 3px;">Skins Dump (Konsole)</button>
+              <button type="button" class="wia-dmg-print-btn" style="margin: 6px 4px; font-size: 11px; padding: 3px 8px; cursor: pointer; color: #f0a54a; background: rgba(240,165,74,0.1); border: 1px solid rgba(240,165,74,0.2); border-radius: 3px;">Troop Damage (Konsole)</button>
+              <div class="wia-health-panel"></div>
+            </details>
+            <details class="wia-test-notif-details" style="margin-top: 6px;">
+              <summary style="font-size: 11px; color: #8b949e; cursor: pointer; user-select: none; font-weight: bold; outline: none;">Benachrichtigungen testen</summary>
+              <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px;">
+                <button type="button" class="wia-test-notif-bounty" style="font-size: 11px; padding: 3px 8px; cursor: pointer; color: #fbbf24; background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.2); border-radius: 3px;">Kopfgeld (Bounty)</button>
+                <button type="button" class="wia-test-notif-hnh" style="font-size: 11px; padding: 3px 8px; cursor: pointer; color: #10b981; background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.2); border-radius: 3px;">HP & Hunger voll</button>
+                <button type="button" class="wia-test-notif-window" style="font-size: 11px; padding: 3px 8px; cursor: pointer; color: #fbbf24; background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.2); border-radius: 3px;">Pillenfenster</button>
+                <button type="button" class="wia-test-notif-debuff" style="font-size: 11px; padding: 3px 8px; cursor: pointer; color: #8b5cf6; background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.2); border-radius: 3px;">Debuff abgelaufen</button>
+              </div>
+            </details>
           </div>
         </details>
         <button type="button" class="wia-help-toggle" aria-expanded="false">${t('settingsHelpSummary')}</button>
         <aside class="wia-help-panel" hidden>
           <div class="wia-help-content">${t('settingsHelpContent')}</div>
         </aside>
-        <div class="wia-feat-row" style="margin-top: 10px; border-top: 1px solid rgba(148,163,184,.2); padding-top: 10px;">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <input type="checkbox" class="wia-debug" style="width: auto;" ${CONFIG.debug ? 'checked' : ''} />
-            <label style="margin: 0; font-weight: normal; cursor: pointer;">🐞 Debug-Logging (Konsole + Diagnose)</label>
-          </div>
-          <details class="wia-health-details" style="margin-top: 6px;">
-            <summary style="font-size: 11px; color: #8b949e; cursor: pointer; user-select: none; font-weight: bold; outline: none;">Feature-Health / Diagnose</summary>
-            <button type="button" class="wia-health-btn" style="margin: 6px 0; font-size: 11px; padding: 3px 8px; cursor: pointer;">Aktualisieren</button>
-            <button type="button" class="wia-debug-export-btn" style="margin: 6px 4px; font-size: 11px; padding: 3px 8px; cursor: pointer; color: #10b981; background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.2); border-radius: 3px;">📋 Debug-Log kopieren</button>
-            <button type="button" class="wia-pnl-print-btn" style="margin: 6px 4px; font-size: 11px; padding: 3px 8px; cursor: pointer; color: #58a6ff; background: rgba(88,166,255,0.1); border: 1px solid rgba(88,166,255,0.2); border-radius: 3px;">P&L Kassenzettel (Konsole)</button>
-            <button type="button" class="wia-skins-dump-btn" style="margin: 6px 4px; font-size: 11px; padding: 3px 8px; cursor: pointer; color: #ff9800; background: rgba(255,152,0,0.1); border: 1px solid rgba(255,152,0,0.2); border-radius: 3px;">Skins Dump (Konsole)</button>
-            <button type="button" class="wia-dmg-print-btn" style="margin: 6px 4px; font-size: 11px; padding: 3px 8px; cursor: pointer; color: #f0a54a; background: rgba(240,165,74,0.1); border: 1px solid rgba(240,165,74,0.2); border-radius: 3px;">Troop Damage (Konsole)</button>
-            <div class="wia-health-panel"></div>
-          </details>
-          <details class="wia-test-notif-details" style="margin-top: 6px;">
-            <summary style="font-size: 11px; color: #8b949e; cursor: pointer; user-select: none; font-weight: bold; outline: none;">Benachrichtigungen testen</summary>
-            <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px;">
-              <button type="button" class="wia-test-notif-bounty" style="font-size: 11px; padding: 3px 8px; cursor: pointer; color: #fbbf24; background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.2); border-radius: 3px;">Kopfgeld (Bounty)</button>
-              <button type="button" class="wia-test-notif-hnh" style="font-size: 11px; padding: 3px 8px; cursor: pointer; color: #10b981; background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.2); border-radius: 3px;">HP & Hunger voll</button>
-              <button type="button" class="wia-test-notif-window" style="font-size: 11px; padding: 3px 8px; cursor: pointer; color: #fbbf24; background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.2); border-radius: 3px;">Pillenfenster</button>
-              <button type="button" class="wia-test-notif-debuff" style="font-size: 11px; padding: 3px 8px; cursor: pointer; color: #8b5cf6; background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.2); border-radius: 3px;">Debuff abgelaufen</button>
-            </div>
-          </details>
-        </div>
         <div class="wia-btns">
           <button class="wia-btn primary wia-save">${t('settingsSave')}</button>
           <button class="wia-btn wia-clear">${t('settingsClear')}</button>
