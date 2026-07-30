@@ -4846,9 +4846,11 @@ async function scanInventory(force) {
         width: 100%; text-align: left; margin-bottom: 8px;
       }
       .wia-help-panel {
-        margin: 8px 0 4px; width: 100%; box-sizing: border-box;
-        background: #0d1117; border: 1px solid #30363d; border-radius: 8px;
-        padding: 12px; font: 13px/1.5 system-ui, sans-serif;
+        position: absolute; top: 0; left: 100%; margin-left: 12px;
+        width: 320px; max-height: 80vh; overflow-y: auto;
+        background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+        padding: 16px; box-shadow: 0 8px 30px rgba(0,0,0,.6); z-index: 1;
+        font: 13px/1.5 system-ui, sans-serif;
       }
       .wia-help-panel[hidden] { display: none; }
       .wia-help-content {
