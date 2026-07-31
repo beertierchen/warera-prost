@@ -1,5 +1,24 @@
 # CHANGELOG
 
+
+## 2026-07-31 | Feature: Settings Overhaul & UI Improvements (v0.10.6)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`, `tests/test-advisor-load.js`
+
+**Änderungen (Deutsch):**
+- **Settings Overhaul**: Die Einstellungen sind nun übersichtlicher in Kategorien (Krieg, Wirtschaft, Diverses) unterteilt.
+- **Berater Toggles**: Item- und Crafting-Berater lassen sich jetzt in den Einstellungen gezielt an- und ausschalten.
+- **Notizen UI**: Das Bleistift-Icon für leere Notizen erscheint jetzt nur noch beim Darüberhovern, um die Übersichtlichkeit zu verbessern.
+- **Bug Fix**: Der Item-Berater entfernt nun beim Deaktivieren alle zugehörigen Overlays korrekt.
+- **Weitere Bug Fixes**: H&H Cooldown, Gateway-Timeout Health, und API Fetch-Concurrency wurden bereits im Hintergrund ausgerollt und sind nun offiziell Bestandteil dieses Releases.
+
+**Changes (English):**
+- **Settings Overhaul**: Settings are now cleanly grouped into categories (War, Eco, Misc) for better readability.
+- **Advisor Toggles**: The Item and Crafting Advisors can now be toggled on/off individually in the settings.
+- **Notes UI**: The pencil icon for empty notes now only appears on hover to reduce visual clutter.
+- **Bug Fix**: The Item Advisor now correctly removes all its overlays when disabled.
+- **Additional Bug Fixes**: H&H cooldown, gateway-timeout health, and API fetch-concurrency fixes have been officially bundled into this release.
+
 ## 2026-07-30 | Fixes: Crafting-Berater, Order-/Truppen-Radar & Benachrichtigungen (v0.10.5)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`
