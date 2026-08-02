@@ -16,6 +16,8 @@ npm-debug.log*
 
 # Local agent / tooling scratch (not part of the project)
 .agents/
+AGENTs.md
+CLAUDE.md
 .claude-octopus/
 .claude/
 .serena/

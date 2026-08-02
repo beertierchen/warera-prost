@@ -7700,6 +7700,183 @@ function updateObserverTarget() {
     return null;
   }
 
+  // ───────────────────────────────────────────────────────────────────────────
+  // Company Coworker Energy (Wave 2)
+  // ───────────────────────────────────────────────────────────────────────────
+  const ecoUserEnergyCache = new Map(); // userId -> { at, data: {cur, total, regen} }
+  const ECO_ENERGY_TTL_MS = 60_000;
+  let ecoEnergyLoading = false;
+
+  async function fetchEcoEnergyBatch(userIds, opts = {}) {
+    if (!Array.isArray(userIds) || userIds.length === 0) return [];
+    
+    const results = Array(userIds.length).fill(null);
+    const uncachedIds = [];
+    const uncachedIndices = [];
+    
+    userIds.forEach((userId, index) => {
+      const cached = ecoUserEnergyCache.get(userId);
+      if (cached && (now() - cached.at < ECO_ENERGY_TTL_MS)) {
+        results[index] = cached.data;
+      } else {
+        uncachedIds.push(userId);
+        uncachedIndices.push(index);
+      }
+    });
+    
+    if (uncachedIds.length > 0) {
+      const BATCH_CHUNK_SIZE = 8;
+      for (let offset = 0; offset < uncachedIds.length; offset += BATCH_CHUNK_SIZE) {
+        const chunkIds = uncachedIds.slice(offset, offset + BATCH_CHUNK_SIZE);
+        const chunkIndices = uncachedIndices.slice(offset, offset + BATCH_CHUNK_SIZE);
+        
+        await (async () => {
+          try {
+            const batchArgs = chunkIds.map(userId => ({ userId }));
+            const batchResults = await resolveApiBatch('user.getUserById', batchArgs, opts);
+            
+            batchResults.forEach((res, i) => {
+              const userId = chunkIds[i];
+              const origIndex = chunkIndices[i];
+              
+              if (res.error) {
+                const cached = ecoUserEnergyCache.get(userId);
+                results[origIndex] = cached ? cached.data : null;
+                return;
+              }
+              
+              const energy = res.payload?.skills?.energy;
+              if (energy) {
+                const data = {
+                  cur: energy.currentBarValue || 0,
+                  total: energy.total || energy.value || 110,
+                  regen: energy.hourlyBarRegen || 0
+                };
+                ecoUserEnergyCache.set(userId, { at: now(), data });
+                results[origIndex] = data;
+              } else {
+                results[origIndex] = null;
+              }
+            });
+          } catch (e) {
+            chunkIds.forEach((userId, i) => {
+              const origIndex = chunkIndices[i];
+              const cached = ecoUserEnergyCache.get(userId);
+              results[origIndex] = cached ? cached.data : null;
+            });
+          }
+        })();
+      }
+    }
+    
+    return results;
+  }
+
+  function applyEcoEnergyPills() {
+    const mainWin = document.getElementById('main-window');
+    if (!mainWin) return;
+    
+    const ownId = getCurrentUserId();
+    const links = Array.from(mainWin.querySelectorAll('a[href^="/user/"]'))
+      .filter(a => {
+        const href = a.getAttribute('href') || '';
+        const match = href.match(/^\/user\/([a-f0-9]{24})\/?$/i);
+        if (!match) return false;
+        const id = match[1];
+        if (id === ownId) return false;
+        return a.textContent.trim().length > 0;
+      });
+      
+    links.forEach(a => {
+      if (a.nextElementSibling && a.nextElementSibling.classList.contains('wia-eco-energy-pill')) {
+        return; // already injected
+      }
+      
+      const match = a.getAttribute('href').match(/^\/user\/([a-f0-9]{24})\/?$/i);
+      if (!match) return;
+      const id = match[1];
+      const cached = ecoUserEnergyCache.get(id);
+      if (!cached || !cached.data) return; // Wait for next tick if not loaded
+      
+      const data = cached.data;
+      const pct = data.total > 0 ? (data.cur / data.total) * 100 : 0;
+      
+      let colorClass = '';
+      if (pct < 20) {
+        colorClass = 'color: #ef4444;'; // red
+      } else if (pct < 50) {
+        colorClass = 'color: #f59e0b;'; // amber
+      } else {
+        colorClass = 'color: #10b981;'; // green
+      }
+      
+      const pill = document.createElement('span');
+      pill.className = 'wia-eco-energy-pill';
+      pill.title = `Energy regenerates by ${data.regen}/h`;
+      pill.innerHTML = `⚡<span style="${colorClass}">${data.cur}</span>/${data.total}<span style="border: 1px solid #7c3aed; color: #a78bfa; padding: 2px 4px; font-size: 9px; font-weight: 700; border-radius: 4px; letter-spacing: 0.5px; margin-left: 6px;">PROST</span>`;
+      
+      pill.style.cssText = `
+        display: inline-flex;
+        align-items: center;
+        margin-left: 8px;
+        font-size: 11px;
+        font-weight: bold;
+        background: rgba(0, 0, 0, 0.4);
+        padding: 2px 6px;
+        border-radius: 4px;
+        white-space: nowrap;
+      `;
+      
+      a.dataset.wiaBound = '1';
+      a.insertAdjacentElement('afterend', pill);
+    });
+  }
+
+  function ensureCompanyCoworkersInjected() {
+    if (ecoEnergyLoading) return;
+    const mainWin = document.getElementById('main-window');
+    if (!mainWin) return;
+    
+    const ownId = getCurrentUserId();
+    const links = Array.from(mainWin.querySelectorAll('a[href^="/user/"]'))
+      .filter(a => {
+        const href = a.getAttribute('href') || '';
+        const match = href.match(/^\/user\/([a-f0-9]{24})\/?$/i);
+        if (!match) return false;
+        const id = match[1];
+        if (id === ownId) return false;
+        return a.textContent.trim().length > 0;
+      });
+      
+    if (links.length === 0) return;
+    
+    let missingPills = false;
+    const userIdsToFetch = new Set();
+    
+    links.forEach(a => {
+      if (!a.nextElementSibling || !a.nextElementSibling.classList.contains('wia-eco-energy-pill')) {
+        const match = a.getAttribute('href').match(/^\/user\/([a-f0-9]{24})\/?$/i);
+        if (match) {
+          const id = match[1];
+          const cached = ecoUserEnergyCache.get(id);
+          if (!cached || now() - cached.at >= ECO_ENERGY_TTL_MS) {
+            userIdsToFetch.add(id);
+          }
+        }
+        missingPills = true;
+      }
+    });
+    
+    if (userIdsToFetch.size > 0 && !ecoEnergyLoading) {
+      ecoEnergyLoading = true;
+      fetchEcoEnergyBatch(Array.from(userIdsToFetch))
+        .finally(() => { ecoEnergyLoading = false; })
+        .then(() => guard('companyEco', applyEcoEnergyPills));
+    } else if (missingPills) {
+      guard('companyEco', applyEcoEnergyPills);
+    }
+  }
+
   function checkCompanyEcoModal() {
     const modals = document.querySelectorAll('div[id^="headlessui-dialog-panel-"]');
     let modal = null;
