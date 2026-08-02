@@ -7587,6 +7587,22 @@ function updateObserverTarget() {
   let companyEcoCompanyId = null;
   let companyEcoTaxRate = null;
   let companyEcoTaxResolved = false;
+  let companyEcoRafId = null;
+  let companyEcoLastWage = null;
+
+  function ecoPoll() {
+    if (!companyEcoModalNode || !document.contains(companyEcoModalNode)) {
+      companyEcoRafId = null;
+      return;
+    }
+    const inp = companyEcoModalNode.querySelector('input[name="wage"]');
+    const v = inp ? inp.value : null;
+    if (v !== companyEcoLastWage) {
+      companyEcoLastWage = v;
+      handleWageInputUpdate();
+    }
+    companyEcoRafId = requestAnimationFrame(ecoPoll);
+  }
 
   const ECO_COIN_SVG = '<svg viewBox="0 0 24 24" fill="currentColor" ' +
     'style="width:1em;height:1em;display:inline-block;vertical-align:-0.15em;margin-right:2px;' +
@@ -7707,10 +7723,8 @@ function updateObserverTarget() {
     }
     setHealth('companyEco', 'ok');
     
-    if (companyEcoWageInput.dataset.wiaBound !== '1') {
-      companyEcoWageInput.addEventListener('input', handleWageInputUpdate);
-      companyEcoWageInput.addEventListener('change', handleWageInputUpdate);
-      companyEcoWageInput.dataset.wiaBound = '1';
+    if (!companyEcoRafId) {
+      companyEcoRafId = requestAnimationFrame(ecoPoll);
     }
     
     let netLine = modal.querySelector('#wia-eco-net-wage');
@@ -7758,10 +7772,8 @@ function updateObserverTarget() {
   }
   
   function teardownCompanyEco() {
-    if (companyEcoWageInput) {
-      companyEcoWageInput.removeEventListener('input', handleWageInputUpdate);
-      companyEcoWageInput.removeEventListener('change', handleWageInputUpdate);
-      delete companyEcoWageInput.dataset.wiaBound;
+    if (companyEcoRafId) {
+      cancelAnimationFrame(companyEcoRafId);
     }
     if (companyEcoModalNode) {
       const injected = companyEcoModalNode.querySelector('#wia-eco-net-wage');
@@ -7772,6 +7784,8 @@ function updateObserverTarget() {
     companyEcoCompanyId = null;
     companyEcoTaxRate = null;
     companyEcoTaxResolved = false;
+    companyEcoRafId = null;
+    companyEcoLastWage = null;
     setHealth('companyEco', 'idle', 'modal closed or off-route');
   }
 
