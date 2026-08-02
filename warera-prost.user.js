@@ -7613,19 +7613,23 @@ function updateObserverTarget() {
 
   function renderNetLine(netLine, wage, rate, resolved) {
     const label = '<span style="color:#e5e7eb;font-weight:600;">Net (tax excl.):</span> ';
-    let newHTML = '';
+    let valueHTML = '';
     if (rate == null) {
       if (resolved) {
-        newHTML = label + '<span style="color:#9ca3af;">(no tax data)</span>';
+        valueHTML = '<span style="color:#9ca3af;">(no tax data)</span>';
       } else {
-        newHTML = label + '<span style="color:#9ca3af;">…</span>';
+        valueHTML = '<span style="color:#9ca3af;">…</span>';
       }
     } else if (isNaN(wage) || wage <= 0) {
-      newHTML = label + '<span style="color:#9ca3af;">–</span>';
+      valueHTML = '<span style="color:#9ca3af;">–</span>';
     } else {
       const net = wage * (1 - rate / 100);
-      newHTML = label + '<span style="color:#f6c944;font-weight:600;">' + ECO_COIN_SVG + net.toFixed(4) + '</span>';
+      valueHTML = '<span style="color:#f6c944;font-weight:600;">' + ECO_COIN_SVG + net.toFixed(4) + '</span>';
     }
+    
+    const badgeHTML = '<span style="border: 1px solid #7c3aed; color: #a78bfa; padding: 2px 6px; font-size: 9px; font-weight: 700; border-radius: 4px; letter-spacing: 0.5px;">PROST</span>';
+    const newHTML = '<div>' + label + valueHTML + '</div>' + badgeHTML;
+    
     if (netLine.innerHTML !== newHTML) {
       netLine.innerHTML = newHTML;
     }
@@ -7738,6 +7742,10 @@ function updateObserverTarget() {
       netLine.id = 'wia-eco-net-wage';
       netLine.style.fontSize = '0.875rem';
       netLine.style.marginTop = '0.15rem';
+      netLine.style.display = 'flex';
+      netLine.style.justifyContent = 'space-between';
+      netLine.style.alignItems = 'center';
+      netLine.style.width = '100%';
       labelSpan.parentElement.appendChild(netLine);
       if (companyEcoTaxRate != null) netLine.dataset.taxRate = companyEcoTaxRate;
     }
