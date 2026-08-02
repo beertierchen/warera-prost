@@ -7586,6 +7586,34 @@ function updateObserverTarget() {
   let companyEcoWageInput = null;
   let companyEcoCompanyId = null;
   let companyEcoTaxRate = null;
+  let companyEcoTaxResolved = false;
+
+  const ECO_COIN_SVG = '<svg viewBox="0 0 24 24" fill="currentColor" ' +
+    'style="width:1em;height:1em;display:inline-block;vertical-align:-0.15em;margin-right:2px;' +
+    'filter:drop-shadow(1px 1px 0 #000);"><path d="M12 5C7.031 5 2 6.546 2 9.5S7.031 14 12 14c4.97 0 ' +
+    '10-1.546 10-4.5S16.97 5 12 5zm-5 9.938v3c1.237.299 2.605.482 4 .541v-3a21.166 21.166 0 0 1-4-.541zm6 ' +
+    '.54v3a20.994 20.994 0 0 0 4-.541v-3a20.994 20.994 0 0 1-4 .541zm6-1.181v3c1.801-.755 3-1.857 3-3.297v-3c0 ' +
+    '1.44-1.199 2.542-3 3.297zm-14 3v-3C3.2 13.542 2 12.439 2 11v3c0 1.439 1.2 2.542 3 3.297z"></path></svg>';
+
+  function renderNetLine(netLine, wage, rate, resolved) {
+    const label = '<span style="color:#e5e7eb;font-weight:600;">Net (tax excl.):</span> ';
+    let newHTML = '';
+    if (rate == null) {
+      if (resolved) {
+        newHTML = label + '<span style="color:#9ca3af;">(no tax data)</span>';
+      } else {
+        newHTML = label + '<span style="color:#9ca3af;">…</span>';
+      }
+    } else if (isNaN(wage) || wage <= 0) {
+      newHTML = label + '<span style="color:#9ca3af;">–</span>';
+    } else {
+      const net = wage * (1 - rate / 100);
+      newHTML = label + '<span style="color:#f6c944;font-weight:600;">' + ECO_COIN_SVG + net.toFixed(4) + '</span>';
+    }
+    if (netLine.innerHTML !== newHTML) {
+      netLine.innerHTML = newHTML;
+    }
+  }
 
   async function regionToCountry(regionId) {
     if (!regionId) return null;
@@ -7627,18 +7655,15 @@ function updateObserverTarget() {
 
   function handleWageInputUpdate() {
     if (!companyEcoModalNode) return;
-    const wageStr = companyEcoWageInput ? companyEcoWageInput.value : '';
-    const wage = parseFloat(wageStr);
-    const existingLine = companyEcoModalNode.querySelector('#wia-eco-net-wage');
-    if (!existingLine) return;
+    const wageInput = companyEcoModalNode.querySelector('input[name="wage"]');
+    const netLine = companyEcoModalNode.querySelector('#wia-eco-net-wage');
+    if (!netLine) return;
     
-    if (isNaN(wage) || wage <= 0) {
-      existingLine.innerHTML = 'Net (tax excl.): -';
-      return;
-    }
-    const incomeTaxRate = existingLine.dataset.taxRate ? parseFloat(existingLine.dataset.taxRate) : 0;
-    const net = wage * (1 - incomeTaxRate / 100);
-    existingLine.innerHTML = `Net (tax excl.): ${net.toFixed(4)} <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline; width:1em; height:1em; color:#facc15;"><path d="M12 5C7.031 5 3 6.79 3 9s4.031 4 9 4 9-1.79 9-4-4.031-4-9-4z"></path><path d="M3 15c0 2.21 4.031 4 9 4s9-1.79 9-4"></path><path d="M3 9v6"></path><path d="M21 9v6"></path></svg>`;
+    const wageStr = wageInput ? wageInput.value : '';
+    const wage = parseFloat(wageStr);
+    const rate = netLine.dataset.taxRate ? parseFloat(netLine.dataset.taxRate) : null;
+    
+    renderNetLine(netLine, wage, rate, companyEcoTaxResolved);
   }
 
   async function fetchCompanyTaxRate(companyId) {
@@ -7698,9 +7723,7 @@ function updateObserverTarget() {
       netLine = document.createElement('div');
       netLine.id = 'wia-eco-net-wage';
       netLine.style.fontSize = '0.875rem';
-      netLine.style.color = '#d1d5db';
-      netLine.style.marginTop = '0.25rem';
-      netLine.innerHTML = 'Net (tax excl.): ...';
+      netLine.style.marginTop = '0.15rem';
       labelSpan.parentElement.appendChild(netLine);
       if (companyEcoTaxRate != null) netLine.dataset.taxRate = companyEcoTaxRate;
     }
@@ -7709,15 +7732,17 @@ function updateObserverTarget() {
     if (companyId && companyId !== companyEcoCompanyId) {
       companyEcoCompanyId = companyId;
       companyEcoTaxRate = null;
+      companyEcoTaxResolved = false;
       delete netLine.dataset.taxRate;
-      netLine.innerHTML = 'Net (tax excl.): ...';
+      handleWageInputUpdate();
+      
       fetchCompanyTaxRate(companyId).then(rate => {
         if (companyEcoCompanyId !== companyId) return; // modal switched company mid-flight
         companyEcoTaxRate = rate;
+        companyEcoTaxResolved = true;
         const line = companyEcoModalNode && companyEcoModalNode.querySelector('#wia-eco-net-wage');
         if (!line) return;
-        if (rate == null) { line.innerHTML = 'Net (tax excl.): (no tax data)'; return; }
-        line.dataset.taxRate = rate;
+        if (rate != null) line.dataset.taxRate = rate;
         handleWageInputUpdate();
       });
     } else if (companyEcoTaxRate != null && netLine.dataset.taxRate == null) {
@@ -7746,6 +7771,7 @@ function updateObserverTarget() {
     companyEcoWageInput = null;
     companyEcoCompanyId = null;
     companyEcoTaxRate = null;
+    companyEcoTaxResolved = false;
     setHealth('companyEco', 'idle', 'modal closed or off-route');
   }
 
