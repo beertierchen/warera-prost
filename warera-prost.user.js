@@ -7584,6 +7584,8 @@ function updateObserverTarget() {
   // ───────────────────────────────────────────────────────────────────────────
   let companyEcoModalNode = null;
   let companyEcoWageInput = null;
+  let companyEcoCompanyId = null;
+  let companyEcoTaxRate = null;
 
   async function regionToCountry(regionId) {
     if (!regionId) return null;
@@ -7639,12 +7641,26 @@ function updateObserverTarget() {
     existingLine.innerHTML = `Net (tax excl.): ${net.toFixed(4)} <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline; width:1em; height:1em; color:#facc15;"><path d="M12 5C7.031 5 3 6.79 3 9s4.031 4 9 4 9-1.79 9-4-4.031-4-9-4z"></path><path d="M3 15c0 2.21 4.031 4 9 4s9-1.79 9-4"></path><path d="M3 9v6"></path><path d="M21 9v6"></path></svg>`;
   }
 
-  async function checkCompanyEcoModal() {
+  async function fetchCompanyTaxRate(companyId) {
+    try {
+      const { payload: compData } = await resolveApiBase('company.getById', { companyId });
+      if (!compData || !compData.region) return null;
+      const countryId = await regionToCountry(compData.region);
+      if (!countryId) return null;
+      const taxes = await getCountryTax(countryId);
+      if (taxes && taxes.income !== undefined) return taxes.income;
+    } catch (e) {
+      console.warn('[PROST] eco: tax fetch failed', e);
+    }
+    return null;
+  }
+
+  function checkCompanyEcoModal() {
     const modals = document.querySelectorAll('div[id^="headlessui-dialog-panel-"]');
     let modal = null;
     for (const m of modals) {
       if (m.getAttribute('data-headlessui-state') !== 'open') continue;
-      const titleSpan = Array.from(m.querySelectorAll('span')).find(s => s.textContent.trim() === 'New job offer');
+      const titleSpan = Array.from(m.querySelectorAll('span')).find(s => s.textContent.trim().toLowerCase() === 'new job offer');
       if (titleSpan) {
         modal = m;
         break;
@@ -7656,56 +7672,59 @@ function updateObserverTarget() {
       return;
     }
     
-    if (modal && modal !== companyEcoModalNode) {
-      companyEcoModalNode = modal;
-      setHealth('companyEco', 'ok');
-      
-      const companyInput = modal.querySelector('input[name="companyId"]');
-      companyEcoWageInput = modal.querySelector('input[name="wage"]');
-      
-      if (!companyInput || !companyEcoWageInput) {
-        setHealth('companyEco', 'warn', 'missing inputs in modal');
-        return;
-      }
-      
+    companyEcoModalNode = modal;
+    const companyInput = modal.querySelector('input[name="companyId"]');
+    companyEcoWageInput = modal.querySelector('input[name="wage"]');
+    
+    if (!companyInput || !companyEcoWageInput) {
+      setHealth('companyEco', 'warn', 'missing inputs in modal');
+      return;
+    }
+    setHealth('companyEco', 'ok');
+    
+    if (companyEcoWageInput.dataset.wiaBound !== '1') {
       companyEcoWageInput.addEventListener('input', handleWageInputUpdate);
       companyEcoWageInput.addEventListener('change', handleWageInputUpdate);
-      
-      const labelSpan = Array.from(modal.querySelectorAll('span')).find(s => s.textContent.includes('Estimated benefit'));
-      if (labelSpan && labelSpan.parentElement) {
-        const estBenefitBlock = labelSpan.parentElement;
-        let netLine = estBenefitBlock.querySelector('#wia-eco-net-wage');
-        if (!netLine) {
-          netLine = document.createElement('div');
-          netLine.id = 'wia-eco-net-wage';
-          netLine.style.fontSize = '0.875rem';
-          netLine.style.color = '#d1d5db';
-          netLine.style.marginTop = '0.25rem';
-          netLine.innerHTML = 'Net (tax excl.): ...';
-          // Insert after the label's parent block
-          estBenefitBlock.appendChild(netLine);
-        }
-        
-        const companyId = companyInput.value;
-        try {
-          const { payload: compData } = await resolveApiBase('company.getById', { companyId });
-          if (compData && compData.region) {
-            const countryId = await regionToCountry(compData.region);
-            if (countryId) {
-              const taxes = await getCountryTax(countryId);
-              if (taxes && taxes.income !== undefined) {
-                netLine.dataset.taxRate = taxes.income;
-                handleWageInputUpdate();
-              } else {
-                 netLine.textContent = 'Net (tax excl.): (no tax data)';
-              }
-            }
-          }
-        } catch(e) {
-          console.warn('[PROST] eco: error fetching tax for company', e);
-          netLine.textContent = 'Net (tax excl.): (error)';
-        }
+      companyEcoWageInput.dataset.wiaBound = '1';
+    }
+    
+    let netLine = modal.querySelector('#wia-eco-net-wage');
+    if (!netLine) {
+      const labelSpan = Array.from(modal.querySelectorAll('span')).find(s => s.textContent.toLowerCase().includes('estimated benefit'));
+      if (!labelSpan || !labelSpan.parentElement) {
+        setHealth('companyEco', 'warn', 'no benefit anchor');
+        return;
       }
+      netLine = document.createElement('div');
+      netLine.id = 'wia-eco-net-wage';
+      netLine.style.fontSize = '0.875rem';
+      netLine.style.color = '#d1d5db';
+      netLine.style.marginTop = '0.25rem';
+      netLine.innerHTML = 'Net (tax excl.): ...';
+      labelSpan.parentElement.appendChild(netLine);
+      if (companyEcoTaxRate != null) netLine.dataset.taxRate = companyEcoTaxRate;
+    }
+    
+    const companyId = companyInput.value;
+    if (companyId && companyId !== companyEcoCompanyId) {
+      companyEcoCompanyId = companyId;
+      companyEcoTaxRate = null;
+      delete netLine.dataset.taxRate;
+      netLine.innerHTML = 'Net (tax excl.): ...';
+      fetchCompanyTaxRate(companyId).then(rate => {
+        if (companyEcoCompanyId !== companyId) return; // modal switched company mid-flight
+        companyEcoTaxRate = rate;
+        const line = companyEcoModalNode && companyEcoModalNode.querySelector('#wia-eco-net-wage');
+        if (!line) return;
+        if (rate == null) { line.innerHTML = 'Net (tax excl.): (no tax data)'; return; }
+        line.dataset.taxRate = rate;
+        handleWageInputUpdate();
+      });
+    } else if (companyEcoTaxRate != null && netLine.dataset.taxRate == null) {
+      netLine.dataset.taxRate = companyEcoTaxRate;
+      handleWageInputUpdate();
+    } else {
+      handleWageInputUpdate();
     }
   }
 
@@ -7717,6 +7736,7 @@ function updateObserverTarget() {
     if (companyEcoWageInput) {
       companyEcoWageInput.removeEventListener('input', handleWageInputUpdate);
       companyEcoWageInput.removeEventListener('change', handleWageInputUpdate);
+      delete companyEcoWageInput.dataset.wiaBound;
     }
     if (companyEcoModalNode) {
       const injected = companyEcoModalNode.querySelector('#wia-eco-net-wage');
@@ -7724,6 +7744,8 @@ function updateObserverTarget() {
     }
     companyEcoModalNode = null;
     companyEcoWageInput = null;
+    companyEcoCompanyId = null;
+    companyEcoTaxRate = null;
     setHealth('companyEco', 'idle', 'modal closed or off-route');
   }
 
