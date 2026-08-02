@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         PROST
+// @name         TEST PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.10.6
+// @version      0.10.6-unstable
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -80,6 +80,8 @@
     featPnlTracker: false,
     featItemAdvisor: true,
     featCraftingAdvisor: true,
+    featCompanyEco: true,
+    ecoTaxTtlMs: 1800000,
     stockKeepCount: 3,
 
     // --- caching / rate-limit ---
@@ -997,6 +999,9 @@
     ntfyRateLimitedUntil: NS + 'ntfyRlUntil',
     ntfy429Streak: NS + 'ntfy429Streak',
     stockKeepCount: NS + 'stockKeepCount',
+    featCompanyEco: NS + 'featCompanyEco',
+    ecoCountryTax: NS + 'ecoCountryTax',
+    ecoRegionCountry: NS + 'ecoRegionCountry',
     featNotes: NS + 'featNotes',
     featBattleAdvisor: NS + 'featBattle',
     featOrderRadar: NS + 'featOrderRadar',
@@ -7377,14 +7382,19 @@ function updateObserverTarget() {
         guard('troopRadar', applyTroopRadar);
         initSharedBodyObserver();
       }
-    } else if (isUserProfilePage()) {
+    } else if (isUserProfilePage() || pagePath.startsWith('/companies') || pagePath.startsWith('/company/') || /^\/user\/[0-9a-zA-Z_-]+\/companies\/?$/.test(pagePath)) {
       observer.disconnect();
-      if (CONFIG.featProfileCharsheet) {
+      if (isUserProfilePage() && CONFIG.featProfileCharsheet) {
         guard('profileCharsheet', applyProfileCharsheet);
+        initSharedBodyObserver();
+      }
+      if (CONFIG.featCompanyEco && (pagePath.startsWith('/companies') || pagePath.startsWith('/company/') || /^\/user\/[0-9a-zA-Z_-]+\/companies\/?$/.test(pagePath))) {
+        guard('companyEco', initCompanyEco);
         initSharedBodyObserver();
       }
     } else {
       teardownBattleAdvisory();
+      if (CONFIG.featCompanyEco) guard('companyEco', teardownCompanyEco);
       const orderRadarEl = document.getElementById('wia-order-radar');
       if (orderRadarEl) orderRadarEl.remove();
       const troopRadarSummary = document.getElementById('wia-troop-radar-summary');
@@ -7568,6 +7578,156 @@ function updateObserverTarget() {
   const NOTES_DEBOUNCE  = 150;
   const NOTES_HOVER_GRACE_MS = 1500; // how long the empty pencil icon stays visible after the mouse leaves
 
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Company Economy (Wave 1)
+  // ───────────────────────────────────────────────────────────────────────────
+  let companyEcoModalNode = null;
+  let companyEcoWageInput = null;
+
+  async function regionToCountry(regionId) {
+    if (!regionId) return null;
+    const cache = readCache(KEYS.ecoRegionCountry) || {};
+    if (cache[regionId]) return cache[regionId];
+    try {
+      const { payload: res } = await resolveApiBase('region.getById', { regionId });
+      if (res && res.country) {
+        cache[regionId] = res.country;
+        writeCache(KEYS.ecoRegionCountry, cache);
+        return res.country;
+      }
+    } catch (err) {
+      console.warn('[PROST] eco: regionToCountry fetch failed', err);
+    }
+    return null;
+  }
+
+  async function getCountryTax(countryId) {
+    if (!countryId) return null;
+    const cache = readCache(KEYS.ecoCountryTax) || {};
+    const now = Date.now();
+    const cached = cache[countryId];
+    if (cached && (now - cached.ts < CONFIG.ecoTaxTtlMs)) {
+      return cached.data;
+    }
+    try {
+      const { payload: res } = await resolveApiBase('country.getCountryById', { countryId });
+      if (res && res.taxes) {
+        cache[countryId] = { ts: now, data: res.taxes };
+        writeCache(KEYS.ecoCountryTax, cache);
+        return res.taxes;
+      }
+    } catch (err) {
+      console.warn('[PROST] eco: getCountryTax fetch failed', err);
+    }
+    return null;
+  }
+
+  function handleWageInputUpdate() {
+    if (!companyEcoModalNode) return;
+    const wageStr = companyEcoWageInput ? companyEcoWageInput.value : '';
+    const wage = parseFloat(wageStr);
+    const existingLine = companyEcoModalNode.querySelector('#wia-eco-net-wage');
+    if (!existingLine) return;
+    
+    if (isNaN(wage) || wage <= 0) {
+      existingLine.innerHTML = 'Net (tax excl.): -';
+      return;
+    }
+    const incomeTaxRate = existingLine.dataset.taxRate ? parseFloat(existingLine.dataset.taxRate) : 0;
+    const net = wage * (1 - incomeTaxRate / 100);
+    existingLine.innerHTML = `Net (tax excl.): ${net.toFixed(4)} <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline; width:1em; height:1em; color:#facc15;"><path d="M12 5C7.031 5 3 6.79 3 9s4.031 4 9 4 9-1.79 9-4-4.031-4-9-4z"></path><path d="M3 15c0 2.21 4.031 4 9 4s9-1.79 9-4"></path><path d="M3 9v6"></path><path d="M21 9v6"></path></svg>`;
+  }
+
+  async function checkCompanyEcoModal() {
+    const modals = document.querySelectorAll('div[id^="headlessui-dialog-panel-"]');
+    let modal = null;
+    for (const m of modals) {
+      if (m.getAttribute('data-headlessui-state') !== 'open') continue;
+      const titleSpan = Array.from(m.querySelectorAll('span')).find(s => s.textContent.trim() === 'New job offer');
+      if (titleSpan) {
+        modal = m;
+        break;
+      }
+    }
+    
+    if (!modal) {
+      if (companyEcoModalNode) teardownCompanyEco();
+      return;
+    }
+    
+    if (modal && modal !== companyEcoModalNode) {
+      companyEcoModalNode = modal;
+      setHealth('companyEco', 'ok');
+      
+      const companyInput = modal.querySelector('input[name="companyId"]');
+      companyEcoWageInput = modal.querySelector('input[name="wage"]');
+      
+      if (!companyInput || !companyEcoWageInput) {
+        setHealth('companyEco', 'warn', 'missing inputs in modal');
+        return;
+      }
+      
+      companyEcoWageInput.addEventListener('input', handleWageInputUpdate);
+      companyEcoWageInput.addEventListener('change', handleWageInputUpdate);
+      
+      const labelSpan = Array.from(modal.querySelectorAll('span')).find(s => s.textContent.includes('Estimated benefit'));
+      if (labelSpan && labelSpan.parentElement) {
+        const estBenefitBlock = labelSpan.parentElement;
+        let netLine = estBenefitBlock.querySelector('#wia-eco-net-wage');
+        if (!netLine) {
+          netLine = document.createElement('div');
+          netLine.id = 'wia-eco-net-wage';
+          netLine.style.fontSize = '0.875rem';
+          netLine.style.color = '#d1d5db';
+          netLine.style.marginTop = '0.25rem';
+          netLine.innerHTML = 'Net (tax excl.): ...';
+          // Insert after the label's parent block
+          estBenefitBlock.appendChild(netLine);
+        }
+        
+        const companyId = companyInput.value;
+        try {
+          const { payload: compData } = await resolveApiBase('company.getById', { companyId });
+          if (compData && compData.region) {
+            const countryId = await regionToCountry(compData.region);
+            if (countryId) {
+              const taxes = await getCountryTax(countryId);
+              if (taxes && taxes.income !== undefined) {
+                netLine.dataset.taxRate = taxes.income;
+                handleWageInputUpdate();
+              } else {
+                 netLine.textContent = 'Net (tax excl.): (no tax data)';
+              }
+            }
+          }
+        } catch(e) {
+          console.warn('[PROST] eco: error fetching tax for company', e);
+          netLine.textContent = 'Net (tax excl.): (error)';
+        }
+      }
+    }
+  }
+
+  function initCompanyEco() {
+    // handled by route and sharedBodyObserver
+  }
+  
+  function teardownCompanyEco() {
+    if (companyEcoWageInput) {
+      companyEcoWageInput.removeEventListener('input', handleWageInputUpdate);
+      companyEcoWageInput.removeEventListener('change', handleWageInputUpdate);
+    }
+    if (companyEcoModalNode) {
+      const injected = companyEcoModalNode.querySelector('#wia-eco-net-wage');
+      if (injected) injected.remove();
+    }
+    companyEcoModalNode = null;
+    companyEcoWageInput = null;
+    setHealth('companyEco', 'idle', 'modal closed or off-route');
+  }
+
+
   let sharedBodyObserver = null;
 
   function initSharedBodyObserver() {
@@ -7616,12 +7776,15 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       } else {
         setHealth('craftAdvisor', 'idle', 'disabled in settings');
       }
+      if (CONFIG.featCompanyEco && (getPagePathname().startsWith('/companies') || getPagePathname().startsWith('/company/') || /^\/user\/[0-9a-zA-Z_-]+\/companies\/?$/.test(getPagePathname()))) {
+        guard('companyEco', checkCompanyEcoModal);
+      }
     });
     sharedBodyObserver.observe(document.body, { childList: true, subtree: true });
   }
 
   function teardownSharedBodyObserver() {
-    if (!CONFIG.featNotes && !CONFIG.featMarketGraph && !CONFIG.featBattleAdvisor) {
+    if (!CONFIG.featNotes && !CONFIG.featMarketGraph && !CONFIG.featBattleAdvisor && !CONFIG.featCompanyEco) {
       if (sharedBodyObserver) {
         sharedBodyObserver.disconnect();
         sharedBodyObserver = null;
@@ -16185,6 +16348,7 @@ function checkInventoryDeltaWear() {
     regFeature('api', 'API Layer');
     regFeature('bountyNotify', 'Bounty-Push');
     regFeature('tour', 'Tour of Beers');
+    regFeature('companyEco', 'Company Economy');
     // one-shot onboarding prompt, once the game shell (avatar) is present
     (function scheduleTourPrompt() {
       let tries = 0;
@@ -16223,6 +16387,7 @@ function checkInventoryDeltaWear() {
     CONFIG.featPnlTracker = GM_getValue(KEYS.featPnlTracker, false);
     CONFIG.featItemAdvisor = GM_getValue(KEYS.featItemAdvisor, true);
     CONFIG.featCraftingAdvisor = GM_getValue(KEYS.featCraftingAdvisor, true);
+    CONFIG.featCompanyEco = GM_getValue(KEYS.featCompanyEco, true);
     CONFIG.featSystemAlerts = GM_getValue(KEYS.featSystemAlerts, true);
     CONFIG.pillBuffH = GM_getValue(KEYS.pillBuffH, CONFIG.pillBuffH);
     CONFIG.pillKnifeH = GM_getValue(KEYS.pillKnifeH, CONFIG.pillKnifeH);
@@ -16321,6 +16486,17 @@ function checkInventoryDeltaWear() {
       guard('craftAdvisor', triggerCraftingAdvisorCheck);
     } else {
       setHealth('craftAdvisor', 'idle', 'disabled in settings');
+    }
+    if (CONFIG.featCompanyEco) {
+      if (getPagePathname().startsWith('/companies') || /^\/user\/[0-9a-zA-Z_-]+\/companies\/?$/.test(getPagePathname())) {
+         guard('companyEco', initCompanyEco);
+         initSharedBodyObserver();
+      } else {
+         guard('companyEco', teardownCompanyEco);
+         setHealth('companyEco', 'idle', 'not on companies or user page');
+      }
+    } else {
+      setHealth('companyEco', 'idle', 'disabled in settings');
     }
   }
 
