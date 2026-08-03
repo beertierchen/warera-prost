@@ -688,7 +688,7 @@
         resist: 'Widerstehen',
         allies: 'Verbündete',
         enemies: 'Gegner',
-        
+
         yourCountry: 'Dein Land',
         editNote: 'Notiz bearbeiten',
         editNoteAria: 'Notiz für {user} bearbeiten',
@@ -1752,7 +1752,7 @@
       if (!CONFIG.featTroopRadar) return ['idle', 'disabled in settings'];
       if (!getToken()) return ['idle', 'no API token set'];
       if (!isMuPage()) return ['idle', 'not on MU page'];
-      
+
       const horizon = String(getLiveHorizonHour()).padStart(2, '0') + ':00';
       const mode = troopRadarDamageMode;
       const details = `Live-Horizont ${horizon}, Modus ${mode}`;
@@ -2998,7 +2998,7 @@
       const imgs = root.querySelectorAll(CONFIG.itemImageSelector);
       if (verbose) log(`findItemCards: found ${imgs.length} raw images on page matching "${CONFIG.itemImageSelector}"`);
       const cards = new Map(); // card element -> img
-      
+
       imgs.forEach((img, idx) => {
         SCOPING_STATS.imagesChecked++;
         SCOPING_STATS.shopChecksCount++;
@@ -3006,7 +3006,7 @@
         const isModal = isMarketPage() ? false : isInsideModalOrSidebar(img);
         const isProfile = isMarketPage() ? false : isInsideProfileEquipment(img);
         const card = climbToCard(img);
-        
+
         const src = img.getAttribute('src') || '';
         const isSkin = src.includes('/skins/') || (typeof skinNameFromSrc === 'function' && skinNameFromSrc(src) !== null);
         if (isSkin) {
@@ -3050,7 +3050,7 @@
         }
       });
       if (verbose) log(`findItemCards: returning ${cards.size} active cards`);
-      
+
       SCOPING_STATS.lastScanTimeMs = performance.now() - startTime;
       cachedCards = cards;
       cachedCardsTime = performance.now();
@@ -3417,7 +3417,7 @@
     return null;
   }
 
-  
+
 
   // A skin's slot (e.g. "jet", "chest") isn't always its item type ("weapon",
   // "chest") — typeByAltKeyword maps the ones that differ. Shared by
@@ -4240,7 +4240,7 @@
           const type = item.type;
           const tier = item.tier;
           const myStat = item.myStat;
-          
+
           let min = 0, max = 0;
           if (type === 'weapon') {
             const wRange = CONFIG.weaponRanges[tier];
@@ -5671,7 +5671,7 @@ async function scanInventory(force) {
       .wia-mask textarea { width: 100%; height: 150px; resize: vertical; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #e6edf3; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; line-height: 1.5; padding: 8px 10px; tab-size: 2; }
       .wia-mask textarea:focus { outline: none; border-color: #7c3aed; }
       .wia-mask textarea.wia-err { border-color: #f2495c; }
-      
+
       .wia-cheat { margin: 8px 0 2px; border: 1px solid #21262d; border-radius: 6px; background: #0d1117; text-align: left; }
       .wia-cheat summary { cursor: pointer; font-size: 10.5px; color: #8b949e; padding: 6px 10px; list-style: none; outline: none; }
       .wia-cheat summary::-webkit-details-marker { display: none; }
@@ -5686,7 +5686,7 @@ async function scanInventory(force) {
 
       .wia-mask-actions { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
       .wia-mask-actions .wia-spacer { flex: 1; }
-      
+
       .wia-btn { all: unset; cursor: pointer; font-size: 11.5px; font-weight: 600; padding: 6px 12px; border-radius: 6px; line-height: 1; transition: background .15s, border-color .15s; box-sizing: border-box; display: inline-block; text-align: center; }
       .wia-btn:focus-visible { outline: 2px solid #a78bfa; outline-offset: 1px; }
       .wia-btn-save { background: #238636; color: #fff; }
@@ -5695,7 +5695,7 @@ async function scanInventory(force) {
       .wia-btn-ghost:hover { color: #f8fafc; border-color: #8b949e; }
       .wia-btn-reset { color: #d29922; border: 1px solid #3a2d18; }
       .wia-btn-reset:hover { background: #17130b; }
-      
+
       .wia-toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%) translateY(8px); background: #0d1117; border: 1px solid #30363d; color: #e6edf3; font-size: 11.5px; padding: 7px 12px; border-radius: 6px; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; z-index: 2147483620; box-shadow: 0 6px 20px rgba(0,0,0,.5); white-space: nowrap; }
       .wia-toast.wia-show { opacity: 1; transform: translateX(-50%) translateY(0); }
       .wia-toast.wia-ok { border-color: #238636; }
@@ -7628,10 +7628,10 @@ function updateObserverTarget() {
       const net = wage * (1 - rate / 100);
       valueHTML = '<span style="color:#f6c944;font-weight:600;">' + ECO_COIN_SVG + net.toFixed(4) + '</span>';
     }
-    
+
     const badgeHTML = '<span style="border: 1px solid #7c3aed; color: #a78bfa; padding: 2px 6px; font-size: 9px; font-weight: 700; border-radius: 4px; letter-spacing: 0.5px;">PROST</span>';
     const newHTML = '<div>' + label + valueHTML + '</div>' + badgeHTML;
-    
+
     if (netLine.innerHTML !== newHTML) {
       netLine.innerHTML = newHTML;
     }
@@ -7680,11 +7680,11 @@ function updateObserverTarget() {
     const wageInput = companyEcoModalNode.querySelector('input[name="wage"]');
     const netLine = companyEcoModalNode.querySelector('#wia-eco-net-wage');
     if (!netLine) return;
-    
+
     const wageStr = wageInput ? wageInput.value : '';
     const wage = parseFloat(wageStr);
     const rate = netLine.dataset.taxRate ? parseFloat(netLine.dataset.taxRate) : null;
-    
+
     renderNetLine(netLine, wage, rate, companyEcoTaxResolved);
   }
 
@@ -7718,11 +7718,11 @@ function updateObserverTarget() {
 
   async function fetchEcoEnergyBatch(userIds, opts = {}) {
     if (!Array.isArray(userIds) || userIds.length === 0) return [];
-    
+
     const results = Array(userIds.length).fill(null);
     const uncachedIds = [];
     const uncachedIndices = [];
-    
+
     userIds.forEach((userId, index) => {
       const cached = ecoUserEnergyCache.get(userId);
       if (cached && (now() - cached.at < ECO_ENERGY_TTL_MS)) {
@@ -7732,28 +7732,28 @@ function updateObserverTarget() {
         uncachedIndices.push(index);
       }
     });
-    
+
     if (uncachedIds.length > 0) {
       const BATCH_CHUNK_SIZE = 8;
       for (let offset = 0; offset < uncachedIds.length; offset += BATCH_CHUNK_SIZE) {
         const chunkIds = uncachedIds.slice(offset, offset + BATCH_CHUNK_SIZE);
         const chunkIndices = uncachedIndices.slice(offset, offset + BATCH_CHUNK_SIZE);
-        
+
         await (async () => {
           try {
             const batchArgs = chunkIds.map(userId => ({ userId }));
             const batchResults = await resolveApiBatch('user.getUserById', batchArgs, opts);
-            
+
             batchResults.forEach((res, i) => {
               const userId = chunkIds[i];
               const origIndex = chunkIndices[i];
-              
+
               if (res.error) {
                 const cached = ecoUserEnergyCache.get(userId);
                 results[origIndex] = cached ? cached.data : null;
                 return;
               }
-              
+
               const energy = res.payload?.skills?.energy;
               if (energy) {
                 const data = {
@@ -7777,34 +7777,34 @@ function updateObserverTarget() {
         })();
       }
     }
-    
+
     return results;
   }
 
   function getTargetWorkerSpans(mainWin) {
     const ownId = getCurrentUserId();
     const result = [];
-    
+
     const links = Array.from(mainWin.querySelectorAll('a[href^="/user/"]'));
     for (const a of links) {
       const href = a.getAttribute('href') || '';
       const match = href.match(/^\/user\/([a-f0-9]{24})\/?$/i);
       if (!match) continue;
-      
+
       const id = match[1];
       if (id === ownId) continue;
-      
+
       const nameSpan = a.querySelector('span.agd9b40');
       if (nameSpan && nameSpan.textContent.trim().length > 0) {
         let row = a;
         let chipSpan = null;
-        
+
         while (row && row !== mainWin) {
           // Prevent climbing into the parent list container
           const usersInRow = Array.from(row.querySelectorAll('a[href^="/user/"]')).map(l => l.getAttribute('href'));
           const uniqueUsers = new Set(usersInRow);
-          if (uniqueUsers.size > 1) break; 
-          
+          if (uniqueUsers.size > 1) break;
+
           const svgPath = row.querySelector('svg path[d="M11 15H6L13 1V9H18L11 23V15Z"]');
           if (svgPath) {
             const iconDiv = svgPath.closest('div');
@@ -7819,7 +7819,7 @@ function updateObserverTarget() {
           }
           row = row.parentElement;
         }
-        
+
         if (chipSpan) {
           result.push({ id, a, span: chipSpan });
         }
@@ -7834,24 +7834,24 @@ function updateObserverTarget() {
       setHealth('companyEnergy', 'idle', 'no main-window');
       return;
     }
-    
+
     const targets = getTargetWorkerSpans(mainWin);
     if (targets.length === 0) {
       setHealth('companyEnergy', 'ok', 'no coworkers found');
       return;
     }
-      
+
     targets.forEach(({ id, span }) => {
       if (span.previousElementSibling && span.previousElementSibling.classList.contains('wia-eco-energy-cur')) {
         return; // already injected
       }
-      
+
       const cached = ecoUserEnergyCache.get(id);
       if (!cached || !cached.data) return; // Wait for next tick if not loaded
-      
+
       const data = cached.data;
       const pct = data.total > 0 ? (data.cur / data.total) * 100 : 0;
-      
+
       let colorClass = '';
       if (pct < 20) {
         colorClass = 'color: #ef4444;'; // red
@@ -7860,17 +7860,17 @@ function updateObserverTarget() {
       } else {
         colorClass = 'color: #10b981;'; // green
       }
-      
+
       const curSpan = document.createElement('span');
       curSpan.className = 'wia-eco-energy-cur';
       curSpan.title = `Energy regenerates by ${data.regen}/h`;
       curSpan.dataset.wiaBound = '1';
       curSpan.innerHTML = `${data.cur}/`;
       curSpan.style.cssText = `${colorClass} font-weight: bold; margin-right: 2px;`;
-      
+
       span.insertAdjacentElement('beforebegin', curSpan);
     });
-    
+
     setHealth('companyEnergy', 'ok', 'pills rendered');
   }
 
@@ -7881,16 +7881,16 @@ function updateObserverTarget() {
       setHealth('companyEnergy', 'idle', 'no main-window');
       return;
     }
-    
+
     const targets = getTargetWorkerSpans(mainWin);
     if (targets.length === 0) {
       setHealth('companyEnergy', 'ok', 'no coworkers found');
       return;
     }
-    
+
     let missingPills = false;
     const userIdsToFetch = new Set();
-    
+
     targets.forEach(({ id, span }) => {
       if (!span.previousElementSibling || !span.previousElementSibling.classList.contains('wia-eco-energy-cur')) {
         const cached = ecoUserEnergyCache.get(id);
@@ -7900,7 +7900,7 @@ function updateObserverTarget() {
         missingPills = true;
       }
     });
-    
+
     if (userIdsToFetch.size > 0 && !ecoEnergyLoading) {
       ecoEnergyLoading = true;
       setHealth('companyEnergy', 'ok', 'fetching data');
@@ -7977,7 +7977,7 @@ function updateObserverTarget() {
       const cached = ecoCompanyDetailCache.get(id);
       return !(cached && now() - cached.at < CONFIG.ecoDetailTtlMs);
     });
-    
+
     if (uncachedIds.length > 0) {
       await Promise.all(uncachedIds.map(async id => {
         try {
@@ -8110,21 +8110,29 @@ function updateObserverTarget() {
 
   // The outermost block of the first company card = climb from the first company
   // link until going one level higher would swallow a second card. Route/text-agnostic.
+  function ecoCompanyIdOf(el) {
+    const m = /^\/company\/([a-f0-9]{24})/.exec(el.getAttribute('href') || '');
+    return m ? m[1] : null;
+  }
+
   function ecoFirstCardBlock(mainWin) {
     const owned = ecoOwnedCache.ids;
     const links = Array.from(mainWin.querySelectorAll('a[href^="/company/"]'));
     // first OWNED company link in DOM order (skips the top "Job" company)
-    let first = null;
+    let first = null, firstId = null;
     for (const a of links) {
-      const m = /^\/company\/([a-f0-9]{24})/.exec(a.getAttribute('href'));
-      if (m && (!owned || owned.has(m[1]))) { first = a; break; }
+      const id = ecoCompanyIdOf(a);
+      if (id && (!owned || owned.has(id))) { first = a; firstId = id; break; }
     }
     if (!first) return null;
+    // climb until going higher would swallow a DIFFERENT company's card
+    // (a card has several same-id /company/ links: icon, title, chip row — ignore those)
     let card = first;
-    for (let i = 0; i < 12 && card.parentElement && card.parentElement !== mainWin; i++) {
+    for (let i = 0; i < 15 && card.parentElement && card.parentElement !== mainWin; i++) {
       const p = card.parentElement;
-      const hasOtherCard = Array.from(p.querySelectorAll('a[href^="/company/"]')).some(l => !card.contains(l));
-      if (hasOtherCard) break;
+      const swallowsOtherCard = Array.from(p.querySelectorAll('a[href^="/company/"]'))
+        .some(l => !card.contains(l) && ecoCompanyIdOf(l) && ecoCompanyIdOf(l) !== firstId);
+      if (swallowsOtherCard) break;
       card = p;
     }
     return card;
@@ -8204,26 +8212,26 @@ function updateObserverTarget() {
         break;
       }
     }
-    
+
     if (!modal) {
       if (companyEcoModalNode) teardownCompanyEco();
       return;
     }
-    
+
     companyEcoModalNode = modal;
     const companyInput = modal.querySelector('input[name="companyId"]');
     companyEcoWageInput = modal.querySelector('input[name="wage"]');
-    
+
     if (!companyInput || !companyEcoWageInput) {
       setHealth('companyEco', 'warn', 'missing inputs in modal');
       return;
     }
     setHealth('companyEco', 'ok');
-    
+
     if (!companyEcoRafId) {
       companyEcoRafId = requestAnimationFrame(ecoPoll);
     }
-    
+
     let netLine = modal.querySelector('#wia-eco-net-wage');
     if (!netLine) {
       const labelSpan = Array.from(modal.querySelectorAll('span')).find(s => s.textContent.toLowerCase().includes('estimated benefit'));
@@ -8242,7 +8250,7 @@ function updateObserverTarget() {
       labelSpan.parentElement.appendChild(netLine);
       if (companyEcoTaxRate != null) netLine.dataset.taxRate = companyEcoTaxRate;
     }
-    
+
     const companyId = companyInput.value;
     if (companyId && companyId !== companyEcoCompanyId) {
       companyEcoCompanyId = companyId;
@@ -8250,7 +8258,7 @@ function updateObserverTarget() {
       companyEcoTaxResolved = false;
       delete netLine.dataset.taxRate;
       handleWageInputUpdate();
-      
+
       fetchCompanyTaxRate(companyId).then(rate => {
         if (companyEcoCompanyId !== companyId) return; // modal switched company mid-flight
         companyEcoTaxRate = rate;
@@ -8271,7 +8279,7 @@ function updateObserverTarget() {
   function initCompanyEco() {
     // handled by route and sharedBodyObserver
   }
-  
+
   function teardownCompanyEco() {
     if (companyEcoRafId) {
       cancelAnimationFrame(companyEcoRafId);
@@ -9803,7 +9811,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     }
 
     const usableHours = Math.max(0, (nextReset.getTime() - effectiveStart.getTime()) / (1000 * 60 * 60));
-    
+
     const c = member.combat || {};
     const healthRegen = c.healthRegen ?? 0;
     const hpCurrent = member.hpCurrent ?? 100;
@@ -9867,7 +9875,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     const hpMax = m.hpMax !== undefined && m.hpMax !== null ? m.hpMax : 100;
     const hungerCurrent = m.hungerCurrent !== undefined && m.hungerCurrent !== null ? m.hungerCurrent : 100;
     const hungerMax = m.hungerMax !== undefined && m.hungerMax !== null ? m.hungerMax : 100;
-    
+
     const FOOD_PCT_STEAK = CONFIG.FOOD_PCT_STEAK ?? 0.5;
     const num = hpCurrent + hungerCurrent * FOOD_PCT_STEAK;
     const den = hpMax + hungerMax * FOOD_PCT_STEAK;
@@ -10241,7 +10249,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       const res = await fetchFullTroopRadar(muId);
       const full = await res.detailsPromise;
       const warskillers = full.membersData.filter(m => m.isWarskiller);
-      
+
       const tDate = new Date();
       const liveSummary = sumLiveDamage(full.membersData, tDate);
 
@@ -10250,7 +10258,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
         const realRes = computeDamagePotential(m, { equip: 'realFloored' });
         const liveRes = computeLiveDamagePotential(m, tDate);
         const c = m.combat || {};
-        
+
         let denominator = 7;
         if (c.lastSkillsResetAt) {
           const resetDate = new Date(c.lastSkillsResetAt);
@@ -10332,7 +10340,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     el.setAttribute('data-wia-mu', muId);
 
     const actionableCount = summary.actionableWarskillers ? summary.actionableWarskillers.length : 0;
-    
+
     const mode = troopRadarDamageMode;
     const isTag = mode === 'tag';
     const alertBg = isTag ? 'rgba(234, 179, 8, 0.12)' : 'rgba(79, 209, 224, 0.10)';
@@ -10389,7 +10397,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
             <div class="lab">KAMPFBEREIT</div>
             <div class="sub">${t('troopRadarSubWarskiller')}</div>
           </div>
-          
+
           <button class="wia-dmg-tile" id="wia-troop-dmg-tile" data-mode="${mode}" aria-label="Schadenspotential — Modus umschalten">
             <span class="wia-edit-badge" id="wia-troop-edit-btn" title="${t('customBaselineTitle')}" aria-label="${t('customBaselineTitle')}">
               <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8.5 2.5 4 5.5l1.8 3L8 7.2V21h8V7.2l2.2 1.3L20 5.5l-4.5-3c-.5 1.3-1.7 2.2-3.5 2.2s-3-.9-3.5-2.2Z"/></svg>
@@ -10403,7 +10411,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
             <span class="lab">${labelText}</span>
             <span class="sublab">${sublabelText}</span>
           </button>
-          
+
           <div class="wia-tr-tile">
             <div class="num">${summary.pillCount}/${summary.totalMembers}</div>
             <div class="lab">GEPILLT</div>
@@ -10942,7 +10950,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       if (!summary || !Array.isArray(membersData)) {
         return { status: 'warn', reason: 'no data' };
       }
-      
+
       if (summary.avgHungerPct === undefined || isNaN(summary.avgHungerPct) ||
           summary.avgEffPoolPct === undefined || isNaN(summary.avgEffPoolPct)) {
         return { status: 'warn', reason: 'avgHungerPct/avgEffPoolPct not calculable' };
@@ -10986,7 +10994,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
         if (reqId !== troopRadarActiveRequestId) return;
         renderTroopRadarHeaderSummary(liveFull.summary, muId, liveFull.membersData);
         renderTroopRadarMemberRows(liveFull.membersData);
-        
+
         const health = evaluateHealth(liveFull.summary, liveFull.membersData);
         setHealth('troopRadar', health.status, health.reason);
         troopRadarLoading = false;
@@ -15680,7 +15688,7 @@ function checkInventoryDeltaWear() {
       ratePer1k: 0.05,
     });
   }
-  
+
   async function emitLocalBounty(bounty) {
     addPopupTrigger(bounty);
     await showBrowserNotif(bounty);
@@ -16737,7 +16745,7 @@ function checkInventoryDeltaWear() {
     if (!env || typeof env.payload !== 'string' || !env.sig) return false;
     // Check freshness (<48h) and clock skew/future bounds (>60s)
     if (typeof env.ts !== 'number' || Date.now() - env.ts > 48 * 3600 * 1000 || Date.now() - env.ts < -60000) return false;
-    
+
     // Per-kid monotonic sequence verification and migration
     let seenDict = GM_getValue(KEYS.systemAlertSeenSeq, {});
     if (typeof seenDict === 'number') {
@@ -16746,11 +16754,11 @@ function checkInventoryDeltaWear() {
     } else if (typeof seenDict !== 'object' || seenDict === null) {
       seenDict = {};
     }
-    
+
     const kid = env.kid || 'beertierchen';
     const seen = seenDict[kid] || 0;
     if (typeof env.seq !== 'number' || env.seq <= seen) return false;
-    
+
     if (typeof crypto === 'undefined' || !crypto.subtle) {
       if (!isCryptoWarnLogged) {
         dbg('api', 'warn', 'Ed25519 signatures not supported (subtle crypto missing)');
@@ -16758,7 +16766,7 @@ function checkInventoryDeltaWear() {
       }
       return false;
     }
-    
+
     try {
       const data = new TextEncoder().encode(`${env.payload}|${env.ts}|${env.seq}|${kid}`);
       const sigBytes = base64ToBytes(env.sig);
