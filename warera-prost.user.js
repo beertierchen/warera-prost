@@ -8036,12 +8036,22 @@ function updateObserverTarget() {
     const mainWin = document.getElementById('main-window');
     if (!mainWin) return;
     
-    const cards = Array.from(mainWin.querySelectorAll('a[href^="/company/"]')).map(a => {
+    // Deduplicate cards by company ID to avoid double-counting links on the same card
+    const rawCards = Array.from(mainWin.querySelectorAll('a[href^="/company/"]')).map(a => {
       let root = a;
       for (let i = 0; i < 6; i++) { if (root.parentElement) root = root.parentElement; }
       const idMatch = a.getAttribute('href').match(/^\/company\/([a-f0-9]{24})\/?$/i);
       return { id: idMatch ? idMatch[1] : null, root, link: a };
     }).filter(c => c.id);
+    
+    const cards = [];
+    const seenIds = new Set();
+    for (const c of rawCards) {
+      if (!seenIds.has(c.id)) {
+        seenIds.add(c.id);
+        cards.push(c);
+      }
+    }
     
     let totalPortfolioNet = 0;
     let printingCount = 0;
@@ -8053,15 +8063,17 @@ function updateObserverTarget() {
     const ownId = getCurrentUserId();
     
     for (const c of cards) {
+      const isCardOwned = c.root.querySelector('.self-work-button') || (ecoCompanyDetailCache.get(c.id)?.data?.user === ownId);
+      if (!isCardOwned) continue;
+      
+      anyOwned = true;
+      
       if (c.root.dataset.wiaEcoProcessed === '1') {
         const existingData = c.root.dataset.wiaEcoNet;
         if (existingData) {
           const net = parseFloat(existingData);
-          if (c.root.querySelector('.self-work-button') || (ecoCompanyDetailCache.get(c.id)?.data?.user === ownId)) {
-            anyOwned = true;
-            totalPortfolioNet += net;
-            if (net >= 0) printingCount++; else bleedingCount++;
-          }
+          totalPortfolioNet += net;
+          if (net >= 0) printingCount++; else bleedingCount++;
         }
         continue;
       }
@@ -8069,18 +8081,11 @@ function updateObserverTarget() {
       c.root.dataset.wiaEcoProcessed = '1';
       
       const details = ecoCompanyDetailCache.get(c.id)?.data;
-      if (!details) continue;
-      
-      const isOwned = details.user === ownId;
-      if (!isOwned) continue;
-      anyOwned = true;
+      if (!details || !recipes[details.itemCode]) continue;
       
       const recipe = recipes[details.itemCode];
-      if (!recipe) continue;
-      
       const sellPrice = prices[details.itemCode] || 0;
-      const inputPrice = prices[recipe.input] || 0;
-      const wagePerPoint = getCardWage(c.root);
+      const inputPrice = recipe.input ? (prices[recipe.input] || 0) : 0;
       const bonus = getCardBonus(c.root);
       
       const regionCache = readCache(KEYS.ecoRegionCountry) || {};
@@ -8097,13 +8102,24 @@ function updateObserverTarget() {
         regionToCountry(details.region);
       }
       
-      const perItemNet = sellPrice * (1 - marketTax/100) - (recipe.qtyPerItem * inputPrice) - (recipe.productionPoints * wagePerPoint);
+      // perItemNet excludes wage as wage is not available without DOM modal
+      const perItemNet = sellPrice * (1 - marketTax/100) - (recipe.qtyPerItem * inputPrice);
       
-      let basePoints = 100;
-      if (details.activeUpgradeLevels) {
-         basePoints = 100 + (details.activeUpgradeLevels.automatedEngine || 0) * 10;
+      let engineDailyProd = 0;
+      const gameConfig = readCache(KEYS.ecoRecipes)?.data; // Full gameConfig cache
+      if (gameConfig && gameConfig.upgradesConfig && gameConfig.upgradesConfig.automatedEngine) {
+        const engineLevelObj = gameConfig.upgradesConfig.automatedEngine.levels[details.activeUpgradeLevels?.automatedEngine || 0];
+        if (engineLevelObj && engineLevelObj.stats) {
+          engineDailyProd = engineLevelObj.stats.dailyProd || 0;
+        }
       }
-      const pointsPerDay = basePoints * (1 + bonus/100);
+      // fallback if gameConfig not fully loaded yet (144 is lvl 6, we'll just guess based on 24 per level)
+      if (!engineDailyProd) {
+        engineDailyProd = (details.activeUpgradeLevels?.automatedEngine || 0) * 24;
+      }
+      
+      // Bonus applies to production points throughput
+      const pointsPerDay = engineDailyProd * (1 + bonus/100);
       const dayItems = pointsPerDay / recipe.productionPoints;
       
       const netPerDay = perItemNet * dayItems;
@@ -8114,10 +8130,20 @@ function updateObserverTarget() {
       const badge = document.createElement('div');
       badge.className = 'wia-eco-profit-badge';
       badge.dataset.wiaBound = '1';
-      badge.style.cssText = 'position: absolute; top: 8px; right: 8px; background: ' + (netPerDay >= 0 ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)') + '; color: ' + (netPerDay >= 0 ? '#10b981' : '#ef4444') + '; border: 1px solid ' + (netPerDay >= 0 ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)') + '; padding: 4px 8px; border-radius: 6px; font-weight: 600; font-size: 11px; display: flex; align-items: center; gap: 4px; backdrop-filter: blur(4px); z-index: 10;';
-      badge.innerHTML = ECO_COIN_SVG + (netPerDay >= 0 ? '+' : '') + netPerDay.toFixed(1) + ' / day';
-      c.root.style.position = 'relative';
-      c.root.appendChild(badge);
+      // Inline-flex design, no absolute positioning
+      badge.style.cssText = 'background: ' + (netPerDay >= 0 ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)') + '; color: ' + (netPerDay >= 0 ? '#10b981' : '#ef4444') + '; border: 1px solid ' + (netPerDay >= 0 ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)') + '; padding: 2px 6px; border-radius: 4px; font-weight: 600; font-size: 11px; display: inline-flex; align-items: center; gap: 4px; cursor: help; margin-left: 4px;';
+      badge.innerHTML = ECO_COIN_SVG + (netPerDay >= 0 ? '+' : '') + netPerDay.toFixed(1) + '/d';
+      badge.title = 'Pre-wage engine est.\n' +
+                    `Per item: ${sellPrice.toFixed(2)} (sell) - ${marketTax}% tax - ${recipe.qtyPerItem}x${inputPrice.toFixed(2)} (mat) = ${perItemNet.toFixed(2)}\n` +
+                    `Output: ${pointsPerDay.toFixed(1)} PP/day (${engineDailyProd} base + ${bonus}% bonus) = ${dayItems.toFixed(1)} items/day\n` +
+                    `Total: ${perItemNet.toFixed(2)} * ${dayItems.toFixed(1)} = ${netPerDay.toFixed(1)}`;
+      
+      // Inject into the chip row
+      const allFlexDivs = Array.from(c.root.querySelectorAll('div.flex'));
+      const chipRow = allFlexDivs.find(d => d.className.includes('gap-') && d.textContent.includes('%')) || c.root.firstElementChild;
+      if (chipRow) {
+        chipRow.appendChild(badge);
+      }
     }
     
     if (anyOwned) {
@@ -8126,16 +8152,21 @@ function updateObserverTarget() {
         const headers = Array.from(mainWin.querySelectorAll('span')).filter(s => s.textContent.trim() === 'Companies');
         const targetHeader = headers[headers.length - 1]; 
         if (targetHeader) {
-          strip = document.createElement('div');
-          strip.id = 'wia-eco-portfolio-strip';
-          strip.style.cssText = 'margin-bottom: 16px; padding: 12px 16px; border-radius: 8px; background: linear-gradient(135deg, rgba(30,41,59,0.8), rgba(15,23,42,0.9)); border: 1px solid rgba(124, 58, 237, 0.3); display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); backdrop-filter: blur(8px);';
+          let container = targetHeader.parentElement;
+          while (container && container.tagName !== 'DIV') container = container.parentElement;
+          const anchor = container ? container.nextElementSibling : null;
           
-          targetHeader.parentElement.insertAdjacentElement('afterend', strip);
+          if (anchor && anchor.parentNode) {
+            strip = document.createElement('div');
+            strip.id = 'wia-eco-portfolio-strip';
+            strip.style.cssText = 'margin-bottom: 16px; padding: 12px 16px; border-radius: 8px; background: linear-gradient(135deg, rgba(30,41,59,0.8), rgba(15,23,42,0.9)); border: 1px solid rgba(124, 58, 237, 0.3); display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); width: 100%;';
+            anchor.parentNode.insertBefore(strip, anchor);
+          }
         }
       }
       
       if (strip) {
-        strip.innerHTML = '<div style="display:flex; align-items:center; gap: 8px;"><span style="border: 1px solid #7c3aed; color: #a78bfa; padding: 2px 6px; font-size: 9px; font-weight: 700; border-radius: 4px; letter-spacing: 0.5px;">PROST</span><span style="font-size: 14px; font-weight: 600; color: #e2e8f0;">Portfolio Daily Net</span></div><div style="display:flex; align-items:center; gap: 16px;"><span style="font-size: 12px; color: #94a3b8;"><span style="color: #10b981;">' + printingCount + ' Printing</span> | <span style="color: #ef4444;">' + bleedingCount + ' Bleeding</span></span><span style="font-size: 16px; font-weight: 700; color: ' + (totalPortfolioNet >= 0 ? '#10b981' : '#ef4444') + '; display:flex; align-items:center; gap:4px;">' + ECO_COIN_SVG + (totalPortfolioNet >= 0 ? '+' : '') + totalPortfolioNet.toFixed(1) + '</span></div>';
+        strip.innerHTML = '<div style="display:flex; align-items:center; gap: 8px;"><span style="border: 1px solid #7c3aed; color: #a78bfa; padding: 2px 6px; font-size: 9px; font-weight: 700; border-radius: 4px; letter-spacing: 0.5px;">PROST</span><span style="font-size: 14px; font-weight: 600; color: #e2e8f0;">Portfolio Daily Net (Pre-wage)</span></div><div style="display:flex; align-items:center; gap: 16px;"><span style="font-size: 12px; color: #94a3b8;"><span style="color: #10b981;">' + printingCount + ' Printing</span> | <span style="color: #ef4444;">' + bleedingCount + ' Bleeding</span></span><span style="font-size: 16px; font-weight: 700; color: ' + (totalPortfolioNet >= 0 ? '#10b981' : '#ef4444') + '; display:flex; align-items:center; gap:4px;">' + ECO_COIN_SVG + (totalPortfolioNet >= 0 ? '+' : '') + totalPortfolioNet.toFixed(1) + '</span></div>';
       }
     }
     
