@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## 2026-08-03 | Feature: Company Eco Energy (v0.10.7)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`
+
+**Änderungen (Deutsch):**
+- **Feature**: Zeigt nun direkt in der Firmenübersicht die verbleibende Energie der Mitarbeiter an (inkl. dynamischer Farbgebung nach Füllstand).
+
+**Changes (English):**
+- **Feature**: Now displays the remaining energy of coworkers directly in the company overview (including dynamic colors based on energy level).
 
 ## 2026-07-31 | Feature: Settings Overhaul & UI Improvements (v0.10.6)
 
