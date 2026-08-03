@@ -82,6 +82,8 @@
     featCraftingAdvisor: true,
     featCompanyEco: true,
     ecoTaxTtlMs: 1800000,
+    ecoRecipeTtlMs: 6 * 3600 * 1000,
+    ecoDetailTtlMs: 60000,
     stockKeepCount: 3,
 
     // --- caching / rate-limit ---
@@ -7913,7 +7915,230 @@ function updateObserverTarget() {
     }
   }
 
+  // ───────────────────────────────────────────────────────────────────────────
+  // Company Profit & Portfolio (Wave 3)
+  // ───────────────────────────────────────────────────────────────────────────
+  const ecoCompanyListCache = { at: 0, ids: [] };
+  const ecoCompanyDetailCache = new Map();
+  const ecoRecipesCache = { at: 0, recipes: null };
+  let ecoProfitLoading = false;
 
+  async function fetchGameConfig() {
+    if (ecoRecipesCache.recipes && (now() - ecoRecipesCache.at < CONFIG.ecoRecipeTtlMs)) return ecoRecipesCache.recipes;
+    try {
+      const { payload } = await resolveApiBase('gameConfig.getGameConfig', {});
+      if (payload && payload.items) {
+        const recipes = {};
+        for (const [code, item] of Object.entries(payload.items)) {
+          if (item.type === 'product' && item.productionNeeds) {
+            const inputs = Object.entries(item.productionNeeds);
+            if (inputs.length > 0) {
+              recipes[code] = {
+                input: inputs[0][0],
+                qtyPerItem: inputs[0][1],
+                productionPoints: item.productionPoints
+              };
+            }
+          }
+        }
+        ecoRecipesCache.recipes = recipes;
+        ecoRecipesCache.at = now();
+        return recipes;
+      }
+    } catch (e) { console.warn('[PROST] eco: fetchGameConfig failed', e); }
+    return ecoRecipesCache.recipes;
+  }
+
+  async function fetchCompanyDetailBatch(companyIds) {
+    const uncachedIds = companyIds.filter(id => {
+      const cached = ecoCompanyDetailCache.get(id);
+      return !(cached && now() - cached.at < CONFIG.ecoDetailTtlMs);
+    });
+    
+    if (uncachedIds.length > 0) {
+      await Promise.all(uncachedIds.map(async id => {
+        try {
+          const { payload } = await resolveApiBase('company.getById', { companyId: id });
+          if (payload) {
+            ecoCompanyDetailCache.set(id, { at: now(), data: payload });
+          }
+        } catch (e) { console.warn('[PROST] eco: detail fetch failed', e); }
+      }));
+    }
+  }
+
+  function getCardBonus(card) {
+    const badges = Array.from(card.querySelectorAll('span')).filter(s => s.textContent.includes('%') || s.textContent.includes('+'));
+    for (const b of badges) {
+      const match = b.textContent.match(/\+?(\d+(?:\.\d+)?)%/);
+      if (match) return parseFloat(match[1]);
+    }
+    return 0;
+  }
+
+  function getCardWage(card) {
+    const inputs = Array.from(card.querySelectorAll('input'));
+    for (const inp of inputs) {
+      const val = parseFloat(inp.value);
+      if (!isNaN(val) && val > 0) return val;
+    }
+    // Best effort fallback
+    return 0.15; 
+  }
+
+  function ensureCompanyProfitInjected() {
+    if (ecoProfitLoading) return;
+    const mainWin = document.getElementById('main-window');
+    if (!mainWin) {
+      setHealth('companyProfit', 'idle', 'no main-window');
+      return;
+    }
+    
+    const cards = Array.from(mainWin.querySelectorAll('a[href^="/company/"]')).map(a => {
+      let root = a;
+      for (let i = 0; i < 6; i++) { if (root.parentElement) root = root.parentElement; }
+      const idMatch = a.getAttribute('href').match(/^\/company\/([a-f0-9]{24})\/?$/i);
+      return { id: idMatch ? idMatch[1] : null, root, link: a };
+    }).filter(c => c.id);
+    
+    if (cards.length === 0) return;
+    
+    let missingBadges = false;
+    const idsToFetch = new Set();
+    cards.forEach(c => {
+      if (!c.root.querySelector('.wia-eco-profit-badge')) {
+        missingBadges = true;
+        const cached = ecoCompanyDetailCache.get(c.id);
+        if (!cached || now() - cached.at >= CONFIG.ecoDetailTtlMs) {
+          idsToFetch.add(c.id);
+        }
+      }
+    });
+    
+    if (idsToFetch.size > 0 && !ecoProfitLoading) {
+      ecoProfitLoading = true;
+      setHealth('companyProfit', 'ok', 'fetching data');
+      
+      Promise.all([
+        fetchPrices(false),
+        fetchGameConfig(),
+        fetchCompanyDetailBatch(Array.from(idsToFetch))
+      ]).finally(() => {
+        ecoProfitLoading = false;
+        guard('companyProfit', injectCompanyProfits);
+      });
+    } else if (missingBadges) {
+      guard('companyProfit', injectCompanyProfits);
+    }
+  }
+
+  function injectCompanyProfits() {
+    const mainWin = document.getElementById('main-window');
+    if (!mainWin) return;
+    
+    const cards = Array.from(mainWin.querySelectorAll('a[href^="/company/"]')).map(a => {
+      let root = a;
+      for (let i = 0; i < 6; i++) { if (root.parentElement) root = root.parentElement; }
+      const idMatch = a.getAttribute('href').match(/^\/company\/([a-f0-9]{24})\/?$/i);
+      return { id: idMatch ? idMatch[1] : null, root, link: a };
+    }).filter(c => c.id);
+    
+    let totalPortfolioNet = 0;
+    let printingCount = 0;
+    let bleedingCount = 0;
+    let anyOwned = false;
+    
+    const prices = readCache(KEYS.priceCache)?.data || {};
+    const recipes = ecoRecipesCache.recipes || {};
+    const ownId = getCurrentUserId();
+    
+    for (const c of cards) {
+      if (c.root.querySelector('.wia-eco-profit-badge')) {
+        const existingData = c.root.dataset.wiaEcoNet;
+        if (existingData) {
+          const net = parseFloat(existingData);
+          if (c.root.querySelector('.self-work-button') || (ecoCompanyDetailCache.get(c.id)?.data?.user === ownId)) {
+            anyOwned = true;
+            totalPortfolioNet += net;
+            if (net >= 0) printingCount++; else bleedingCount++;
+          }
+        }
+        continue;
+      }
+      
+      const details = ecoCompanyDetailCache.get(c.id)?.data;
+      if (!details) continue;
+      
+      const isOwned = details.user === ownId;
+      if (!isOwned) continue;
+      anyOwned = true;
+      
+      const recipe = recipes[details.itemCode];
+      if (!recipe) continue;
+      
+      const sellPrice = prices[details.itemCode] || 0;
+      const inputPrice = prices[recipe.input] || 0;
+      const wagePerPoint = getCardWage(c.root);
+      const bonus = getCardBonus(c.root);
+      
+      const regionCache = readCache(KEYS.ecoRegionCountry) || {};
+      const countryId = regionCache[details.region];
+      let marketTax = 0;
+      if (countryId) {
+        const taxCache = readCache(KEYS.ecoCountryTax) || {};
+        if (taxCache[countryId] && taxCache[countryId].data) {
+          marketTax = taxCache[countryId].data.market || 0;
+        } else {
+          getCountryTax(countryId);
+        }
+      } else if (details.region) {
+        regionToCountry(details.region);
+      }
+      
+      const perItemNet = sellPrice * (1 - marketTax/100) - (recipe.qtyPerItem * inputPrice) - (recipe.productionPoints * wagePerPoint);
+      
+      let basePoints = 100;
+      if (details.activeUpgradeLevels) {
+         basePoints = 100 + (details.activeUpgradeLevels.automatedEngine || 0) * 10;
+      }
+      const pointsPerDay = basePoints * (1 + bonus/100);
+      const dayItems = pointsPerDay / recipe.productionPoints;
+      
+      const netPerDay = perItemNet * dayItems;
+      c.root.dataset.wiaEcoNet = netPerDay;
+      totalPortfolioNet += netPerDay;
+      if (netPerDay >= 0) printingCount++; else bleedingCount++;
+      
+      const badge = document.createElement('div');
+      badge.className = 'wia-eco-profit-badge';
+      badge.dataset.wiaBound = '1';
+      badge.style.cssText = 'position: absolute; top: 8px; right: 8px; background: ' + (netPerDay >= 0 ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)') + '; color: ' + (netPerDay >= 0 ? '#10b981' : '#ef4444') + '; border: 1px solid ' + (netPerDay >= 0 ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)') + '; padding: 4px 8px; border-radius: 6px; font-weight: 600; font-size: 11px; display: flex; align-items: center; gap: 4px; backdrop-filter: blur(4px); z-index: 10;';
+      badge.innerHTML = ECO_COIN_SVG + (netPerDay >= 0 ? '+' : '') + netPerDay.toFixed(1) + ' / day';
+      c.root.style.position = 'relative';
+      c.root.appendChild(badge);
+    }
+    
+    if (anyOwned) {
+      let strip = document.getElementById('wia-eco-portfolio-strip');
+      if (!strip) {
+        const headers = Array.from(mainWin.querySelectorAll('span')).filter(s => s.textContent.trim() === 'Companies');
+        const targetHeader = headers[headers.length - 1]; 
+        if (targetHeader) {
+          strip = document.createElement('div');
+          strip.id = 'wia-eco-portfolio-strip';
+          strip.style.cssText = 'margin-bottom: 16px; padding: 12px 16px; border-radius: 8px; background: linear-gradient(135deg, rgba(30,41,59,0.8), rgba(15,23,42,0.9)); border: 1px solid rgba(124, 58, 237, 0.3); display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); backdrop-filter: blur(8px);';
+          
+          targetHeader.parentElement.insertAdjacentElement('afterend', strip);
+        }
+      }
+      
+      if (strip) {
+        strip.innerHTML = '<div style="display:flex; align-items:center; gap: 8px;"><span style="border: 1px solid #7c3aed; color: #a78bfa; padding: 2px 6px; font-size: 9px; font-weight: 700; border-radius: 4px; letter-spacing: 0.5px;">PROST</span><span style="font-size: 14px; font-weight: 600; color: #e2e8f0;">Portfolio Daily Net</span></div><div style="display:flex; align-items:center; gap: 16px;"><span style="font-size: 12px; color: #94a3b8;"><span style="color: #10b981;">' + printingCount + ' Printing</span> | <span style="color: #ef4444;">' + bleedingCount + ' Bleeding</span></span><span style="font-size: 16px; font-weight: 700; color: ' + (totalPortfolioNet >= 0 ? '#10b981' : '#ef4444') + '; display:flex; align-items:center; gap:4px;">' + ECO_COIN_SVG + (totalPortfolioNet >= 0 ? '+' : '') + totalPortfolioNet.toFixed(1) + '</span></div>';
+      }
+    }
+    
+    setHealth('companyProfit', 'ok', 'profits injected');
+  }
 
   function checkCompanyEcoModal() {
     const modals = document.querySelectorAll('div[id^="headlessui-dialog-panel-"]');
@@ -8002,6 +8227,9 @@ function updateObserverTarget() {
       const injected = companyEcoModalNode.querySelector('#wia-eco-net-wage');
       if (injected) injected.remove();
     }
+    const strip = document.getElementById('wia-eco-portfolio-strip');
+    if (strip) strip.remove();
+    
     companyEcoModalNode = null;
     companyEcoWageInput = null;
     companyEcoCompanyId = null;
@@ -8065,6 +8293,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       if (CONFIG.featCompanyEco && (getPagePathname().startsWith('/companies') || getPagePathname().startsWith('/company/') || /^\/user\/[0-9a-zA-Z_-]+\/companies\/?$/.test(getPagePathname()))) {
         guard('companyEco', checkCompanyEcoModal);
         guard('companyEnergy', ensureCompanyCoworkersInjected);
+        guard('companyProfit', ensureCompanyProfitInjected);
       }
     });
     sharedBodyObserver.observe(document.body, { childList: true, subtree: true });
