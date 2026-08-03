@@ -7707,6 +7707,13 @@ function updateObserverTarget() {
   const ECO_ENERGY_TTL_MS = 60_000;
   let ecoEnergyLoading = false;
 
+  function probeCompanyEnergy() {
+    return {
+      cacheSize: ecoUserEnergyCache.size,
+      loading: ecoEnergyLoading
+    };
+  }
+
   async function fetchEcoEnergyBatch(userIds, opts = {}) {
     if (!Array.isArray(userIds) || userIds.length === 0) return [];
     
@@ -7772,29 +7779,71 @@ function updateObserverTarget() {
     return results;
   }
 
+  function getTargetWorkerSpans(mainWin) {
+    const ownId = getCurrentUserId();
+    const result = [];
+    
+    const links = Array.from(mainWin.querySelectorAll('a[href^="/user/"]'));
+    for (const a of links) {
+      const href = a.getAttribute('href') || '';
+      const match = href.match(/^\/user\/([a-f0-9]{24})\/?$/i);
+      if (!match) continue;
+      
+      const id = match[1];
+      if (id === ownId) continue;
+      
+      const nameSpan = a.querySelector('span.agd9b40');
+      if (nameSpan && nameSpan.textContent.trim().length > 0) {
+        let row = a;
+        let chipSpan = null;
+        
+        while (row && row !== mainWin) {
+          // Prevent climbing into the parent list container
+          const usersInRow = Array.from(row.querySelectorAll('a[href^="/user/"]')).map(l => l.getAttribute('href'));
+          const uniqueUsers = new Set(usersInRow);
+          if (uniqueUsers.size > 1) break; 
+          
+          const svgPath = row.querySelector('svg path[d="M11 15H6L13 1V9H18L11 23V15Z"]');
+          if (svgPath) {
+            const iconDiv = svgPath.closest('div');
+            const chipContainer = iconDiv ? iconDiv.parentElement : null;
+            if (chipContainer) {
+              const spans = chipContainer.querySelectorAll('span.agd9b40');
+              if (spans.length > 0) {
+                chipSpan = spans[spans.length - 1]; // get the innermost span
+                break;
+              }
+            }
+          }
+          row = row.parentElement;
+        }
+        
+        if (chipSpan) {
+          result.push({ id, a, span: chipSpan });
+        }
+      }
+    }
+    return result;
+  }
+
   function applyEcoEnergyPills() {
     const mainWin = document.getElementById('main-window');
-    if (!mainWin) return;
+    if (!mainWin) {
+      setHealth('companyEnergy', 'idle', 'no main-window');
+      return;
+    }
     
-    const ownId = getCurrentUserId();
-    const links = Array.from(mainWin.querySelectorAll('a[href^="/user/"]'))
-      .filter(a => {
-        const href = a.getAttribute('href') || '';
-        const match = href.match(/^\/user\/([a-f0-9]{24})\/?$/i);
-        if (!match) return false;
-        const id = match[1];
-        if (id === ownId) return false;
-        return a.textContent.trim().length > 0;
-      });
+    const targets = getTargetWorkerSpans(mainWin);
+    if (targets.length === 0) {
+      setHealth('companyEnergy', 'ok', 'no coworkers found');
+      return;
+    }
       
-    links.forEach(a => {
-      if (a.nextElementSibling && a.nextElementSibling.classList.contains('wia-eco-energy-pill')) {
+    targets.forEach(({ id, span }) => {
+      if (span.previousElementSibling && span.previousElementSibling.classList.contains('wia-eco-energy-cur')) {
         return; // already injected
       }
       
-      const match = a.getAttribute('href').match(/^\/user\/([a-f0-9]{24})\/?$/i);
-      if (!match) return;
-      const id = match[1];
       const cached = ecoUserEnergyCache.get(id);
       if (!cached || !cached.data) return; // Wait for next tick if not loaded
       
@@ -7804,64 +7853,47 @@ function updateObserverTarget() {
       let colorClass = '';
       if (pct < 20) {
         colorClass = 'color: #ef4444;'; // red
-      } else if (pct < 50) {
+      } else if (pct <= 75) {
         colorClass = 'color: #f59e0b;'; // amber
       } else {
         colorClass = 'color: #10b981;'; // green
       }
       
-      const pill = document.createElement('span');
-      pill.className = 'wia-eco-energy-pill';
-      pill.title = `Energy regenerates by ${data.regen}/h`;
-      pill.innerHTML = `⚡<span style="${colorClass}">${data.cur}</span>/${data.total}<span style="border: 1px solid #7c3aed; color: #a78bfa; padding: 2px 4px; font-size: 9px; font-weight: 700; border-radius: 4px; letter-spacing: 0.5px; margin-left: 6px;">PROST</span>`;
+      const curSpan = document.createElement('span');
+      curSpan.className = 'wia-eco-energy-cur';
+      curSpan.title = `Energy regenerates by ${data.regen}/h`;
+      curSpan.dataset.wiaBound = '1';
+      curSpan.innerHTML = `${data.cur}/`;
+      curSpan.style.cssText = `${colorClass} font-weight: bold; margin-right: 2px;`;
       
-      pill.style.cssText = `
-        display: inline-flex;
-        align-items: center;
-        margin-left: 8px;
-        font-size: 11px;
-        font-weight: bold;
-        background: rgba(0, 0, 0, 0.4);
-        padding: 2px 6px;
-        border-radius: 4px;
-        white-space: nowrap;
-      `;
-      
-      a.dataset.wiaBound = '1';
-      a.insertAdjacentElement('afterend', pill);
+      span.insertAdjacentElement('beforebegin', curSpan);
     });
+    
+    setHealth('companyEnergy', 'ok', 'pills rendered');
   }
 
   function ensureCompanyCoworkersInjected() {
     if (ecoEnergyLoading) return;
     const mainWin = document.getElementById('main-window');
-    if (!mainWin) return;
+    if (!mainWin) {
+      setHealth('companyEnergy', 'idle', 'no main-window');
+      return;
+    }
     
-    const ownId = getCurrentUserId();
-    const links = Array.from(mainWin.querySelectorAll('a[href^="/user/"]'))
-      .filter(a => {
-        const href = a.getAttribute('href') || '';
-        const match = href.match(/^\/user\/([a-f0-9]{24})\/?$/i);
-        if (!match) return false;
-        const id = match[1];
-        if (id === ownId) return false;
-        return a.textContent.trim().length > 0;
-      });
-      
-    if (links.length === 0) return;
+    const targets = getTargetWorkerSpans(mainWin);
+    if (targets.length === 0) {
+      setHealth('companyEnergy', 'ok', 'no coworkers found');
+      return;
+    }
     
     let missingPills = false;
     const userIdsToFetch = new Set();
     
-    links.forEach(a => {
-      if (!a.nextElementSibling || !a.nextElementSibling.classList.contains('wia-eco-energy-pill')) {
-        const match = a.getAttribute('href').match(/^\/user\/([a-f0-9]{24})\/?$/i);
-        if (match) {
-          const id = match[1];
-          const cached = ecoUserEnergyCache.get(id);
-          if (!cached || now() - cached.at >= ECO_ENERGY_TTL_MS) {
-            userIdsToFetch.add(id);
-          }
+    targets.forEach(({ id, span }) => {
+      if (!span.previousElementSibling || !span.previousElementSibling.classList.contains('wia-eco-energy-cur')) {
+        const cached = ecoUserEnergyCache.get(id);
+        if (!cached || now() - cached.at >= ECO_ENERGY_TTL_MS) {
+          userIdsToFetch.add(id);
         }
         missingPills = true;
       }
@@ -7869,13 +7901,19 @@ function updateObserverTarget() {
     
     if (userIdsToFetch.size > 0 && !ecoEnergyLoading) {
       ecoEnergyLoading = true;
+      setHealth('companyEnergy', 'ok', 'fetching data');
       fetchEcoEnergyBatch(Array.from(userIdsToFetch))
+        .catch(e => { setHealth('companyEnergy', 'warn', e.message); })
         .finally(() => { ecoEnergyLoading = false; })
-        .then(() => guard('companyEco', applyEcoEnergyPills));
+        .then(() => guard('companyEnergy', applyEcoEnergyPills));
     } else if (missingPills) {
-      guard('companyEco', applyEcoEnergyPills);
+      guard('companyEnergy', applyEcoEnergyPills);
+    } else {
+      setHealth('companyEnergy', 'ok', 'pills injected');
     }
   }
+
+
 
   function checkCompanyEcoModal() {
     const modals = document.querySelectorAll('div[id^="headlessui-dialog-panel-"]');
@@ -7972,6 +8010,7 @@ function updateObserverTarget() {
     companyEcoRafId = null;
     companyEcoLastWage = null;
     setHealth('companyEco', 'idle', 'modal closed or off-route');
+    setHealth('companyEnergy', 'idle', 'off-route');
   }
 
 
@@ -8025,6 +8064,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       }
       if (CONFIG.featCompanyEco && (getPagePathname().startsWith('/companies') || getPagePathname().startsWith('/company/') || /^\/user\/[0-9a-zA-Z_-]+\/companies\/?$/.test(getPagePathname()))) {
         guard('companyEco', checkCompanyEcoModal);
+        guard('companyEnergy', ensureCompanyCoworkersInjected);
       }
     });
     sharedBodyObserver.observe(document.body, { childList: true, subtree: true });
