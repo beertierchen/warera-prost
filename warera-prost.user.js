@@ -8077,7 +8077,7 @@ function updateObserverTarget() {
     const dayItems = recipe.productionPoints ? pointsPerDay / recipe.productionPoints : 0;
     const net = perItemNet * dayItems;
 
-    return { priced: true, net, sellPrice, marketTax, matCost, perItemNet, engineDaily, bonus, pointsPerDay, dayItems, taxKnown };
+    return { priced: true, net, sellPrice, marketTax, matCost, perItemNet, engineDaily, bonus, pointsPerDay, dayItems, taxKnown, itemCode: details.itemCode, inputs: recipe.inputs };
   }
 
   // Idempotent, diff-guarded badge inside the card's chip row.
@@ -8139,7 +8139,7 @@ function updateObserverTarget() {
   }
 
   // Flat strip that blends under the "Companies" heading (no tile).
-  function ecoRenderStrip(mainWin, shown, earning, losing, total) {
+  function ecoRenderStrip(mainWin, shown, earning, losing, total, balances) {
     let strip = document.getElementById('wia-eco-portfolio-strip');
     if (!strip) {
       const firstCard = ecoFirstCardBlock(mainWin);
@@ -8153,8 +8153,18 @@ function updateObserverTarget() {
     const sig = shown + '|' + earning + '|' + losing + '|' + total.toFixed(1);
     if (strip.dataset.wiaSig === sig) return;
     strip.dataset.wiaSig = sig;
+
+    let balText = 'Daily Resource Balance:\\n';
+    const sortedRes = Object.keys(balances).sort();
+    for (const res of sortedRes) {
+      if (Math.abs(balances[res]) < 0.1) continue;
+      const val = balances[res];
+      balText += `${res}: ${val > 0 ? '+' : ''}${val.toFixed(1)}/d\\n`;
+    }
+    if (sortedRes.length === 0) balText += 'None';
+
     strip.innerHTML =
-      '<span style="color:#9aa4b2; font-weight:600;">Companies · daily net</span>' +
+      '<span title="' + balText + '" style="color:#9aa4b2; font-weight:600; text-decoration: underline dotted; cursor: help;">Companies · daily net</span>' +
       '<span style="display:flex; align-items:center; gap:14px; margin-left:auto;">' +
         '<span style="font-size:12px;"><span style="color:#4ade80;">' + earning + ' profitable</span>' +
         ' · <span style="color:#f87171;">' + losing + ' losing</span></span>' +
@@ -8175,6 +8185,7 @@ function updateObserverTarget() {
     const taxCache = readCache(KEYS.ecoCountryTax) || {};
 
     let total = 0, earning = 0, losing = 0, shown = 0, taxPending = false;
+    const balances = {};
 
     for (const id of ecoOwnedIdsOnPage(mainWin)) {
       const links = Array.from(mainWin.querySelectorAll('a[href="/company/' + id + '"]'));
@@ -8188,10 +8199,15 @@ function updateObserverTarget() {
         total += d.net; shown++;
         if (d.net >= 0) earning++; else losing++;
         if (!d.taxKnown) taxPending = true;
+
+        balances[d.itemCode] = (balances[d.itemCode] || 0) + d.dayItems;
+        for (const inp of d.inputs) {
+          balances[inp.code] = (balances[inp.code] || 0) - (d.dayItems * inp.qty);
+        }
       }
     }
 
-    if (shown > 0) ecoRenderStrip(mainWin, shown, earning, losing, total);
+    if (shown > 0) ecoRenderStrip(mainWin, shown, earning, losing, total, balances);
     setHealth('companyProfit', shown > 0 ? 'ok' : 'idle', shown > 0 ? 'profits injected' : 'no priced owned cards');
 
     // tax resolves via async region→country→tax; re-render once it lands even on a static page
