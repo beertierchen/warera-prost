@@ -8139,7 +8139,7 @@ function updateObserverTarget() {
   }
 
   // Flat strip that blends under the "Companies" heading (no tile).
-  function ecoRenderStrip(mainWin, shown, earning, losing, total, balances) {
+  function ecoRenderStrip(mainWin, shown, earning, losing, total) {
     let strip = document.getElementById('wia-eco-portfolio-strip');
     if (!strip) {
       const firstCard = ecoFirstCardBlock(mainWin);
@@ -8154,17 +8154,8 @@ function updateObserverTarget() {
     if (strip.dataset.wiaSig === sig) return;
     strip.dataset.wiaSig = sig;
 
-    let balText = 'Daily Resource Balance:\\n';
-    const sortedRes = Object.keys(balances).sort();
-    for (const res of sortedRes) {
-      if (Math.abs(balances[res]) < 0.1) continue;
-      const val = balances[res];
-      balText += `${res}: ${val > 0 ? '+' : ''}${val.toFixed(1)}/d\\n`;
-    }
-    if (sortedRes.length === 0) balText += 'None';
-
     strip.innerHTML =
-      '<span title="' + balText + '" style="color:#9aa4b2; font-weight:600; text-decoration: underline dotted; cursor: help;">Companies · daily net</span>' +
+      '<span style="color:#9aa4b2; font-weight:600;">Companies · daily net</span>' +
       '<span style="display:flex; align-items:center; gap:14px; margin-left:auto;">' +
         '<span style="font-size:12px;"><span style="color:#4ade80;">' + earning + ' profitable</span>' +
         ' · <span style="color:#f87171;">' + losing + ' losing</span></span>' +
@@ -8172,6 +8163,66 @@ function updateObserverTarget() {
           ECO_COIN_SVG + (totPos ? '+' : '') + total.toFixed(1) + '/day</span>' +
         '<span style="font-size:9px; font-weight:700; letter-spacing:.5px; color:#a78bfa; opacity:.75;">PROST · before wages</span>' +
       '</span>';
+  }
+
+  function ecoRenderResourceBalances(mainWin, balances) {
+    let container = document.getElementById('wia-eco-resource-balances');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'wia-eco-resource-balances';
+      container.style.cssText = 'display:flex; align-items:center; flex-wrap:wrap; gap:16px; padding:8px 12px; margin-bottom:12px; background:rgba(0,0,0,0.25); border-radius:8px; font-size:13px; font-weight:600;';
+
+      const inv = document.getElementById('companies-inventory');
+      if (inv && inv.parentElement) {
+        inv.parentElement.parentNode.insertBefore(container, inv.parentElement.nextSibling);
+      } else {
+        mainWin.insertBefore(container, mainWin.firstChild);
+      }
+    }
+
+    const sortedRes = Object.keys(balances).filter(r => Math.abs(balances[r]) >= 0.1).sort();
+    
+    // sig to prevent loops
+    const sig = sortedRes.map(r => r + ':' + balances[r].toFixed(1)).join('|');
+    if (container.dataset.wiaSig === sig) return;
+    container.dataset.wiaSig = sig;
+
+    container.innerHTML = '<span style="color:#9aa4b2; margin-right:4px;">Daily Resource Balance:</span>';
+
+    if (sortedRes.length === 0) {
+      container.innerHTML += '<span style="color:#6b7280;">None</span>';
+      return;
+    }
+
+    // Append items
+    for (const res of sortedRes) {
+      const val = balances[res];
+      const pos = val >= 0;
+      const color = pos ? '#4ade80' : '#f87171';
+      const sign = pos ? '+' : '';
+      
+      const itemSpan = document.createElement('span');
+      itemSpan.style.cssText = `display:inline-flex; align-items:center; gap:4px; color:${color};`;
+      
+      // Try to clone icon from page
+      const iconTpl = document.querySelector(`img[alt="${res}"]`);
+      if (iconTpl) {
+        const icon = iconTpl.cloneNode(true);
+        icon.style.cssText = 'width:16px; height:16px; object-fit:contain; flex-shrink:0;';
+        itemSpan.appendChild(icon);
+      } else {
+        const textIcon = document.createElement('span');
+        textIcon.textContent = res;
+        textIcon.style.color = '#e5e7eb';
+        itemSpan.appendChild(textIcon);
+      }
+      
+      const textVal = document.createElement('span');
+      textVal.textContent = `${sign}${val.toFixed(1)}/d`;
+      itemSpan.appendChild(textVal);
+      
+      container.appendChild(itemSpan);
+    }
   }
 
   function injectCompanyProfits() {
@@ -8207,7 +8258,9 @@ function updateObserverTarget() {
       }
     }
 
-    if (shown > 0) ecoRenderStrip(mainWin, shown, earning, losing, total, balances);
+    if (shown > 0) ecoRenderStrip(mainWin, shown, earning, losing, total);
+    ecoRenderResourceBalances(mainWin, balances);
+
     setHealth('companyProfit', shown > 0 ? 'ok' : 'idle', shown > 0 ? 'profits injected' : 'no priced owned cards');
 
     // tax resolves via async region→country→tax; re-render once it lands even on a static page
