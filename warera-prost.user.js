@@ -7922,6 +7922,7 @@ function updateObserverTarget() {
   const ecoCompanyDetailCache = new Map();
   const ecoRecipesCache = { at: 0, recipes: null };
   let ecoProfitLoading = false;
+  let ecoTaxReinjectPending = false;
 
   async function fetchGameConfig() {
     if (ecoRecipesCache.recipes && (now() - ecoRecipesCache.at < CONFIG.ecoRecipeTtlMs)) return ecoRecipesCache.recipes;
@@ -7931,22 +7932,44 @@ function updateObserverTarget() {
         const recipes = {};
         for (const [code, item] of Object.entries(payload.items)) {
           if (item.type === 'product' && item.productionNeeds) {
-            const inputs = Object.entries(item.productionNeeds);
+            // keep ALL inputs (recipes can need more than one material)
+            const inputs = Object.entries(item.productionNeeds).map(([ic, q]) => ({ code: ic, qty: q }));
             if (inputs.length > 0) {
-              recipes[code] = {
-                input: inputs[0][0],
-                qtyPerItem: inputs[0][1],
-                productionPoints: item.productionPoints
-              };
+              recipes[code] = { inputs, productionPoints: item.productionPoints };
             }
           }
         }
         ecoRecipesCache.recipes = recipes;
+        // stash the automatedEngine level table so we can read the real dailyProd
+        ecoRecipesCache.engineLevels = payload.upgradesConfig?.automatedEngine?.levels || null;
         ecoRecipesCache.at = now();
         return recipes;
       }
     } catch (e) { console.warn('[PROST] eco: fetchGameConfig failed', e); }
     return ecoRecipesCache.recipes;
+  }
+
+  // Authoritative owned-company set (excludes the "Job" company you only work at).
+  const ecoOwnedCache = { at: 0, userId: null, ids: null };
+
+  function ecoProfileUserId() {
+    const m = /^\/user\/([a-f0-9]{24})\/companies/i.exec(getPagePathname());
+    return m ? m[1] : getCurrentUserId();
+  }
+
+  async function fetchOwnedCompanyIds(userId) {
+    if (!userId) return ecoOwnedCache.ids || new Set();
+    if (ecoOwnedCache.ids && ecoOwnedCache.userId === userId && now() - ecoOwnedCache.at < CONFIG.ecoDetailTtlMs) {
+      return ecoOwnedCache.ids;
+    }
+    try {
+      const { payload } = await resolveApiBase('company.getCompanies', { userId, perPage: 100 });
+      const items = (payload && payload.items) || [];
+      ecoOwnedCache.ids = new Set(items);
+      ecoOwnedCache.userId = userId;
+      ecoOwnedCache.at = now();
+    } catch (e) { console.warn('[PROST] eco: getCompanies failed', e); }
+    return ecoOwnedCache.ids || new Set();
   }
 
   async function fetchCompanyDetailBatch(companyIds) {
@@ -7976,205 +7999,182 @@ function updateObserverTarget() {
     return 0;
   }
 
-  function getCardWage(card) {
-    const inputs = Array.from(card.querySelectorAll('input'));
-    for (const inp of inputs) {
-      const val = parseFloat(inp.value);
-      if (!isNaN(val) && val > 0) return val;
+  function ecoOwnedIdsOnPage(mainWin) {
+    const on = [];
+    const ids = ecoOwnedCache.ids;
+    if (!ids) return on;
+    for (const id of ids) {
+      if (mainWin.querySelector('a[href="/company/' + id + '"]')) on.push(id);
     }
-    // Best effort fallback
-    return 0.15; 
+    return on;
   }
 
   function ensureCompanyProfitInjected() {
     if (ecoProfitLoading) return;
     const mainWin = document.getElementById('main-window');
-    if (!mainWin) {
-      setHealth('companyProfit', 'idle', 'no main-window');
-      return;
-    }
-    
-    const cards = Array.from(mainWin.querySelectorAll('a[href^="/company/"]')).map(a => {
-      let root = a;
-      for (let i = 0; i < 6; i++) { if (root.parentElement) root = root.parentElement; }
-      const idMatch = a.getAttribute('href').match(/^\/company\/([a-f0-9]{24})\/?$/i);
-      return { id: idMatch ? idMatch[1] : null, root, link: a };
-    }).filter(c => c.id);
-    
-    if (cards.length === 0) return;
-    
-    let missingBadges = false;
-    const idsToFetch = new Set();
-    cards.forEach(c => {
-      if (c.root.dataset.wiaEcoProcessed !== '1') {
-        missingBadges = true;
-        const cached = ecoCompanyDetailCache.get(c.id);
-        if (!cached || now() - cached.at >= CONFIG.ecoDetailTtlMs) {
-          idsToFetch.add(c.id);
-        }
+    if (!mainWin) { setHealth('companyProfit', 'idle', 'no main-window'); return; }
+    if (!mainWin.querySelector('a[href^="/company/"]')) { setHealth('companyProfit', 'idle', 'no company cards'); return; }
+
+    const userId = ecoProfileUserId();
+    const ownedReady = ecoOwnedCache.ids && ecoOwnedCache.userId === userId &&
+                       now() - ecoOwnedCache.at < CONFIG.ecoDetailTtlMs;
+
+    // Do we still need detail for any owned card currently on the page?
+    let needDetail = !ownedReady;
+    if (ownedReady) {
+      for (const id of ecoOwnedIdsOnPage(mainWin)) {
+        const d = ecoCompanyDetailCache.get(id);
+        if (!d || now() - d.at >= CONFIG.ecoDetailTtlMs) { needDetail = true; break; }
       }
-    });
-    
-    if (idsToFetch.size > 0 && !ecoProfitLoading) {
+    }
+
+    if (needDetail) {
       ecoProfitLoading = true;
       setHealth('companyProfit', 'ok', 'fetching data');
-      
-      Promise.all([
-        fetchPrices(false),
-        fetchGameConfig(),
-        fetchCompanyDetailBatch(Array.from(idsToFetch))
-      ]).finally(() => {
+      (async () => {
+        await Promise.all([fetchPrices(false), fetchGameConfig(), fetchOwnedCompanyIds(userId)]);
+        const need = ecoOwnedIdsOnPage(mainWin).filter(id => {
+          const d = ecoCompanyDetailCache.get(id);
+          return !d || now() - d.at >= CONFIG.ecoDetailTtlMs;
+        });
+        if (need.length) await fetchCompanyDetailBatch(need);
+      })().finally(() => {
         ecoProfitLoading = false;
         guard('companyProfit', injectCompanyProfits);
       });
-    } else if (missingBadges) {
+    } else {
       guard('companyProfit', injectCompanyProfits);
     }
+  }
+
+  // Compute the pre-wage engine estimate for one owned company. Returns null if
+  // we can't price it yet (no market price / recipe / detail not loaded).
+  function ecoComputeNet(id, chipEl, prices, recipes, engineLevels, regionCache, taxCache) {
+    const details = ecoCompanyDetailCache.get(id)?.data;
+    if (!details) return null;
+    const recipe = recipes[details.itemCode];
+    if (!recipe) return null;
+
+    const sellPrice = prices[normalizeItemCode(details.itemCode)] || 0;
+    if (sellPrice <= 0) return { priced: false };  // no market price → show n/a, don't count
+
+    let matCost = 0;
+    for (const inp of recipe.inputs) matCost += inp.qty * (prices[normalizeItemCode(inp.code)] || 0);
+
+    // market/sell tax (lazy: kick off region→country→tax resolution if missing)
+    const countryId = regionCache[details.region];
+    let marketTax = 0, taxKnown = false;
+    if (countryId && taxCache[countryId]?.data) { marketTax = taxCache[countryId].data.market || 0; taxKnown = true; }
+    else if (countryId) getCountryTax(countryId);
+    else if (details.region) regionToCountry(details.region);
+
+    const bonus = getCardBonus(chipEl);
+    const lvl = details.activeUpgradeLevels?.automatedEngine || 0;
+    const engineDaily = engineLevels?.[lvl]?.stats?.dailyProd || 0;
+
+    const perItemNet = sellPrice * (1 - marketTax / 100) - matCost;
+    const pointsPerDay = engineDaily * (1 + bonus / 100);
+    const dayItems = recipe.productionPoints ? pointsPerDay / recipe.productionPoints : 0;
+    const net = perItemNet * dayItems;
+
+    return { priced: true, net, sellPrice, marketTax, matCost, perItemNet, engineDaily, bonus, pointsPerDay, dayItems, taxKnown };
+  }
+
+  // Idempotent, diff-guarded badge inside the card's chip row.
+  function ecoRenderBadge(chipEl, d) {
+    let badge = chipEl.querySelector(':scope > .wia-eco-profit-badge');
+    const pos = d && d.priced && d.net >= 0;
+    const sig = (d && d.priced) ? (pos ? '+' : '') + d.net.toFixed(1) : 'na';
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.className = 'wia-eco-profit-badge';
+      badge.style.cssText = 'margin-left:6px; padding:0 5px; border-radius:4px; font-weight:700; font-size:0.82em; display:inline-flex; align-items:center; gap:2px; cursor:help; background:rgba(0,0,0,0.35);';
+      chipEl.appendChild(badge);
+    }
+    if (badge.dataset.sig === sig) return;
+    badge.dataset.sig = sig;
+    if (d && d.priced) {
+      badge.style.color = pos ? '#4ade80' : '#f87171';
+      badge.innerHTML = ECO_COIN_SVG + (pos ? '+' : '') + d.net.toFixed(1) + '/d';
+      badge.title = 'Est. net/day — before wages\n' +
+        `Per item: ${d.sellPrice.toFixed(3)} sell ·(1−${d.marketTax}% tax) − ${d.matCost.toFixed(3)} mat = ${d.perItemNet.toFixed(3)}\n` +
+        `Throughput: ${d.engineDaily} PP ×(1+${d.bonus}%) = ${d.pointsPerDay.toFixed(0)} PP/day → ${d.dayItems.toFixed(1)} items/day\n` +
+        `Net: ${d.perItemNet.toFixed(3)} × ${d.dayItems.toFixed(1)} = ${d.net.toFixed(1)}/day` +
+        (d.taxKnown ? '' : '\n(tax still loading…)');
+    } else {
+      badge.style.color = '#9ca3af';
+      badge.innerHTML = '—/d';
+      badge.title = 'No market price for this item — profit unknown';
+    }
+  }
+
+  // Flat strip that blends under the "Companies" heading (no tile).
+  function ecoRenderStrip(mainWin, shown, earning, losing, total) {
+    let strip = document.getElementById('wia-eco-portfolio-strip');
+    if (!strip) {
+      const headers = Array.from(mainWin.querySelectorAll('span'))
+        .filter(s => /(^|\s|')Companies$/.test(s.textContent.trim()) && !/\d\s*\/\s*\d/.test(s.textContent));
+      const targetHeader = headers.at(-1);
+      if (!targetHeader) return;
+      let container = targetHeader.parentElement;
+      while (container && container.tagName !== 'DIV') container = container.parentElement;
+      const anchor = container ? container.nextElementSibling : null;
+      if (!anchor || !anchor.parentNode) return;
+      strip = document.createElement('div');
+      strip.id = 'wia-eco-portfolio-strip';
+      strip.style.cssText = 'display:flex; align-items:center; gap:12px; width:100%; padding:4px 2px 12px; font-size:13px;';
+      anchor.parentNode.insertBefore(strip, anchor);
+    }
+    const totPos = total >= 0;
+    const sig = shown + '|' + earning + '|' + losing + '|' + total.toFixed(1);
+    if (strip.dataset.wiaSig === sig) return;
+    strip.dataset.wiaSig = sig;
+    strip.innerHTML =
+      '<span style="color:#9aa4b2; font-weight:600;">Companies · daily net</span>' +
+      '<span style="display:flex; align-items:center; gap:14px; margin-left:auto;">' +
+        '<span style="font-size:12px;"><span style="color:#4ade80;">' + earning + ' profitable</span>' +
+        ' · <span style="color:#f87171;">' + losing + ' losing</span></span>' +
+        '<span style="font-weight:700; color:' + (totPos ? '#4ade80' : '#f87171') + '; display:inline-flex; align-items:center; gap:3px;">' +
+          ECO_COIN_SVG + (totPos ? '+' : '') + total.toFixed(1) + '/day</span>' +
+        '<span style="font-size:9px; font-weight:700; letter-spacing:.5px; color:#a78bfa; opacity:.75;">PROST · before wages</span>' +
+      '</span>';
   }
 
   function injectCompanyProfits() {
     const mainWin = document.getElementById('main-window');
     if (!mainWin) return;
-    
-    // Deduplicate cards by company ID to avoid double-counting links on the same card
-    const rawCards = Array.from(mainWin.querySelectorAll('a[href^="/company/"]')).map(a => {
-      let root = a;
-      for (let i = 0; i < 6; i++) { if (root.parentElement) root = root.parentElement; }
-      const idMatch = a.getAttribute('href').match(/^\/company\/([a-f0-9]{24})\/?$/i);
-      return { id: idMatch ? idMatch[1] : null, root, link: a };
-    }).filter(c => c.id);
-    
-    const cards = [];
-    const seenIds = new Set();
-    for (const c of rawCards) {
-      if (!seenIds.has(c.id)) {
-        seenIds.add(c.id);
-        cards.push(c);
-      }
-    }
-    
-    let totalPortfolioNet = 0;
-    let printingCount = 0;
-    let bleedingCount = 0;
-    let anyOwned = false;
-    
+
     const prices = readCache(KEYS.priceCache)?.data || {};
     const recipes = ecoRecipesCache.recipes || {};
-    const ownId = getCurrentUserId();
-    
-    for (const c of cards) {
-      const isCardOwned = c.root.querySelector('.self-work-button') || (ecoCompanyDetailCache.get(c.id)?.data?.user === ownId);
-      if (!isCardOwned) continue;
-      
-      anyOwned = true;
-      
-      if (c.root.dataset.wiaEcoProcessed === '1') {
-        const existingData = c.root.dataset.wiaEcoNet;
-        if (existingData) {
-          const net = parseFloat(existingData);
-          totalPortfolioNet += net;
-          if (net >= 0) printingCount++; else bleedingCount++;
-        }
-        continue;
-      }
-      
-      c.root.dataset.wiaEcoProcessed = '1';
-      
-      const details = ecoCompanyDetailCache.get(c.id)?.data;
-      if (!details || !recipes[details.itemCode]) continue;
-      
-      const recipe = recipes[details.itemCode];
-      const sellPrice = prices[details.itemCode] || 0;
-      const inputPrice = recipe.input ? (prices[recipe.input] || 0) : 0;
-      const bonus = getCardBonus(c.root);
-      
-      const regionCache = readCache(KEYS.ecoRegionCountry) || {};
-      const countryId = regionCache[details.region];
-      let marketTax = 0;
-      if (countryId) {
-        const taxCache = readCache(KEYS.ecoCountryTax) || {};
-        if (taxCache[countryId] && taxCache[countryId].data) {
-          marketTax = taxCache[countryId].data.market || 0;
-        } else {
-          getCountryTax(countryId);
-        }
-      } else if (details.region) {
-        regionToCountry(details.region);
-      }
-      
-      // perItemNet excludes wage as wage is not available without DOM modal
-      const perItemNet = sellPrice * (1 - marketTax/100) - (recipe.qtyPerItem * inputPrice);
-      
-      let engineDailyProd = 0;
-      const gameConfig = readCache(KEYS.ecoRecipes)?.data; // Full gameConfig cache
-      if (gameConfig && gameConfig.upgradesConfig && gameConfig.upgradesConfig.automatedEngine) {
-        const engineLevelObj = gameConfig.upgradesConfig.automatedEngine.levels[details.activeUpgradeLevels?.automatedEngine || 0];
-        if (engineLevelObj && engineLevelObj.stats) {
-          engineDailyProd = engineLevelObj.stats.dailyProd || 0;
-        }
-      }
-      // fallback if gameConfig not fully loaded yet (144 is lvl 6, we'll just guess based on 24 per level)
-      if (!engineDailyProd) {
-        engineDailyProd = (details.activeUpgradeLevels?.automatedEngine || 0) * 24;
-      }
-      
-      // Bonus applies to production points throughput
-      const pointsPerDay = engineDailyProd * (1 + bonus/100);
-      const dayItems = pointsPerDay / recipe.productionPoints;
-      
-      const netPerDay = perItemNet * dayItems;
-      c.root.dataset.wiaEcoNet = netPerDay;
-      totalPortfolioNet += netPerDay;
-      if (netPerDay >= 0) printingCount++; else bleedingCount++;
-      
-      const badge = document.createElement('div');
-      badge.className = 'wia-eco-profit-badge';
-      badge.dataset.wiaBound = '1';
-      // Inline-flex design, no absolute positioning
-      badge.style.cssText = 'background: ' + (netPerDay >= 0 ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)') + '; color: ' + (netPerDay >= 0 ? '#10b981' : '#ef4444') + '; border: 1px solid ' + (netPerDay >= 0 ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)') + '; padding: 2px 6px; border-radius: 4px; font-weight: 600; font-size: 11px; display: inline-flex; align-items: center; gap: 4px; cursor: help; margin-left: 4px;';
-      badge.innerHTML = ECO_COIN_SVG + (netPerDay >= 0 ? '+' : '') + netPerDay.toFixed(1) + '/d';
-      badge.title = 'Pre-wage engine est.\n' +
-                    `Per item: ${sellPrice.toFixed(2)} (sell) - ${marketTax}% tax - ${recipe.qtyPerItem}x${inputPrice.toFixed(2)} (mat) = ${perItemNet.toFixed(2)}\n` +
-                    `Output: ${pointsPerDay.toFixed(1)} PP/day (${engineDailyProd} base + ${bonus}% bonus) = ${dayItems.toFixed(1)} items/day\n` +
-                    `Total: ${perItemNet.toFixed(2)} * ${dayItems.toFixed(1)} = ${netPerDay.toFixed(1)}`;
-      
-      // Inject into the chip row
-      const allFlexDivs = Array.from(c.root.querySelectorAll('div.flex'));
-      const chipRow = allFlexDivs.find(d => d.className.includes('gap-') && d.textContent.includes('%')) || c.root.firstElementChild;
-      if (chipRow && !chipRow.querySelector('.wia-eco-profit-badge')) {
-        chipRow.appendChild(badge);
+    const engineLevels = ecoRecipesCache.engineLevels || null;
+    const regionCache = readCache(KEYS.ecoRegionCountry) || {};
+    const taxCache = readCache(KEYS.ecoCountryTax) || {};
+
+    let total = 0, earning = 0, losing = 0, shown = 0, taxPending = false;
+
+    for (const id of ecoOwnedIdsOnPage(mainWin)) {
+      const links = Array.from(mainWin.querySelectorAll('a[href="/company/' + id + '"]'));
+      // the chip-row link is the one carrying the %-chips (bonus/tax); title link has none
+      const chipEl = links.find(l => /\d%/.test(l.textContent)) || links[0];
+      if (!chipEl) continue;
+
+      const d = ecoComputeNet(id, chipEl, prices, recipes, engineLevels, regionCache, taxCache);
+      ecoRenderBadge(chipEl, d);
+      if (d && d.priced) {
+        total += d.net; shown++;
+        if (d.net >= 0) earning++; else losing++;
+        if (!d.taxKnown) taxPending = true;
       }
     }
-    
-    if (anyOwned) {
-      let strip = document.getElementById('wia-eco-portfolio-strip');
-      if (!strip) {
-        const headers = Array.from(mainWin.querySelectorAll('span')).filter(s => s.textContent.trim() === 'Companies');
-        const targetHeader = headers[headers.length - 1]; 
-        if (targetHeader) {
-          let container = targetHeader.parentElement;
-          while (container && container.tagName !== 'DIV') container = container.parentElement;
-          const anchor = container ? container.nextElementSibling : null;
-          
-          if (anchor && anchor.parentNode) {
-            strip = document.createElement('div');
-            strip.id = 'wia-eco-portfolio-strip';
-            strip.style.cssText = 'margin-bottom: 16px; padding: 12px 14px; border: 1px solid #1c2128; border-radius: 6px; background: #0d1117; display: flex; justify-content: space-between; align-items: center; width: 100%; font-family: system-ui, -apple-system, sans-serif;';
-            anchor.parentNode.insertBefore(strip, anchor);
-          }
-        }
-      }
-      
-      if (strip) {
-        const sig = printingCount + '|' + bleedingCount + '|' + totalPortfolioNet.toFixed(1);
-        if (strip.dataset.wiaSig !== sig) {
-          strip.dataset.wiaSig = sig;
-          strip.innerHTML = '<div style="display:flex; align-items:center; gap: 8px;"><span style="border: 1px solid #7c3aed; color: #a78bfa; padding: 2px 6px; font-size: 9px; font-weight: 700; border-radius: 4px; letter-spacing: 0.5px;">PROST</span><span style="font-size: 14px; font-weight: 600; color: #e2e8f0;">Portfolio Daily Net (Pre-wage)</span></div><div style="display:flex; align-items:center; gap: 16px;"><span style="font-size: 12px; color: #94a3b8;"><span style="color: #10b981;">' + printingCount + ' Printing</span> | <span style="color: #ef4444;">' + bleedingCount + ' Bleeding</span></span><span style="font-size: 16px; font-weight: 700; color: ' + (totalPortfolioNet >= 0 ? '#10b981' : '#ef4444') + '; display:flex; align-items:center; gap:4px;">' + ECO_COIN_SVG + (totalPortfolioNet >= 0 ? '+' : '') + totalPortfolioNet.toFixed(1) + '</span></div>';
-        }
-      }
+
+    if (shown > 0) ecoRenderStrip(mainWin, shown, earning, losing, total);
+    setHealth('companyProfit', shown > 0 ? 'ok' : 'idle', shown > 0 ? 'profits injected' : 'no priced owned cards');
+
+    // tax resolves via async region→country→tax; re-render once it lands even on a static page
+    if (taxPending && !ecoTaxReinjectPending) {
+      ecoTaxReinjectPending = true;
+      setTimeout(() => { ecoTaxReinjectPending = false; guard('companyProfit', injectCompanyProfits); }, 1600);
     }
-    
-    setHealth('companyProfit', 'ok', 'profits injected');
   }
 
   function checkCompanyEcoModal() {
@@ -8264,9 +8264,12 @@ function updateObserverTarget() {
       const injected = companyEcoModalNode.querySelector('#wia-eco-net-wage');
       if (injected) injected.remove();
     }
-    const strip = document.getElementById('wia-eco-portfolio-strip');
+    const strip = (typeof document !== 'undefined' && document.getElementById)
+      ? document.getElementById('wia-eco-portfolio-strip') : null;
     if (strip) strip.remove();
-    
+    // owned-cache resets so a route/profile switch re-fetches the right owner
+    ecoOwnedCache.ids = null; ecoOwnedCache.userId = null; ecoOwnedCache.at = 0;
+
     companyEcoModalNode = null;
     companyEcoWageInput = null;
     companyEcoCompanyId = null;
