@@ -8165,7 +8165,39 @@ function updateObserverTarget() {
       '</span>';
   }
 
-  function ecoRenderResourceBalances(mainWin, balances) {
+  function ecoReadInventory(mainWin) {
+    const inv = {};
+    const coinPath = Array.from(mainWin.querySelectorAll('svg path')).find(p => p.getAttribute('d')?.startsWith('M12 5C7.031'));
+    if (!coinPath) return inv;
+    let topBar = coinPath;
+    for (let i = 0; i < 4 && topBar; i++) topBar = topBar.parentElement;
+    if (!topBar) return inv;
+
+    const imgs = topBar.querySelectorAll('img[alt]');
+    for (const img of imgs) {
+      const code = img.getAttribute('alt');
+      if (!code) continue;
+      let node = img;
+      let found = false;
+      for (let i = 0; i < 6 && node; i++) {
+        node = node.parentElement;
+        if (!node) break;
+        const spans = Array.from(node.querySelectorAll('span'));
+        for (let j = spans.length - 1; j >= 0; j--) {
+          const txt = spans[j].textContent.trim();
+          if (/^[\\d,.]+$/.test(txt)) {
+            inv[code] = parseFloat(txt.replace(/,/g, ''));
+            found = true;
+            break;
+          }
+        }
+        if (found) break;
+      }
+    }
+    return inv;
+  }
+
+  function ecoRenderResourceBalances(mainWin, balances, invStock) {
     let container = document.getElementById('wia-eco-resource-balances');
     if (!container) {
       container = document.createElement('div');
@@ -8183,7 +8215,7 @@ function updateObserverTarget() {
     const sortedRes = Object.keys(balances).filter(r => Math.abs(balances[r]) >= 0.1).sort();
     
     // sig to prevent loops
-    const sig = sortedRes.map(r => r + ':' + balances[r].toFixed(1)).join('|');
+    const sig = sortedRes.map(r => r + ':' + balances[r].toFixed(1) + ':' + (invStock[r]||0)).join('|');
     if (container.dataset.wiaSig === sig) return;
     container.dataset.wiaSig = sig;
 
@@ -8198,7 +8230,13 @@ function updateObserverTarget() {
     for (const res of sortedRes) {
       const val = balances[res];
       const pos = val >= 0;
-      const color = pos ? '#4ade80' : '#f87171';
+      
+      const stock = invStock[res] || 0;
+      const missing = (!pos && stock + val < 0) 
+        ? Math.abs(stock + val) 
+        : 0;
+
+      const color = missing > 0 ? '#f87171' : (pos ? '#4ade80' : '#f87171');
       const sign = pos ? '+' : '';
       
       const itemSpan = document.createElement('span');
@@ -8220,6 +8258,13 @@ function updateObserverTarget() {
       const textVal = document.createElement('span');
       textVal.textContent = `${sign}${val.toFixed(1)}/d`;
       itemSpan.appendChild(textVal);
+
+      if (missing > 0) {
+        const missSpan = document.createElement('span');
+        missSpan.style.cssText = 'background:rgba(248,113,113,0.15); color:#f87171; padding:0 4px; border-radius:4px; font-size:11px; margin-left:2px; font-weight:700; border: 1px solid rgba(248,113,113,0.3);';
+        missSpan.textContent = `-${missing.toFixed(1)} fehlen`;
+        itemSpan.appendChild(missSpan);
+      }
       
       container.appendChild(itemSpan);
     }
@@ -8259,7 +8304,9 @@ function updateObserverTarget() {
     }
 
     if (shown > 0) ecoRenderStrip(mainWin, shown, earning, losing, total);
-    ecoRenderResourceBalances(mainWin, balances);
+    
+    const invStock = ecoReadInventory(mainWin);
+    ecoRenderResourceBalances(mainWin, balances, invStock);
 
     setHealth('companyProfit', shown > 0 ? 'ok' : 'idle', shown > 0 ? 'profits injected' : 'no priced owned cards');
 
