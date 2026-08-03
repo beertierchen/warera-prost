@@ -8161,7 +8161,7 @@ function updateObserverTarget() {
         ' · <span style="color:#f87171;">' + losing + ' losing</span></span>' +
         '<span style="font-weight:700; color:' + (totPos ? '#4ade80' : '#f87171') + '; display:inline-flex; align-items:center; gap:3px;">' +
           ECO_COIN_SVG + (totPos ? '+' : '') + total.toFixed(1) + '/day</span>' +
-        '<span style="font-size:9px; font-weight:700; letter-spacing:.5px; color:#a78bfa; opacity:.75;">PROST · before wages</span>' +
+        '<span style="font-size:9px; font-weight:700; letter-spacing:.5px; color:#a78bfa; opacity:.75;">PROST</span>' +
       '</span>';
   }
 
