@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         PROST
+// @name         TEST PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.10.7
+// @version      0.10.7-unstable
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -8141,7 +8141,7 @@ function updateObserverTarget() {
       // Inject into the chip row
       const allFlexDivs = Array.from(c.root.querySelectorAll('div.flex'));
       const chipRow = allFlexDivs.find(d => d.className.includes('gap-') && d.textContent.includes('%')) || c.root.firstElementChild;
-      if (chipRow) {
+      if (chipRow && !chipRow.querySelector('.wia-eco-profit-badge')) {
         chipRow.appendChild(badge);
       }
     }
@@ -8159,14 +8159,18 @@ function updateObserverTarget() {
           if (anchor && anchor.parentNode) {
             strip = document.createElement('div');
             strip.id = 'wia-eco-portfolio-strip';
-            strip.style.cssText = 'margin-bottom: 16px; padding: 12px 16px; border-radius: 8px; background: linear-gradient(135deg, rgba(30,41,59,0.8), rgba(15,23,42,0.9)); border: 1px solid rgba(124, 58, 237, 0.3); display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); width: 100%;';
+            strip.style.cssText = 'margin-bottom: 16px; padding: 12px 14px; border: 1px solid #1c2128; border-radius: 6px; background: #0d1117; display: flex; justify-content: space-between; align-items: center; width: 100%; font-family: system-ui, -apple-system, sans-serif;';
             anchor.parentNode.insertBefore(strip, anchor);
           }
         }
       }
       
       if (strip) {
-        strip.innerHTML = '<div style="display:flex; align-items:center; gap: 8px;"><span style="border: 1px solid #7c3aed; color: #a78bfa; padding: 2px 6px; font-size: 9px; font-weight: 700; border-radius: 4px; letter-spacing: 0.5px;">PROST</span><span style="font-size: 14px; font-weight: 600; color: #e2e8f0;">Portfolio Daily Net (Pre-wage)</span></div><div style="display:flex; align-items:center; gap: 16px;"><span style="font-size: 12px; color: #94a3b8;"><span style="color: #10b981;">' + printingCount + ' Printing</span> | <span style="color: #ef4444;">' + bleedingCount + ' Bleeding</span></span><span style="font-size: 16px; font-weight: 700; color: ' + (totalPortfolioNet >= 0 ? '#10b981' : '#ef4444') + '; display:flex; align-items:center; gap:4px;">' + ECO_COIN_SVG + (totalPortfolioNet >= 0 ? '+' : '') + totalPortfolioNet.toFixed(1) + '</span></div>';
+        const sig = printingCount + '|' + bleedingCount + '|' + totalPortfolioNet.toFixed(1);
+        if (strip.dataset.wiaSig !== sig) {
+          strip.dataset.wiaSig = sig;
+          strip.innerHTML = '<div style="display:flex; align-items:center; gap: 8px;"><span style="border: 1px solid #7c3aed; color: #a78bfa; padding: 2px 6px; font-size: 9px; font-weight: 700; border-radius: 4px; letter-spacing: 0.5px;">PROST</span><span style="font-size: 14px; font-weight: 600; color: #e2e8f0;">Portfolio Daily Net (Pre-wage)</span></div><div style="display:flex; align-items:center; gap: 16px;"><span style="font-size: 12px; color: #94a3b8;"><span style="color: #10b981;">' + printingCount + ' Printing</span> | <span style="color: #ef4444;">' + bleedingCount + ' Bleeding</span></span><span style="font-size: 16px; font-weight: 700; color: ' + (totalPortfolioNet >= 0 ? '#10b981' : '#ef4444') + '; display:flex; align-items:center; gap:4px;">' + ECO_COIN_SVG + (totalPortfolioNet >= 0 ? '+' : '') + totalPortfolioNet.toFixed(1) + '</span></div>';
+        }
       }
     }
     
