@@ -8108,22 +8108,38 @@ function updateObserverTarget() {
     }
   }
 
+  // The outermost block of the first company card = climb from the first company
+  // link until going one level higher would swallow a second card. Route/text-agnostic.
+  function ecoFirstCardBlock(mainWin) {
+    const owned = ecoOwnedCache.ids;
+    const links = Array.from(mainWin.querySelectorAll('a[href^="/company/"]'));
+    // first OWNED company link in DOM order (skips the top "Job" company)
+    let first = null;
+    for (const a of links) {
+      const m = /^\/company\/([a-f0-9]{24})/.exec(a.getAttribute('href'));
+      if (m && (!owned || owned.has(m[1]))) { first = a; break; }
+    }
+    if (!first) return null;
+    let card = first;
+    for (let i = 0; i < 12 && card.parentElement && card.parentElement !== mainWin; i++) {
+      const p = card.parentElement;
+      const hasOtherCard = Array.from(p.querySelectorAll('a[href^="/company/"]')).some(l => !card.contains(l));
+      if (hasOtherCard) break;
+      card = p;
+    }
+    return card;
+  }
+
   // Flat strip that blends under the "Companies" heading (no tile).
   function ecoRenderStrip(mainWin, shown, earning, losing, total) {
     let strip = document.getElementById('wia-eco-portfolio-strip');
     if (!strip) {
-      const headers = Array.from(mainWin.querySelectorAll('span'))
-        .filter(s => /(^|\s|')Companies$/.test(s.textContent.trim()) && !/\d\s*\/\s*\d/.test(s.textContent));
-      const targetHeader = headers.at(-1);
-      if (!targetHeader) return;
-      let container = targetHeader.parentElement;
-      while (container && container.tagName !== 'DIV') container = container.parentElement;
-      const anchor = container ? container.nextElementSibling : null;
-      if (!anchor || !anchor.parentNode) return;
+      const firstCard = ecoFirstCardBlock(mainWin);
+      if (!firstCard || !firstCard.parentNode) return;
       strip = document.createElement('div');
       strip.id = 'wia-eco-portfolio-strip';
       strip.style.cssText = 'display:flex; align-items:center; gap:12px; width:100%; padding:4px 2px 12px; font-size:13px;';
-      anchor.parentNode.insertBefore(strip, anchor);
+      firstCard.parentNode.insertBefore(strip, firstCard);
     }
     const totPos = total >= 0;
     const sig = shown + '|' + earning + '|' + losing + '|' + total.toFixed(1);
