@@ -8006,7 +8006,7 @@ function updateObserverTarget() {
     let missingBadges = false;
     const idsToFetch = new Set();
     cards.forEach(c => {
-      if (!c.root.querySelector('.wia-eco-profit-badge')) {
+      if (c.root.dataset.wiaEcoProcessed !== '1') {
         missingBadges = true;
         const cached = ecoCompanyDetailCache.get(c.id);
         if (!cached || now() - cached.at >= CONFIG.ecoDetailTtlMs) {
@@ -8053,7 +8053,7 @@ function updateObserverTarget() {
     const ownId = getCurrentUserId();
     
     for (const c of cards) {
-      if (c.root.querySelector('.wia-eco-profit-badge')) {
+      if (c.root.dataset.wiaEcoProcessed === '1') {
         const existingData = c.root.dataset.wiaEcoNet;
         if (existingData) {
           const net = parseFloat(existingData);
@@ -8065,6 +8065,8 @@ function updateObserverTarget() {
         }
         continue;
       }
+      
+      c.root.dataset.wiaEcoProcessed = '1';
       
       const details = ecoCompanyDetailCache.get(c.id)?.data;
       if (!details) continue;
