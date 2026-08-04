@@ -6341,6 +6341,10 @@ async function scanInventory(force) {
     if (testDebuffBtn) {
       testDebuffBtn.onclick = (e) => { e.preventDefault(); sendPersonalNtfy('Debuff', t('ntfyDebuffGoneTitle'), t('ntfyDebuffGoneBody'), 'pill,sparkles'); };
     }
+    const testCompanyAlertBtn = modal.querySelector('.wia-test-company-alert');
+    if (testCompanyAlertBtn) {
+      testCompanyAlertBtn.onclick = (e) => { e.preventDefault(); sendPersonalNtfy('Storage', 'WareEra - Storage Full', 'Company Test is full and has stopped producing!', 'factory,warning'); };
+    }
     if (healthPanel) { runProbes(); renderHealthPanel(healthPanel); }   // initial fill = live truth
 
     modal.addEventListener('click', (e) => {
