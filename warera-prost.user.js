@@ -2940,7 +2940,7 @@
 
     transactionsInFlight[code] = (async () => {
       try {
-        const { payload } = await resolveApiPost('transaction.getPaginatedTransactions', {
+        const { payload } = await resolveApiBase('transaction.getPaginatedTransactions', {
           limit: 100,
           itemCode: code
         }, { gatewayOnly: true });
@@ -13105,7 +13105,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
 
     resourceTxsInFlight[cacheKey] = (async () => {
       try {
-        const { payload } = await resolveApiPost('transaction.getPaginatedTransactions', {
+        const { payload } = await resolveApiBase('transaction.getPaginatedTransactions', {
           limit: 100,
           itemCode: code,
           transactionType: 'trading',
@@ -14787,7 +14787,7 @@ function processTransactionsList(items, userId) {
         const all = [];
         for (let page = 0; page < MAX_PAGES; page++) {
           const args = cursor ? { limit: 100, userId, cursor } : { limit: 100, userId };
-          const { payload } = await resolveApiPost('transaction.getPaginatedTransactions', args, { gatewayOnly: true });
+          const { payload } = await resolveApiBase('transaction.getPaginatedTransactions', args, { gatewayOnly: true });
           const items = payload?.items || [];
           if (!items.length) break;
           const firstId = normalizeDbId(items[0]._id || items[0].id);
