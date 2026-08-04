@@ -474,6 +474,8 @@
         settingsFeatPillNotifHnH: 'H&H full notifications (ntfy.sh)',
         settingsFeatPillNotifWindow: 'Preferred pill window notifications (ntfy.sh)',
         settingsFeatPillNotifDebuff: 'Debuff expired notifications (ntfy.sh)',
+        settingsFeatCompanyEco: 'Enable Company Economy overlay (E1-E6)',
+        settingsFeatCompanyAlerts: 'Enable Company Storage Alerts (E9)',
         settingsFeatMuHealDim: 'Dim MU heal request while debuffed / at full HP',
         muHealDimReasonDebuff: 'debuff active',
         muHealDimReasonFullHP: 'HP full',
@@ -797,6 +799,8 @@
         settingsFeatPillNotifHnH: 'H&H voll Benachrichtigungen (ntfy.sh)',
         settingsFeatPillNotifWindow: 'Bevorzugtes Pillenfenster Benachrichtigungen (ntfy.sh)',
         settingsFeatPillNotifDebuff: 'Debuff abgelaufen Benachrichtigungen (ntfy.sh)',
+        settingsFeatCompanyEco: 'Firmen-Ökonomie Overlay (E1-E6) aktivieren',
+        settingsFeatCompanyAlerts: 'Firmen-Lager Warnungen (E9) aktivieren',
         settingsFeatMuHealDim: 'MU-Heilung ausgrauen während Debuff / bei vollem Leben',
         muHealDimReasonDebuff: 'Pillen-Debuff aktiv',
         muHealDimReasonFullHP: 'Leben voll',
@@ -5825,6 +5829,8 @@ async function scanInventory(force) {
     const prevFeatPnlTracker = bg.querySelector('.wia-feat-pnl-tracker')?.checked ?? CONFIG.featPnlTracker;
     const prevFeatItemAdvisor = bg.querySelector('.wia-feat-item-advisor')?.checked ?? CONFIG.featItemAdvisor;
     const prevFeatCraftingAdvisor = bg.querySelector('.wia-feat-crafting-advisor')?.checked ?? CONFIG.featCraftingAdvisor;
+    const prevFeatCompanyEco = bg.querySelector('.wia-feat-company-eco')?.checked ?? CONFIG.featCompanyEco;
+    const prevFeatCompanyAlerts = bg.querySelector('.wia-feat-company-alerts')?.checked ?? CONFIG.featCompanyAlerts;
     const prevFeatOrderRadar = bg.querySelector('.wia-feat-order-radar')?.checked ?? CONFIG.featOrderRadar;
     const prevFeatTroopRadar = bg.querySelector('.wia-feat-troop-radar')?.checked ?? CONFIG.featTroopRadar;
     const prevFeatProfileCharsheet = bg.querySelector('.wia-feat-profile-charsheet')?.checked ?? CONFIG.featProfileCharsheet;
@@ -6050,6 +6056,21 @@ async function scanInventory(force) {
               <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
             </div>
             <div class="wia-hint" hidden>${t('settingsFeatPnlTrackerHint')}</div>
+          </div>
+          <div class="wia-feat-row" style="margin-top: 6px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <input type="checkbox" class="wia-feat-company-eco" style="width: auto;" ${prevFeatCompanyEco ? 'checked' : ''} />
+              <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatCompanyEco')}</label>
+            </div>
+          </div>
+          <div class="wia-feat-row" style="margin-top: 6px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <input type="checkbox" class="wia-feat-company-alerts" style="width: auto;" ${prevFeatCompanyAlerts ? 'checked' : ''} />
+              <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatCompanyAlerts')}</label>
+            </div>
+            <div style="margin-left: 20px; margin-top: 4px;">
+              <button class="wia-test-btn wia-test-company-alert" style="background: rgba(148,163,184,.1); border: 1px solid rgba(148,163,184,.3); color: #c9d1d9; border-radius: 4px; padding: 2px 6px; font-size: 10px; cursor: pointer;">Send Test Alert</button>
+            </div>
           </div>
         </details>
         <details class="wia-category-misc" style="margin-top: 10px; border-top: 1px solid rgba(148,163,184,.15); padding-top: 10px; margin-bottom: 10px;">
@@ -7583,6 +7604,59 @@ function updateObserverTarget() {
   const NOTES_DEBOUNCE  = 150;
   const NOTES_HOVER_GRACE_MS = 1500; // how long the empty pencil icon stays visible after the mouse leaves
 
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Company Alerts (E9)
+  // ───────────────────────────────────────────────────────────────────────────
+  const ecoAlertPollMs = 5 * 60 * 1000;
+  let ecoAlertState = {};
+  let ecoAlertInterval = null;
+
+  async function ecoAlertPoll() {
+    if (!CONFIG.featCompanyAlerts) return;
+    const userId = getCurrentUserId();
+    if (!userId) return;
+
+    try {
+      const { payload: companiesRes } = await resolveApiBase('company.getCompanies', { userId });
+      if (!companiesRes || !companiesRes.items) return;
+
+      for (const compInfo of companiesRes.items) {
+        if (!compInfo._id) continue;
+        
+        await new Promise(r => setTimeout(r, 600)); // space out API calls
+        
+        const { payload: details } = await resolveApiBase('company.getById', { companyId: compInfo._id });
+        if (!details) continue;
+
+        const full = details.isFull === true || 
+          (details.productionPoints !== undefined && details.storage !== undefined && details.productionPoints >= details.storage && details.storage > 0);
+
+        if (!ecoAlertState[compInfo._id]) ecoAlertState[compInfo._id] = { full: false };
+        
+        const prevState = ecoAlertState[compInfo._id].full;
+        if (full && !prevState) {
+          sendPersonalNtfy('Storage', `WareEra - Storage Full`, `Company ${details.name || 'Unknown'} is full and has stopped producing!`, 'factory,warning', 4);
+        }
+        ecoAlertState[compInfo._id].full = full;
+      }
+      setHealth('companyAlerts', 'ok', 'polled ' + companiesRes.items.length + ' companies');
+    } catch (e) {
+      console.warn('[PROST] eco: alert poll failed', e);
+      setHealth('companyAlerts', 'warn', e.message);
+    }
+  }
+
+  function initCompanyAlerts() {
+    if (ecoAlertInterval) clearInterval(ecoAlertInterval);
+    ecoAlertInterval = setInterval(ecoAlertPoll, ecoAlertPollMs);
+    setTimeout(ecoAlertPoll, 8000); // initial run after boot
+  }
+
+  function teardownCompanyAlerts() {
+    if (ecoAlertInterval) clearInterval(ecoAlertInterval);
+    ecoAlertInterval = null;
+  }
 
   // ───────────────────────────────────────────────────────────────────────────
   // Company Economy (Wave 1)
@@ -17092,6 +17166,7 @@ function checkInventoryDeltaWear() {
     regFeature('bountyNotify', 'Bounty-Push');
     regFeature('tour', 'Tour of Beers');
     regFeature('companyEco', 'Company Economy');
+    regFeature('companyAlerts', 'Company Alerts');
     // one-shot onboarding prompt, once the game shell (avatar) is present
     (function scheduleTourPrompt() {
       let tries = 0;
