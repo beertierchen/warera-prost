@@ -10019,7 +10019,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       }
       const loot = skills.lootChance?.level || 0;
 
-      if (loot > 4) {
+      if (loot / 8 >= progressionLevel / 50) {
         if (progressionLevel < 15) archetype = 'profileClassOpportunist';
         else if (progressionLevel < 20) archetype = 'profileClassFortuneHunter';
         else if (progressionLevel < 25) archetype = 'profileClassGambler';
