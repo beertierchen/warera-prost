@@ -8165,108 +8165,51 @@ function updateObserverTarget() {
       '</span>';
   }
 
-  function ecoReadInventory(mainWin) {
-    const inv = {};
-    const coinPath = Array.from(mainWin.querySelectorAll('svg path')).find(p => p.getAttribute('d')?.startsWith('M12 5C7.031'));
-    if (!coinPath) return inv;
+  // Augment the native top-bar inventory numbers in-place with the daily net
+  // balance (like the coworker energy chip): a small colored "+N/d" / "-N/d"
+  // appended after each item's own count. No separate tile.
+  function ecoAugmentInventory(mainWin, balances) {
+    const coinPath = Array.from(mainWin.querySelectorAll('svg path'))
+      .find(p => p.getAttribute('d')?.startsWith('M12 5C7.031'));
+    if (!coinPath) return;
     let topBar = coinPath;
     for (let i = 0; i < 4 && topBar; i++) topBar = topBar.parentElement;
-    if (!topBar) return inv;
+    if (!topBar) return;
 
-    const imgs = topBar.querySelectorAll('img[alt]');
-    for (const img of imgs) {
+    for (const img of topBar.querySelectorAll('img[alt]')) {
       const code = img.getAttribute('alt');
       if (!code) continue;
-      let node = img;
-      let found = false;
-      for (let i = 0; i < 6 && node; i++) {
+      // the native count span nearest the icon (digits/commas/dots only)
+      let numSpan = null, node = img;
+      for (let i = 0; i < 6 && node && !numSpan; i++) {
         node = node.parentElement;
         if (!node) break;
         const spans = Array.from(node.querySelectorAll('span'));
         for (let j = spans.length - 1; j >= 0; j--) {
-          const txt = spans[j].textContent.trim();
-          if (/^[\\d,.]+$/.test(txt)) {
-            inv[code] = parseFloat(txt.replace(/,/g, ''));
-            found = true;
-            break;
-          }
+          if (/^[\d.,]+$/.test(spans[j].textContent.trim())) { numSpan = spans[j]; break; }
         }
-        if (found) break;
       }
-    }
-    return inv;
-  }
+      if (!numSpan) continue;
+      const host = numSpan.parentElement || numSpan;
 
-  function ecoRenderResourceBalances(mainWin, balances, invStock) {
-    let container = document.getElementById('wia-eco-resource-balances');
-    if (!container) {
-      container = document.createElement('div');
-      container.id = 'wia-eco-resource-balances';
-      container.style.cssText = 'display:flex; align-items:center; flex-wrap:wrap; gap:16px; padding:8px 12px; margin-bottom:12px; background:rgba(0,0,0,0.25); border-radius:8px; font-size:13px; font-weight:600;';
+      const bal = balances[code];
+      let tag = host.querySelector(':scope > .wia-eco-inv-net');
+      if (bal == null || Math.abs(bal) < 0.1) { if (tag) tag.remove(); continue; }
 
-      const inv = document.getElementById('companies-inventory');
-      if (inv && inv.parentElement) {
-        inv.parentElement.parentNode.insertBefore(container, inv.parentElement.nextSibling);
-      } else {
-        mainWin.insertBefore(container, mainWin.firstChild);
+      const pos = bal >= 0;
+      const sig = (pos ? '+' : '') + bal.toFixed(1);
+      if (!tag) {
+        tag = document.createElement('span');
+        tag.className = 'wia-eco-inv-net';
+        tag.style.cssText = 'margin-left:4px; font-size:0.8em; font-weight:700; white-space:nowrap;';
+        tag.title = 'PROST — est. net/day from your companies (before wages)';
+        host.appendChild(tag);
       }
-    }
-
-    const sortedRes = Object.keys(balances).filter(r => Math.abs(balances[r]) >= 0.1).sort();
-    
-    // sig to prevent loops
-    const sig = sortedRes.map(r => r + ':' + balances[r].toFixed(1) + ':' + (invStock[r]||0)).join('|');
-    if (container.dataset.wiaSig === sig) return;
-    container.dataset.wiaSig = sig;
-
-    container.innerHTML = '<span style="color:#9aa4b2; margin-right:4px;">Daily Resource Balance:</span>';
-
-    if (sortedRes.length === 0) {
-      container.innerHTML += '<span style="color:#6b7280;">None</span>';
-      return;
-    }
-
-    // Append items
-    for (const res of sortedRes) {
-      const val = balances[res];
-      const pos = val >= 0;
-      
-      const stock = invStock[res] || 0;
-      const missing = (!pos && stock + val < 0) 
-        ? Math.abs(stock + val) 
-        : 0;
-
-      const color = missing > 0 ? '#f87171' : (pos ? '#4ade80' : '#f87171');
-      const sign = pos ? '+' : '';
-      
-      const itemSpan = document.createElement('span');
-      itemSpan.style.cssText = `display:inline-flex; align-items:center; gap:4px; color:${color};`;
-      
-      // Try to clone icon from page
-      const iconTpl = document.querySelector(`img[alt="${res}"]`);
-      if (iconTpl) {
-        const icon = iconTpl.cloneNode(true);
-        icon.style.cssText = 'width:16px; height:16px; object-fit:contain; flex-shrink:0;';
-        itemSpan.appendChild(icon);
-      } else {
-        const textIcon = document.createElement('span');
-        textIcon.textContent = res;
-        textIcon.style.color = '#e5e7eb';
-        itemSpan.appendChild(textIcon);
+      if (tag.dataset.sig !== sig) {
+        tag.dataset.sig = sig;
+        tag.style.color = pos ? '#4ade80' : '#f87171';
+        tag.textContent = (pos ? '+' : '') + bal.toFixed(1) + '/d';
       }
-      
-      const textVal = document.createElement('span');
-      textVal.textContent = `${sign}${val.toFixed(1)}/d`;
-      itemSpan.appendChild(textVal);
-
-      if (missing > 0) {
-        const missSpan = document.createElement('span');
-        missSpan.style.cssText = 'background:rgba(248,113,113,0.15); color:#f87171; padding:0 4px; border-radius:4px; font-size:11px; margin-left:2px; font-weight:700; border: 1px solid rgba(248,113,113,0.3);';
-        missSpan.textContent = `-${missing.toFixed(1)} fehlen`;
-        itemSpan.appendChild(missSpan);
-      }
-      
-      container.appendChild(itemSpan);
     }
   }
 
@@ -8305,8 +8248,7 @@ function updateObserverTarget() {
 
     if (shown > 0) ecoRenderStrip(mainWin, shown, earning, losing, total);
     
-    const invStock = ecoReadInventory(mainWin);
-    ecoRenderResourceBalances(mainWin, balances, invStock);
+    ecoAugmentInventory(mainWin, balances);
 
     setHealth('companyProfit', shown > 0 ? 'ok' : 'idle', shown > 0 ? 'profits injected' : 'no priced owned cards');
 
@@ -8407,6 +8349,10 @@ function updateObserverTarget() {
     const strip = (typeof document !== 'undefined' && document.getElementById)
       ? document.getElementById('wia-eco-portfolio-strip') : null;
     if (strip) strip.remove();
+    // inline inventory net-tags live in the persistent top bar → clear on leave
+    if (typeof document !== 'undefined' && document.querySelectorAll) {
+      document.querySelectorAll('.wia-eco-inv-net').forEach(el => el.remove());
+    }
     // owned-cache resets so a route/profile switch re-fetches the right owner
     ecoOwnedCache.ids = null; ecoOwnedCache.userId = null; ecoOwnedCache.at = 0;
 
