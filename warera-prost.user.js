@@ -14,6 +14,7 @@
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_xmlhttpRequest
+// @grant        GM_notification
 // @grant        GM_registerMenuCommand
 // @grant        unsafeWindow
 // @connect      api2.warera.io
@@ -81,6 +82,7 @@
     featItemAdvisor: true,
     featCraftingAdvisor: true,
     featCompanyEco: true,
+    featCompanyAlerts: true,
     ecoTaxTtlMs: 1800000,
     ecoRecipeTtlMs: 6 * 3600 * 1000,
     ecoDetailTtlMs: 60000,
@@ -1002,6 +1004,7 @@
     ntfy429Streak: NS + 'ntfy429Streak',
     stockKeepCount: NS + 'stockKeepCount',
     featCompanyEco: NS + 'featCompanyEco',
+    featCompanyAlerts: NS + 'featCompanyAlerts',
     ecoCountryTax: NS + 'ecoCountryTax',
     ecoRegionCountry: NS + 'ecoRegionCountry',
     featNotes: NS + 'featNotes',
@@ -17128,6 +17131,7 @@ function checkInventoryDeltaWear() {
     CONFIG.featItemAdvisor = GM_getValue(KEYS.featItemAdvisor, true);
     CONFIG.featCraftingAdvisor = GM_getValue(KEYS.featCraftingAdvisor, true);
     CONFIG.featCompanyEco = GM_getValue(KEYS.featCompanyEco, true);
+    CONFIG.featCompanyAlerts = GM_getValue(KEYS.featCompanyAlerts, true);
     CONFIG.featSystemAlerts = GM_getValue(KEYS.featSystemAlerts, true);
     CONFIG.pillBuffH = GM_getValue(KEYS.pillBuffH, CONFIG.pillBuffH);
     CONFIG.pillKnifeH = GM_getValue(KEYS.pillKnifeH, CONFIG.pillKnifeH);
