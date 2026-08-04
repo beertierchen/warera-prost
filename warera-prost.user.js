@@ -8077,14 +8077,52 @@ function updateObserverTarget() {
     const dayItems = recipe.productionPoints ? pointsPerDay / recipe.productionPoints : 0;
     const net = perItemNet * dayItems;
 
-    return { priced: true, net, sellPrice, marketTax, matCost, perItemNet, engineDaily, bonus, pointsPerDay, dayItems, taxKnown, itemCode: details.itemCode, inputs: recipe.inputs };
+    // storage runway: the DOM production bar shows "current / maxCap" (points).
+    // once full, the Automated Engine stops → hoursToFull = (cap − current)/pointsPerDay.
+    const hoursToFull = ecoStorageHoursToFull(id, pointsPerDay);
+
+    return { priced: true, net, sellPrice, marketTax, matCost, perItemNet, engineDaily, bonus, pointsPerDay, dayItems, taxKnown, hoursToFull, itemCode: details.itemCode, inputs: recipe.inputs };
+  }
+
+  // Parse a game number span like "800", "1K", "1.5K", "2M" → Number.
+  function ecoParseNum(s) {
+    const m = /([\d.]+)\s*([KM]?)/i.exec(String(s || '').replace(/[,\s/]/g, ''));
+    if (!m) return 0;
+    let n = parseFloat(m[1]);
+    const u = m[2].toUpperCase();
+    if (u === 'K') n *= 1e3; else if (u === 'M') n *= 1e6;
+    return n;
+  }
+
+  // Hours until the Automated Engine fills the production storage. null if unknown,
+  // 0 if already full, Infinity if the engine isn't producing.
+  function ecoStorageHoursToFull(id, pointsPerDay) {
+    const cur = document.getElementById('company-production-' + id);
+    if (!cur) return null;
+    const capSpan = cur.nextElementSibling;         // the "/800" (or "/1K") span
+    if (!capSpan) return null;
+    const current = ecoParseNum(cur.textContent);   // accumulated points now
+    const cap = ecoParseNum(capSpan.textContent);   // storage capacity
+    if (!(cap > 0)) return null;
+    if (current >= cap) return 0;
+    if (!(pointsPerDay > 0)) return Infinity;
+    return ((cap - current) / pointsPerDay) * 24;
   }
 
   // Idempotent, diff-guarded badge inside the card's chip row.
+  // "Storage full in ~Xh" line + whether to flag the badge.
+  function ecoStorageInfo(h) {
+    if (h == null || h === Infinity) return { line: '', warn: false };
+    if (h <= 0) return { line: '\n⚠ Storage FULL — collect (PRODUCE) to keep producing', warn: true };
+    const txt = h < 48 ? `~${h.toFixed(1)} h` : `~${(h / 24).toFixed(1)} d`;
+    return { line: `\nStorage: full in ${txt} (engine stops until you collect)`, warn: h < 3 };
+  }
+
   function ecoRenderBadge(chipEl, d) {
     let badge = chipEl.querySelector(':scope > .wia-eco-profit-badge');
     const pos = d && d.priced && d.net >= 0;
-    const sig = (d && d.priced) ? (pos ? '+' : '') + d.net.toFixed(1) : 'na';
+    const store = (d && d.priced) ? ecoStorageInfo(d.hoursToFull) : { line: '', warn: false };
+    const sig = (d && d.priced) ? (pos ? '+' : '') + d.net.toFixed(1) + (store.warn ? '!' : '') : 'na';
     if (!badge) {
       badge = document.createElement('span');
       badge.className = 'wia-eco-profit-badge';
@@ -8095,11 +8133,13 @@ function updateObserverTarget() {
     badge.dataset.sig = sig;
     if (d && d.priced) {
       badge.style.color = pos ? '#4ade80' : '#f87171';
-      badge.innerHTML = ECO_COIN_SVG + (pos ? '+' : '') + d.net.toFixed(1) + '/d';
+      badge.innerHTML = ECO_COIN_SVG + (pos ? '+' : '') + d.net.toFixed(1) + '/d' +
+        (store.warn ? ' <span style="color:#f59e0b;">⚠</span>' : '');
       badge.title = 'Est. net/day — before wages\n' +
         `Per item: ${d.sellPrice.toFixed(3)} sell ·(1−${d.marketTax}% tax) − ${d.matCost.toFixed(3)} mat = ${d.perItemNet.toFixed(3)}\n` +
         `Throughput: ${d.engineDaily} PP ×(1+${d.bonus}%) = ${d.pointsPerDay.toFixed(0)} PP/day → ${d.dayItems.toFixed(1)} items/day\n` +
         `Net: ${d.perItemNet.toFixed(3)} × ${d.dayItems.toFixed(1)} = ${d.net.toFixed(1)}/day` +
+        store.line +
         (d.taxKnown ? '' : '\n(tax still loading…)');
     } else {
       badge.style.color = '#9ca3af';
