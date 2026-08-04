@@ -2943,7 +2943,7 @@
         const { payload } = await resolveApiBase('transaction.getPaginatedTransactions', {
           limit: 100,
           itemCode: code
-        }, { gatewayOnly: true });
+        } /*, { gatewayOnly: true } - disabled due to gateway instability */);
         const items = payload?.items || [];
 
         const type = getTypeFromCode(code);
@@ -13110,7 +13110,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
           itemCode: code,
           transactionType: 'trading',
           cursor: cursor || undefined
-        }, { gatewayOnly: true });
+        } /*, { gatewayOnly: true } - disabled due to gateway instability */);
         return {
           items: payload?.items || [],
           nextCursor: payload?.nextCursor || null
@@ -14787,7 +14787,7 @@ function processTransactionsList(items, userId) {
         const all = [];
         for (let page = 0; page < MAX_PAGES; page++) {
           const args = cursor ? { limit: 100, userId, cursor } : { limit: 100, userId };
-          const { payload } = await resolveApiBase('transaction.getPaginatedTransactions', args, { gatewayOnly: true });
+          const { payload } = await resolveApiBase('transaction.getPaginatedTransactions', args /*, { gatewayOnly: true } - disabled due to gateway instability */);
           const items = payload?.items || [];
           if (!items.length) break;
           const firstId = normalizeDbId(items[0]._id || items[0].id);
