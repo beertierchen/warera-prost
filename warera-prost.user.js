@@ -474,8 +474,10 @@
         settingsFeatPillNotifHnH: 'H&H full notifications (ntfy.sh)',
         settingsFeatPillNotifWindow: 'Preferred pill window notifications (ntfy.sh)',
         settingsFeatPillNotifDebuff: 'Debuff expired notifications (ntfy.sh)',
-        settingsFeatCompanyEco: 'Enable Company Economy overlay (E1-E6)',
-        settingsFeatCompanyAlerts: 'Enable Company Storage Alerts (E9)',
+        settingsFeatCompanyEco: 'Enable Company Economy overlay',
+        settingsFeatCompanyEcoHint: 'Shows net profit and storage capacity on companies, energy pills on coworkers, and job offer minimum wage checks.',
+        settingsFeatCompanyAlerts: 'Enable Company Storage Alerts',
+        settingsFeatCompanyAlertsHint: 'Sends a desktop and ntfy.sh notification when a company is completely full and stops producing (checked every 5 mins in the background).',
         settingsFeatMuHealDim: 'Dim MU heal request while debuffed / at full HP',
         muHealDimReasonDebuff: 'debuff active',
         muHealDimReasonFullHP: 'HP full',
@@ -799,8 +801,10 @@
         settingsFeatPillNotifHnH: 'H&H voll Benachrichtigungen (ntfy.sh)',
         settingsFeatPillNotifWindow: 'Bevorzugtes Pillenfenster Benachrichtigungen (ntfy.sh)',
         settingsFeatPillNotifDebuff: 'Debuff abgelaufen Benachrichtigungen (ntfy.sh)',
-        settingsFeatCompanyEco: 'Firmen-Ökonomie Overlay (E1-E6) aktivieren',
-        settingsFeatCompanyAlerts: 'Firmen-Lager Warnungen (E9) aktivieren',
+        settingsFeatCompanyEco: 'Firmen-Ökonomie Overlay aktivieren',
+        settingsFeatCompanyEcoHint: 'Zeigt Nettoprofit und Lagerkapazität bei eigenen Firmen, Energie-Pillen bei Mitarbeitern und prüft Gehaltsangebote.',
+        settingsFeatCompanyAlerts: 'Firmen-Lager Warnungen aktivieren',
+        settingsFeatCompanyAlertsHint: 'Sendet eine Desktop- und ntfy.sh Benachrichtigung, wenn ein Firmenlager voll ist und die Produktion stoppt (wird alle 5 Min. im Hintergrund geprüft).',
         settingsFeatMuHealDim: 'MU-Heilung ausgrauen während Debuff / bei vollem Leben',
         muHealDimReasonDebuff: 'Pillen-Debuff aktiv',
         muHealDimReasonFullHP: 'Leben voll',
@@ -6061,16 +6065,17 @@ async function scanInventory(force) {
             <div style="display: flex; align-items: center; gap: 8px;">
               <input type="checkbox" class="wia-feat-company-eco" style="width: auto;" ${prevFeatCompanyEco ? 'checked' : ''} />
               <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatCompanyEco')}</label>
+              <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
             </div>
+            <div class="wia-hint" hidden>${t('settingsFeatCompanyEcoHint')}</div>
           </div>
           <div class="wia-feat-row" style="margin-top: 6px;">
             <div style="display: flex; align-items: center; gap: 8px;">
               <input type="checkbox" class="wia-feat-company-alerts" style="width: auto;" ${prevFeatCompanyAlerts ? 'checked' : ''} />
               <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatCompanyAlerts')}</label>
+              <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
             </div>
-            <div style="margin-left: 20px; margin-top: 4px;">
-              <button class="wia-test-btn wia-test-company-alert" style="background: rgba(148,163,184,.1); border: 1px solid rgba(148,163,184,.3); color: #c9d1d9; border-radius: 4px; padding: 2px 6px; font-size: 10px; cursor: pointer;">Send Test Alert</button>
-            </div>
+            <div class="wia-hint" hidden>${t('settingsFeatCompanyAlertsHint')}</div>
           </div>
         </details>
         <details class="wia-category-misc" style="margin-top: 10px; border-top: 1px solid rgba(148,163,184,.15); padding-top: 10px; margin-bottom: 10px;">
@@ -6130,6 +6135,7 @@ async function scanInventory(force) {
                 <button type="button" class="wia-test-notif-hnh" style="font-size: 11px; padding: 3px 8px; cursor: pointer; color: #10b981; background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.2); border-radius: 3px;">HP & Hunger voll</button>
                 <button type="button" class="wia-test-notif-window" style="font-size: 11px; padding: 3px 8px; cursor: pointer; color: #fbbf24; background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.2); border-radius: 3px;">Pillenfenster</button>
                 <button type="button" class="wia-test-notif-debuff" style="font-size: 11px; padding: 3px 8px; cursor: pointer; color: #8b5cf6; background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.2); border-radius: 3px;">Debuff abgelaufen</button>
+                <button type="button" class="wia-test-company-alert" style="font-size: 11px; padding: 3px 8px; cursor: pointer; color: #f43f5e; background: rgba(244,63,94,0.1); border: 1px solid rgba(244,63,94,0.2); border-radius: 3px;">Firmenlager voll</button>
               </div>
             </details>
           </div>

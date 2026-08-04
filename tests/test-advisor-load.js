@@ -701,7 +701,7 @@ try {
   assert.ok(modalEl, 'Settings modal should be rendered');
 
   const hintBtns = bg.querySelectorAll('.wia-hint-toggle');
-  assert.strictEqual(hintBtns.length, 10, 'Should have exactly 10 hint toggle buttons (Notes, Battle, Profile Charsheet, Pill Reminder, Market Graph, P&L Tracker, Order Radar, Troop Radar, Item Advisor, Crafting Advisor)');
+  assert.strictEqual(hintBtns.length, 12, 'Should have exactly 12 hint toggle buttons (Notes, Battle, Profile Charsheet, Pill Reminder, Market Graph, P&L Tracker, Order Radar, Troop Radar, Item Advisor, Crafting Advisor, Company Eco, Company Alerts)');
 
   const featPillCheckbox = bg.querySelector('.wia-feat-pill');
   const featMarketGraphCheckbox = bg.querySelector('.wia-feat-market-graph');
