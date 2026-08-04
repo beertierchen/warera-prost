@@ -475,9 +475,8 @@
         settingsFeatPillNotifWindow: 'Preferred pill window notifications (ntfy.sh)',
         settingsFeatPillNotifDebuff: 'Debuff expired notifications (ntfy.sh)',
         settingsFeatCompanyEco: 'Enable Company Economy overlay',
-        settingsFeatCompanyEcoHint: 'Shows net profit and storage capacity on companies, energy pills on coworkers, and job offer minimum wage checks.',
-        settingsFeatCompanyAlerts: 'Enable Company Storage Alerts',
-        settingsFeatCompanyAlertsHint: 'Sends a desktop and ntfy.sh notification when a company is completely full and stops producing (checked every 5 mins in the background).',
+        settingsFeatCompanyEcoHint: 'Shows net profit and storage capacity on companies. If the bell icon is checked, it also sends a desktop & ntfy.sh alert when storage is full.',
+        settingsFeatCompanyAlertsInline: '🔔 Storage Alerts',
         settingsFeatMuHealDim: 'Dim MU heal request while debuffed / at full HP',
         muHealDimReasonDebuff: 'debuff active',
         muHealDimReasonFullHP: 'HP full',
@@ -802,9 +801,8 @@
         settingsFeatPillNotifWindow: 'Bevorzugtes Pillenfenster Benachrichtigungen (ntfy.sh)',
         settingsFeatPillNotifDebuff: 'Debuff abgelaufen Benachrichtigungen (ntfy.sh)',
         settingsFeatCompanyEco: 'Firmen-Ökonomie Overlay aktivieren',
-        settingsFeatCompanyEcoHint: 'Zeigt Nettoprofit und Lagerkapazität bei eigenen Firmen, Energie-Pillen bei Mitarbeitern und prüft Gehaltsangebote.',
-        settingsFeatCompanyAlerts: 'Firmen-Lager Warnungen aktivieren',
-        settingsFeatCompanyAlertsHint: 'Sendet eine Desktop- und ntfy.sh Benachrichtigung, wenn ein Firmenlager voll ist und die Produktion stoppt (wird alle 5 Min. im Hintergrund geprüft).',
+        settingsFeatCompanyEcoHint: 'Zeigt Nettoprofit und Lagerkapazität bei Firmen. Wenn die Glocke aktiviert ist, wird zusätzlich ein Alarm (Desktop & ntfy.sh) gesendet, sobald das Lager voll ist.',
+        settingsFeatCompanyAlertsInline: '🔔 Lager-Alarm',
         settingsFeatMuHealDim: 'MU-Heilung ausgrauen während Debuff / bei vollem Leben',
         muHealDimReasonDebuff: 'Pillen-Debuff aktiv',
         muHealDimReasonFullHP: 'Leben voll',
@@ -6066,16 +6064,11 @@ async function scanInventory(force) {
               <input type="checkbox" class="wia-feat-company-eco" style="width: auto;" ${prevFeatCompanyEco ? 'checked' : ''} />
               <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatCompanyEco')}</label>
               <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
+              <div style="width: 1px; height: 12px; background: rgba(148,163,184,.3); margin: 0 4px;"></div>
+              <input type="checkbox" class="wia-feat-company-alerts" style="width: auto;" ${prevFeatCompanyAlerts ? 'checked' : ''} />
+              <label style="margin: 0; font-weight: normal; cursor: pointer; color: #8b949e; font-size: 11px;">${t('settingsFeatCompanyAlertsInline')}</label>
             </div>
             <div class="wia-hint" hidden>${t('settingsFeatCompanyEcoHint')}</div>
-          </div>
-          <div class="wia-feat-row" style="margin-top: 6px;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <input type="checkbox" class="wia-feat-company-alerts" style="width: auto;" ${prevFeatCompanyAlerts ? 'checked' : ''} />
-              <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatCompanyAlerts')}</label>
-              <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
-            </div>
-            <div class="wia-hint" hidden>${t('settingsFeatCompanyAlertsHint')}</div>
           </div>
         </details>
         <details class="wia-category-misc" style="margin-top: 10px; border-top: 1px solid rgba(148,163,184,.15); padding-top: 10px; margin-bottom: 10px;">
