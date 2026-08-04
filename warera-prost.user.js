@@ -7613,7 +7613,7 @@ function updateObserverTarget() {
     '.54v3a20.994 20.994 0 0 0 4-.541v-3a20.994 20.994 0 0 1-4 .541zm6-1.181v3c1.801-.755 3-1.857 3-3.297v-3c0 ' +
     '1.44-1.199 2.542-3 3.297zm-14 3v-3C3.2 13.542 2 12.439 2 11v3c0 1.439 1.2 2.542 3 3.297z"></path></svg>';
 
-  function renderNetLine(netLine, wage, rate, resolved) {
+  function renderNetLine(netLine, wage, rate, resolved, top3Min) {
     const label = '<span style="color:#e5e7eb;font-weight:600;">Net (tax excl.):</span> ';
     let valueHTML = '';
     if (rate == null) {
@@ -7630,9 +7630,18 @@ function updateObserverTarget() {
     }
 
     const badgeHTML = '<span style="border: 1px solid #7c3aed; color: #a78bfa; padding: 2px 6px; font-size: 9px; font-weight: 700; border-radius: 4px; letter-spacing: 0.5px;">PROST</span>';
-    const newHTML = '<div>' + label + valueHTML + '</div>' + badgeHTML;
+    
+    let warnHTML = '';
+    if (top3Min !== null && !isNaN(wage) && wage > 0 && wage < top3Min) {
+      warnHTML = '<div style="width:100%; color:#f87171; font-size:11px; font-weight:700; margin-top:6px; text-align:right;">⚠ Uncompetitive (Top 3 min: ' + top3Min + ')</div>';
+    }
+
+    const newHTML = '<div style="display:flex; justify-content:space-between; align-items:center; width:100%;">' +
+                      '<div>' + label + valueHTML + '</div>' + badgeHTML + 
+                    '</div>' + warnHTML;
 
     if (netLine.innerHTML !== newHTML) {
+      netLine.style.flexWrap = 'wrap'; // allow warnHTML to break to next line
       netLine.innerHTML = newHTML;
     }
   }
@@ -7675,6 +7684,26 @@ function updateObserverTarget() {
     return null;
   }
 
+  function extractTop3Minimum(modal) {
+    const allText = modal.textContent;
+    const idx = allText.toLowerCase().indexOf('top 3');
+    if (idx === -1) return null;
+    
+    // Look at text *after* "top 3"
+    const afterText = allText.substring(idx);
+    
+    // Find all numbers formatted as floats (e.g. 0.1150)
+    const matches = afterText.match(/\b\d+\.\d+\b/g);
+    if (!matches || matches.length === 0) return null;
+    
+    const numbers = matches.map(Number).filter(n => n > 0 && n < 100); // sanity check
+    if (numbers.length === 0) return null;
+    
+    // the top 3 are usually the first 1-3 numbers found after the text
+    const topOffers = numbers.slice(0, 3);
+    return Math.min(...topOffers);
+  }
+
   function handleWageInputUpdate() {
     if (!companyEcoModalNode) return;
     const wageInput = companyEcoModalNode.querySelector('input[name="wage"]');
@@ -7685,7 +7714,18 @@ function updateObserverTarget() {
     const wage = parseFloat(wageStr);
     const rate = netLine.dataset.taxRate ? parseFloat(netLine.dataset.taxRate) : null;
 
-    renderNetLine(netLine, wage, rate, companyEcoTaxResolved);
+    const top3Min = extractTop3Minimum(companyEcoModalNode);
+    renderNetLine(netLine, wage, rate, companyEcoTaxResolved, top3Min);
+    
+    if (wageInput) {
+      if (top3Min !== null && !isNaN(wage) && wage > 0 && wage < top3Min) {
+        wageInput.style.borderColor = '#f87171';
+        wageInput.style.borderWidth = '2px';
+      } else {
+        wageInput.style.borderColor = '';
+        wageInput.style.borderWidth = '';
+      }
+    }
   }
 
   async function fetchCompanyTaxRate(companyId) {
