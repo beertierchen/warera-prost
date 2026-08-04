@@ -165,8 +165,8 @@ const liveUser1Skills = {
 const liveUser1Class = globalThis.classifyWarskiller(liveUser1Skills);
 assert.strictEqual(liveUser1Class.isWarskiller, true);
 assert.strictEqual(liveUser1Class.build, 'war');
-assert.strictEqual(liveUser1Class.warSum, 39);
-assert.strictEqual(liveUser1Class.ecoSum, 7);
+assert.strictEqual(liveUser1Class.warSum, 54);
+assert.strictEqual(liveUser1Class.ecoSum, 2);
 
 const liveUser1Pill = globalThis.evaluatePillStatus(liveUser1Skills, liveUser1Skills.health, liveUser1Skills.hunger);
 assert.strictEqual(liveUser1Pill.state, 'pill-on');
@@ -188,9 +188,9 @@ const liveUser2Skills = {
 
 const liveUser2Class = globalThis.classifyWarskiller(liveUser2Skills);
 assert.strictEqual(liveUser2Class.isWarskiller, false);
-assert.strictEqual(liveUser2Class.build, 'eco');
-assert.strictEqual(liveUser2Class.emoji, '💰');
-assert.strictEqual(liveUser2Class.warSum, 2);
+assert.strictEqual(liveUser2Class.build, 'hybrid');
+assert.strictEqual(liveUser2Class.emoji, '⚖');
+assert.strictEqual(liveUser2Class.warSum, 4);
 assert.strictEqual(liveUser2Class.ecoSum, 6);
 
 const liveUser2Pill = globalThis.evaluatePillStatus(liveUser2Skills, liveUser2Skills.health, liveUser2Skills.hunger);

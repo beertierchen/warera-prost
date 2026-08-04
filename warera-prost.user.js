@@ -637,6 +637,54 @@
         profileClassWar: 'Warrior',
         profileClassHybrid: 'Mercenary',
         profileClassEco: 'Magnate',
+        profileClassBrawler: 'Brawler',
+        profileClassGunslinger: 'Gunslinger',
+        profileClassRifleman: 'Rifleman',
+        profileClassSniper: 'Sniper',
+        profileClassTankCommander: 'Tank Commander',
+        profileClassFighterPilot: 'Fighter Pilot',
+        profileClassThug: 'Thug',
+        profileClassMercenary: 'Mercenary',
+        profileClassBulwark: 'Bulwark',
+        profileClassJuggernaut: 'Juggernaut',
+        profileClassFortress: 'Fortress',
+        profileClassTitan: 'Titan',
+        profileClassThief: 'Thief',
+        profileClassScout: 'Scout',
+        profileClassSkirmisher: 'Skirmisher',
+        profileClassAssassin: 'Assassin',
+        profileClassPhantom: 'Phantom',
+        profileClassShadow: 'Shadow',
+        profileClassWorker: 'Worker',
+        profileClassShiftSupervisor: 'Shift Supervisor',
+        profileClassForeman: 'Foreman',
+        profileClassTechnician: 'Technician',
+        profileClassMasterCraftsman: 'Master Craftsman',
+        profileClassChiefEngineer: 'Chief Engineer',
+        profileClassTrader: 'Trader',
+        profileClassMerchant: 'Merchant',
+        profileClassEntrepreneur: 'Entrepreneur',
+        profileClassInvestor: 'Investor',
+        profileClassTycoon: 'Tycoon',
+        profileClassMagnate: 'Magnate',
+        profileClassOverseer: 'Overseer',
+        profileClassAdministrator: 'Administrator',
+        profileClassManager: 'Manager',
+        profileClassDirector: 'Director',
+        profileClassCEO: 'CEO',
+        profileClassChairman: 'Chairman',
+        profileClassAdventurer: 'Adventurer',
+        profileClassFreelancer: 'Freelancer',
+        profileClassVeteran: 'Veteran',
+        profileClassWarlord: 'Warlord',
+        profileClassSyndicateBoss: 'Syndicate Boss',
+        profileClassEmperor: 'Emperor',
+        profileClassOpportunist: 'Opportunist',
+        profileClassFortuneHunter: 'Fortune Hunter',
+        profileClassGambler: 'Gambler',
+        profileClassHighRoller: 'High Roller',
+        profileClassSpeculator: 'Speculator',
+        profileClassCasinoBoss: 'Casino Boss',
         profileHp: 'HP',
         profileHunger: 'Hunger',
         customBaselineTitle: 'Edit Baseline-Set',
@@ -963,6 +1011,54 @@
         profileClassWar: 'Krieger',
         profileClassHybrid: 'Söldner',
         profileClassEco: 'Magnat',
+        profileClassBrawler: 'Raufbold',
+        profileClassGunslinger: 'Revolverheld',
+        profileClassRifleman: 'Schütze',
+        profileClassSniper: 'Scharfschütze',
+        profileClassTankCommander: 'Panzerfahrer',
+        profileClassFighterPilot: 'Kampfjet-Pilot',
+        profileClassThug: 'Schläger',
+        profileClassMercenary: 'Söldner',
+        profileClassBulwark: 'Bollwerk',
+        profileClassJuggernaut: 'Juggernaut',
+        profileClassFortress: 'Festung',
+        profileClassTitan: 'Titan',
+        profileClassThief: 'Dieb',
+        profileClassScout: 'Späher',
+        profileClassSkirmisher: 'Plänkler',
+        profileClassAssassin: 'Assassine',
+        profileClassPhantom: 'Phantom',
+        profileClassShadow: 'Schatten',
+        profileClassWorker: 'Arbeiter',
+        profileClassShiftSupervisor: 'Schichtleiter',
+        profileClassForeman: 'Vorarbeiter',
+        profileClassTechnician: 'Techniker',
+        profileClassMasterCraftsman: 'Meister',
+        profileClassChiefEngineer: 'Chefingenieur',
+        profileClassTrader: 'Händler',
+        profileClassMerchant: 'Kaufmann',
+        profileClassEntrepreneur: 'Unternehmer',
+        profileClassInvestor: 'Investor',
+        profileClassTycoon: 'Tycoon',
+        profileClassMagnate: 'Magnat',
+        profileClassOverseer: 'Aufseher',
+        profileClassAdministrator: 'Verwalter',
+        profileClassManager: 'Manager',
+        profileClassDirector: 'Direktor',
+        profileClassCEO: 'Geschäftsführer',
+        profileClassChairman: 'Vorstand',
+        profileClassAdventurer: 'Abenteurer',
+        profileClassFreelancer: 'Freiberufler',
+        profileClassVeteran: 'Veteran',
+        profileClassWarlord: 'Warlord',
+        profileClassSyndicateBoss: 'Syndikat-Boss',
+        profileClassEmperor: 'Imperator',
+        profileClassOpportunist: 'Opportunist',
+        profileClassFortuneHunter: 'Glücksritter',
+        profileClassGambler: 'Zocker',
+        profileClassHighRoller: 'Hasardeur',
+        profileClassSpeculator: 'Spekulant',
+        profileClassCasinoBoss: 'Casino-Boss',
         profileHp: 'Leben',
         profileHunger: 'Hunger',
         customBaselineTitle: 'Baseline-Set bearbeiten',
@@ -9809,17 +9905,22 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
 
   function classifyWarskiller(skills) {
     if (!skills || typeof skills !== 'object') {
-      return { isWarskiller: false, warShare: 0, ecoShare: 0, warSum: 0, ecoSum: 0, totalPoints: 0, build: 'eco', emoji: '💰', label: 'Eco' };
+      return { isWarskiller: false, warShare: 0, ecoShare: 0, warSum: 0, ecoSum: 0, totalPoints: 0, build: 'eco', emoji: '💰', label: 'Eco', archetype: 'profileClassWorker' };
     }
     const warSum = (skills.attack?.level || 0) +
                    (skills.criticalChance?.level || 0) +
                    (skills.criticalDamages?.level || 0) +
                    (skills.precision?.level || 0) +
                    (skills.armor?.level || 0) +
-                   (skills.dodge?.level || 0);
-    const ecoSum = (skills.companies?.level || 0) +
-                   (skills.management?.level || 0) +
+                   (skills.dodge?.level || 0) +
+                   (skills.health?.level || 0) +
+                   (skills.hunger?.level || 0) +
                    (skills.lootChance?.level || 0);
+    const ecoSum = (skills.entrepreneurship?.level || 0) +
+                   (skills.energy?.level || 0) +
+                   (skills.production?.level || 0) +
+                   (skills.companies?.level || 0) +
+                   (skills.management?.level || 0);
     const totalPoints = warSum + ecoSum;
     const warShare = totalPoints > 0 ? warSum / totalPoints : 0;
     const ecoShare = totalPoints > 0 ? ecoSum / totalPoints : 0;
@@ -9828,22 +9929,96 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     let isWarskiller = false;
     let emoji = '💰';
     let label = 'Eco';
+    let archetype = 'profileClassWorker';
+    let progressionLevel = 0;
 
     if (warShare >= 0.75) {
       build = 'war';
       isWarskiller = true;
       emoji = '💥';
       label = 'WAR';
-    } else if (warShare > 0.25 && ecoShare < 0.75) {
-      build = 'hybrid';
-      isWarskiller = false;
-      emoji = '⚖';
-      label = 'Hybrid';
-    } else {
+      const atk = skills.attack?.level || 0;
+      const arm = skills.armor?.level || 0;
+      const dge = skills.dodge?.level || 0;
+      progressionLevel = atk;
+      
+      if (arm >= atk * 0.3 && arm > dge) {
+        if (progressionLevel < 15) archetype = 'profileClassThug';
+        else if (progressionLevel < 20) archetype = 'profileClassMercenary';
+        else if (progressionLevel < 25) archetype = 'profileClassBulwark';
+        else if (progressionLevel < 30) archetype = 'profileClassJuggernaut';
+        else if (progressionLevel < 40) archetype = 'profileClassFortress';
+        else archetype = 'profileClassTitan';
+      } else if (dge >= atk * 0.3 && dge > arm) {
+        if (progressionLevel < 15) archetype = 'profileClassThief';
+        else if (progressionLevel < 20) archetype = 'profileClassScout';
+        else if (progressionLevel < 25) archetype = 'profileClassSkirmisher';
+        else if (progressionLevel < 30) archetype = 'profileClassAssassin';
+        else if (progressionLevel < 40) archetype = 'profileClassPhantom';
+        else archetype = 'profileClassShadow';
+      } else {
+        if (progressionLevel < 15) archetype = 'profileClassBrawler';
+        else if (progressionLevel < 20) archetype = 'profileClassGunslinger';
+        else if (progressionLevel < 25) archetype = 'profileClassRifleman';
+        else if (progressionLevel < 30) archetype = 'profileClassSniper';
+        else if (progressionLevel < 40) archetype = 'profileClassTankCommander';
+        else archetype = 'profileClassFighterPilot';
+      }
+    } else if (ecoShare >= 0.75) {
       build = 'eco';
       isWarskiller = false;
       emoji = '💰';
       label = 'Eco';
+      progressionLevel = Math.max(skills.energy?.level || 0, skills.production?.level || 0, skills.companies?.level || 0);
+
+      const mgmt = skills.management?.level || 0;
+      const comp = skills.companies?.level || 0;
+
+      if (mgmt >= 1) {
+        if (mgmt < 2) archetype = 'profileClassOverseer';
+        else if (mgmt < 3) archetype = 'profileClassAdministrator';
+        else if (mgmt < 4) archetype = 'profileClassManager';
+        else if (mgmt < 5) archetype = 'profileClassDirector';
+        else if (mgmt < 6) archetype = 'profileClassCEO';
+        else archetype = 'profileClassChairman';
+      } else if (comp / 10 > progressionLevel / 50) {
+        if (comp < 3) archetype = 'profileClassTrader';
+        else if (comp < 5) archetype = 'profileClassMerchant';
+        else if (comp < 7) archetype = 'profileClassEntrepreneur';
+        else if (comp < 9) archetype = 'profileClassInvestor';
+        else if (comp < 10) archetype = 'profileClassTycoon';
+        else archetype = 'profileClassMagnate';
+      } else {
+        if (progressionLevel < 15) archetype = 'profileClassWorker';
+        else if (progressionLevel < 20) archetype = 'profileClassShiftSupervisor';
+        else if (progressionLevel < 25) archetype = 'profileClassForeman';
+        else if (progressionLevel < 30) archetype = 'profileClassTechnician';
+        else if (progressionLevel < 40) archetype = 'profileClassMasterCraftsman';
+        else archetype = 'profileClassChiefEngineer';
+      }
+    } else {
+      build = 'hybrid';
+      isWarskiller = false;
+      emoji = '⚖';
+      label = 'Hybrid';
+      progressionLevel = Math.max(skills.attack?.level || 0, skills.companies?.level || 0, skills.management?.level || 0, skills.energy?.level || 0);
+      const loot = skills.lootChance?.level || 0;
+
+      if (loot > 4) {
+        if (progressionLevel < 15) archetype = 'profileClassOpportunist';
+        else if (progressionLevel < 20) archetype = 'profileClassFortuneHunter';
+        else if (progressionLevel < 25) archetype = 'profileClassGambler';
+        else if (progressionLevel < 30) archetype = 'profileClassHighRoller';
+        else if (progressionLevel < 40) archetype = 'profileClassSpeculator';
+        else archetype = 'profileClassCasinoBoss';
+      } else {
+        if (progressionLevel < 15) archetype = 'profileClassAdventurer';
+        else if (progressionLevel < 20) archetype = 'profileClassFreelancer';
+        else if (progressionLevel < 25) archetype = 'profileClassVeteran';
+        else if (progressionLevel < 30) archetype = 'profileClassWarlord';
+        else if (progressionLevel < 40) archetype = 'profileClassSyndicateBoss';
+        else archetype = 'profileClassEmperor';
+      }
     }
 
     return {
@@ -9855,7 +10030,8 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       totalPoints,
       build,
       emoji,
-      label
+      label,
+      archetype
     };
   }
 
@@ -11259,10 +11435,10 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
   let profileCharsheetActiveUserId = null;
   let profileCharsheetReqId = 0;
 
-  function profileClassMeta(build) {
-    if (build === 'war')    return { titleKey: 'profileClassWar',    color: '#e05a45' };
-    if (build === 'hybrid') return { titleKey: 'profileClassHybrid', color: '#8a6fc0' };
-    return { titleKey: 'profileClassEco', color: '#b8912b' };
+  function profileClassMeta(build, archetype) {
+    if (build === 'war')    return { titleKey: archetype || 'profileClassWar',    color: '#e05a45' };
+    if (build === 'hybrid') return { titleKey: archetype || 'profileClassHybrid', color: '#8a6fc0' };
+    return { titleKey: archetype || 'profileClassEco', color: '#b8912b' };
   }
 
   // Anchor: the "Ausrüstung"/"Equipment" section is the first card in the profile
@@ -11307,7 +11483,8 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       anchor.column.insertBefore(el, anchor.before);
     }
     const build = member.build || 'eco';
-    const meta = profileClassMeta(build);
+    const archetype = member.archetype || 'profileClassWorker';
+    const meta = profileClassMeta(build, archetype);
     el.style.setProperty('--cls', meta.color);
     const share = build === 'eco' ? (member.ecoShare || 0) : (member.warShare || 0);
     const pct = Math.round((Number.isFinite(share) ? share : 0) * 100);
