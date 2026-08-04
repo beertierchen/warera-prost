@@ -656,6 +656,7 @@
         profileClassPhantom: 'Phantom',
         profileClassShadow: 'Shadow',
         profileClassWorker: 'Worker',
+        profileClassCreator: '🍻 PROST Brewmaster',
         profileClassShiftSupervisor: 'Shift Supervisor',
         profileClassForeman: 'Foreman',
         profileClassTechnician: 'Technician',
@@ -1030,6 +1031,7 @@
         profileClassPhantom: 'Phantom',
         profileClassShadow: 'Schatten',
         profileClassWorker: 'Arbeiter',
+        profileClassCreator: '🍻 PROST-Braumeister',
         profileClassShiftSupervisor: 'Schichtleiter',
         profileClassForeman: 'Vorarbeiter',
         profileClassTechnician: 'Techniker',
@@ -10445,9 +10447,13 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       const hunger = skills.hunger || {};
       const charLevel = payload?.leveling?.level || payload?.user?.leveling?.level || 0;
       const warskillerInfo = classifyWarskiller(skills, charLevel);
-      const pillInfo = evaluatePillStatus(skills, health, hunger);
-
       const username = payload?.username || payload?.user?.username || payload?.name;
+      if (username && username.toLowerCase() === 'biertierchen') {
+        warskillerInfo.archetype = 'profileClassCreator';
+        warskillerInfo.emoji = '🍻';
+        warskillerInfo.label = 'PROST';
+      }
+      const pillInfo = evaluatePillStatus(skills, health, hunger);
       const buffsObj = payload?.buffs || {};
       const combat = {
         attackValue: skills.attack?.value ?? null,
@@ -10550,9 +10556,13 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
               const hunger = skills.hunger || {};
               const charLevel = memberObj?.leveling?.level || memberObj?.user?.leveling?.level || 0;
               const warskillerInfo = classifyWarskiller(skills, charLevel);
-              const pillInfo = evaluatePillStatus(skills, health, hunger);
-
               const username = payload?.username || payload?.user?.username || payload?.name;
+              if (username && username.toLowerCase() === 'biertierchen') {
+                warskillerInfo.archetype = 'profileClassCreator';
+                warskillerInfo.emoji = '🍻';
+                warskillerInfo.label = 'PROST';
+              }
+              const pillInfo = evaluatePillStatus(skills, health, hunger);
               const buffsObj = payload?.buffs || {};
               const combat = {
                 attackValue: skills.attack?.value ?? null,
