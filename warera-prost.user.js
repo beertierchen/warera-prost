@@ -7744,17 +7744,17 @@ function updateObserverTarget() {
 
       for (const compInfo of companiesRes.items) {
         if (!compInfo._id) continue;
-        
+
         await new Promise(r => setTimeout(r, 600)); // space out API calls
-        
+
         const { payload: details } = await resolveApiBase('company.getById', { companyId: compInfo._id });
         if (!details) continue;
 
-        const full = details.isFull === true || 
+        const full = details.isFull === true ||
           (details.productionPoints !== undefined && details.storage !== undefined && details.productionPoints >= details.storage && details.storage > 0);
 
         if (!ecoAlertState[compInfo._id]) ecoAlertState[compInfo._id] = { full: false };
-        
+
         const prevState = ecoAlertState[compInfo._id].full;
         if (full && !prevState) {
           sendPersonalNtfy('Storage', `WareEra - Storage Full`, `Company ${details.name || 'Unknown'} is full and has stopped producing!`, 'factory,warning', 4);
@@ -7828,14 +7828,14 @@ function updateObserverTarget() {
     }
 
     const badgeHTML = '<span style="border: 1px solid #7c3aed; color: #a78bfa; padding: 2px 6px; font-size: 9px; font-weight: 700; border-radius: 4px; letter-spacing: 0.5px;">PROST</span>';
-    
+
     let warnHTML = '';
     if (top3Min !== null && !isNaN(wage) && wage > 0 && wage < top3Min) {
       warnHTML = '<div style="width:100%; color:#f87171; font-size:11px; font-weight:700; margin-top:6px; text-align:right;">⚠ Uncompetitive (Top 3 min: ' + top3Min + ')</div>';
     }
 
     const newHTML = '<div style="display:flex; justify-content:space-between; align-items:center; width:100%;">' +
-                      '<div>' + label + valueHTML + '</div>' + badgeHTML + 
+                      '<div>' + label + valueHTML + '</div>' + badgeHTML +
                     '</div>' + warnHTML;
 
     if (netLine.innerHTML !== newHTML) {
@@ -7886,17 +7886,17 @@ function updateObserverTarget() {
     const allText = modal.textContent;
     const idx = allText.toLowerCase().indexOf('top 3');
     if (idx === -1) return null;
-    
+
     // Look at text *after* "top 3"
     const afterText = allText.substring(idx);
-    
+
     // Find all numbers formatted as floats (e.g. 0.1150)
     const matches = afterText.match(/\b\d+\.\d+\b/g);
     if (!matches || matches.length === 0) return null;
-    
+
     const numbers = matches.map(Number).filter(n => n > 0 && n < 100); // sanity check
     if (numbers.length === 0) return null;
-    
+
     // the top 3 are usually the first 1-3 numbers found after the text
     const topOffers = numbers.slice(0, 3);
     return Math.min(...topOffers);
@@ -7914,7 +7914,7 @@ function updateObserverTarget() {
 
     const top3Min = extractTop3Minimum(companyEcoModalNode);
     renderNetLine(netLine, wage, rate, companyEcoTaxResolved, top3Min);
-    
+
     if (wageInput) {
       if (top3Min !== null && !isNaN(wage) && wage > 0 && wage < top3Min) {
         wageInput.style.borderColor = '#f87171';
@@ -8351,14 +8351,14 @@ function updateObserverTarget() {
     let profitBadge = chipEl.querySelector(':scope > .wia-eco-profit-badge');
     const pos = d && d.priced && d.net >= 0;
     const sigProfit = (d && d.priced) ? (pos ? '+' : '') + d.net.toFixed(1) : 'na';
-    
+
     if (!profitBadge) {
       profitBadge = document.createElement('span');
       profitBadge.className = 'wia-eco-profit-badge';
       profitBadge.style.cssText = 'margin-left:6px; padding:0 5px; border-radius:4px; font-weight:700; font-size:0.82em; display:inline-flex; align-items:center; gap:2px; cursor:help; background:rgba(0,0,0,0.35);';
       chipEl.appendChild(profitBadge);
     }
-    
+
     if (profitBadge.dataset.sig !== sigProfit) {
       profitBadge.dataset.sig = sigProfit;
       if (d && d.priced) {
@@ -8387,14 +8387,14 @@ function updateObserverTarget() {
     const txt = isFull ? 'FULL' : (h < 48 ? `${h.toFixed(1)}h` : `${(h / 24).toFixed(1)}d`);
     const warn = isFull || h < 3;
     const sigStore = txt + '|' + warn;
-    
+
     if (!storageBadge) {
       storageBadge = document.createElement('span');
       storageBadge.className = 'wia-eco-storage-badge';
       storageBadge.style.cssText = 'margin-left:4px; padding:0 5px; border-radius:4px; font-weight:700; font-size:0.82em; display:inline-flex; align-items:center; gap:3px; cursor:help; background:rgba(0,0,0,0.35);';
       chipEl.appendChild(storageBadge);
     }
-    
+
     if (storageBadge.dataset.sig !== sigStore) {
       storageBadge.dataset.sig = sigStore;
       storageBadge.style.color = isFull ? '#f87171' : (warn ? '#facc15' : '#9ca3af');
@@ -8543,7 +8543,7 @@ function updateObserverTarget() {
     }
 
     if (shown > 0) ecoRenderStrip(mainWin, shown, earning, losing, total);
-    
+
     ecoAugmentInventory(mainWin, balances);
 
     setHealth('companyProfit', shown > 0 ? 'ok' : 'idle', shown > 0 ? 'profits injected' : 'no priced owned cards');
@@ -9962,16 +9962,16 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       const atk = skills.attack?.level || 0;
       const arm = skills.armor?.level || 0;
       const dge = skills.dodge?.level || 0;
-      
+
       const crt = skills.criticalChance?.level || 0;
       const cdm = skills.criticalDamages?.level || 0;
       const prc = skills.precision?.level || 0;
-      
+
       if (progressionLevel === 0) progressionLevel = atk;
-      
+
       const offSum = atk + crt + cdm + prc;
       const defSum = arm + dge;
-      
+
       if (defSum >= offSum * 0.5) {
         if (arm >= dge) {
           if (progressionLevel < 15) archetype = 'profileClassThug';
@@ -10069,7 +10069,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
         return hash >>> 0;
       };
       const h = hashUid(uid);
-      
+
       if (h === 4192061616) {
         archetype = 'profileClassCreator';
         emoji = '🍻';
@@ -10154,6 +10154,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       isWarskiller: false,
       build: 'eco',
       archetype: 'profileClassWorker',
+      supporterAdjectiveIndex: -1,
       pillState: 'pill-cd',
       pillReady: false,
       buffEndAt: null,
@@ -10543,6 +10544,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
         isWarskiller: warskillerInfo.isWarskiller,
         build: warskillerInfo.build,
         archetype: warskillerInfo.archetype,
+        supporterAdjectiveIndex: warskillerInfo.supporterAdjectiveIndex,
         buildEmoji: warskillerInfo.emoji,
         buildLabel: warskillerInfo.label,
         pillState: pillInfo.state,
@@ -10648,6 +10650,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
                 isWarskiller: warskillerInfo.isWarskiller,
                 build: warskillerInfo.build,
                 archetype: warskillerInfo.archetype,
+                supporterAdjectiveIndex: warskillerInfo.supporterAdjectiveIndex,
                 buildEmoji: warskillerInfo.emoji,
                 buildLabel: warskillerInfo.label,
                 pillState: pillInfo.state,
