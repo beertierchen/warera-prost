@@ -78,9 +78,9 @@ setPath('/');                      assert.strictEqual(globalThis.isUserProfilePa
 console.log('Test 3: profileClassMeta build mapping...');
 assert.deepStrictEqual(globalThis.profileClassMeta('war'),    { titleKey: 'profileClassWar',    color: '#e05a45' });
 assert.deepStrictEqual(globalThis.profileClassMeta('hybrid'), { titleKey: 'profileClassHybrid', color: '#8a6fc0' });
-assert.deepStrictEqual(globalThis.profileClassMeta('eco'),    { titleKey: 'profileClassEco',    color: '#b8912b' });
+assert.deepStrictEqual(globalThis.profileClassMeta('eco', null), { titleKey: 'profileClassWorker', color: '#b8912b' });
 // unknown build defaults to eco (never throws / NaN)
-assert.deepStrictEqual(globalThis.profileClassMeta(undefined), { titleKey: 'profileClassEco', color: '#b8912b' });
+assert.deepStrictEqual(globalThis.profileClassMeta(undefined), { titleKey: 'profileClassWorker', color: '#b8912b' });
 
 // Test 4: renderProfileCharsheet is NaN-safe (no anchor → no-op, no throw)
 console.log('Test 4: renderProfileCharsheet safe with zero/degraded input...');

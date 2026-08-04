@@ -11441,7 +11441,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
   function profileClassMeta(build, archetype) {
     if (build === 'war')    return { titleKey: archetype || 'profileClassWar',    color: '#e05a45' };
     if (build === 'hybrid') return { titleKey: archetype || 'profileClassHybrid', color: '#8a6fc0' };
-    return { titleKey: archetype || 'profileClassEco', color: '#b8912b' };
+    return { titleKey: archetype || 'profileClassWorker', color: '#b8912b' };
   }
 
   // Anchor: the "Ausrüstung"/"Equipment" section is the first card in the profile
@@ -11486,7 +11486,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       anchor.column.insertBefore(el, anchor.before);
     }
     const build = member.build || 'eco';
-    const archetype = member.archetype || 'profileClassWorker';
+    const archetype = member.archetype || null;
     const meta = profileClassMeta(build, archetype);
     el.style.setProperty('--cls', meta.color);
     const share = build === 'eco' ? (member.ecoShare || 0) : (member.warShare || 0);
