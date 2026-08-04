@@ -10060,15 +10060,25 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
 
     let supporterAdjectiveIndex = -1;
     if (uid) {
-      if (uid === '69fa68b7b1c4942142eb2942') {
+      const hashUid = (str) => {
+        let hash = 2166136261;
+        for (let i = 0; i < str.length; i++) {
+          hash ^= str.charCodeAt(i);
+          hash = Math.imul(hash, 16777619);
+        }
+        return hash >>> 0;
+      };
+      const h = hashUid(uid);
+      
+      if (h === 4192061616) {
         archetype = 'profileClassCreator';
         emoji = '🍻';
         label = 'PROST';
       } else {
         const SUPPORTERS = [
-          // 'uid1', 'uid2'
+          // Add hashed UIDs here (e.g. 123456789)
         ];
-        if (SUPPORTERS.includes(uid)) {
+        if (SUPPORTERS.includes(h)) {
           supporterAdjectiveIndex = parseInt(uid.slice(-4), 16) % 10;
           emoji = '💖';
         }
