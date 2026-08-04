@@ -632,6 +632,16 @@
         troopRadarPillOffShort: 'unpilled',
         settingsFeatTroopRadarCheckbox: 'Troop-Radar (MU Member List & Header)',
         settingsFeatTroopRadarHint: 'Displays member combat readiness (HP, pill status, skill orientation) in MU member lists and header.',
+        supporterAdj0: '(Legendary)',
+        supporterAdj1: '(Glorious)',
+        supporterAdj2: '(Honorable)',
+        supporterAdj3: '(Valiant)',
+        supporterAdj4: '(Exalted)',
+        supporterAdj5: '(Royal)',
+        supporterAdj6: '(Mystic)',
+        supporterAdj7: '(Fearless)',
+        supporterAdj8: '(Masterful)',
+        supporterAdj9: '(Invincible)',
         settingsFeatProfileCharsheetCheckbox: 'Character Sheet Strip (Player Profiles)',
         settingsFeatProfileCharsheetHint: 'Shows a DnD-style RPG character sheet (HP, Hunger, build orientation) on player profile pages.',
         profileClassWar: 'Warrior',
@@ -1007,6 +1017,16 @@
         troopRadarPillOffShort: 'ungepillt',
         settingsFeatTroopRadarCheckbox: 'Truppen-Radar (MU-Member-Liste & Header)',
         settingsFeatTroopRadarHint: 'Zeigt Kampfbereitschaft (HP, Pillen-Status, Skill-Klasse) in MU-Mitgliederlisten und Header an.',
+        supporterAdj0: '(Legendär)',
+        supporterAdj1: '(Glorreich)',
+        supporterAdj2: '(Ehrenhaft)',
+        supporterAdj3: '(Tapfer)',
+        supporterAdj4: '(Erhaben)',
+        supporterAdj5: '(Königlich)',
+        supporterAdj6: '(Mystisch)',
+        supporterAdj7: '(Furchtlos)',
+        supporterAdj8: '(Meisterhaft)',
+        supporterAdj9: '(Unbezwingbar)',
         settingsFeatProfileCharsheetCheckbox: 'Charakterbogen-Strip (Spieler-Profile)',
         settingsFeatProfileCharsheetHint: 'Zeigt einen DnD-artigen Charakterbogen (Leben, Hunger, Skill-Klasse) auf Spieler-Profilseiten.',
         profileClassWar: 'Krieger',
@@ -9905,9 +9925,9 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     activeBaselineSet = val;
   }
 
-  function classifyWarskiller(skills, charLevel = 0) {
+  function classifyWarskiller(skills, charLevel = 0, uid = null) {
     if (!skills || typeof skills !== 'object') {
-      return { isWarskiller: false, warShare: 0, ecoShare: 0, warSum: 0, ecoSum: 0, totalPoints: 0, build: 'eco', emoji: '💰', label: 'Eco', archetype: 'profileClassWorker' };
+      return { isWarskiller: false, warShare: 0, ecoShare: 0, warSum: 0, ecoSum: 0, totalPoints: 0, build: 'eco', emoji: '💰', label: 'Eco', archetype: 'profileClassWorker', supporterAdjectiveIndex: -1 };
     }
     let progressionLevel = charLevel > 0 ? charLevel : 0;
     const warSum = (skills.attack?.level || 0) +
@@ -10038,17 +10058,42 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       }
     }
 
+    let supporterAdjectiveIndex = -1;
+    if (uid) {
+      const hashUid = (str) => {
+        let hash = 2166136261;
+        for (let i = 0; i < str.length; i++) {
+          hash ^= str.charCodeAt(i);
+          hash = Math.imul(hash, 16777619);
+        }
+        return hash >>> 0;
+      };
+      const h = hashUid(uid);
+      
+      if (h === 4192061616) {
+        archetype = 'profileClassCreator';
+        emoji = '🍻';
+        label = 'PROST';
+      } else {
+        const SUPPORTERS = [];
+        if (SUPPORTERS.includes(h)) {
+          supporterAdjectiveIndex = parseInt(uid.slice(-4), 16) % 10;
+        }
+      }
+    }
+
     return {
       isWarskiller,
-      warShare,
-      ecoShare,
+      warShare: Math.round(warShare * 100) / 100,
+      ecoShare: Math.round(ecoShare * 100) / 100,
       warSum,
       ecoSum,
       totalPoints,
       build,
       emoji,
       label,
-      archetype
+      archetype,
+      supporterAdjectiveIndex
     };
   }
 
@@ -10446,13 +10491,9 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       const health = skills.health || {};
       const hunger = skills.hunger || {};
       const charLevel = payload?.leveling?.level || payload?.user?.leveling?.level || 0;
-      const warskillerInfo = classifyWarskiller(skills, charLevel);
+      const uid = payload?._id || payload?.user?._id || null;
+      const warskillerInfo = classifyWarskiller(skills, charLevel, uid);
       const username = payload?.username || payload?.user?.username || payload?.name;
-      if (username && username.toLowerCase() === 'biertierchen') {
-        warskillerInfo.archetype = 'profileClassCreator';
-        warskillerInfo.emoji = '🍻';
-        warskillerInfo.label = 'PROST';
-      }
       const pillInfo = evaluatePillStatus(skills, health, hunger);
       const buffsObj = payload?.buffs || {};
       const combat = {
@@ -10555,13 +10596,9 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
               const health = skills.health || {};
               const hunger = skills.hunger || {};
               const charLevel = memberObj?.leveling?.level || memberObj?.user?.leveling?.level || 0;
-              const warskillerInfo = classifyWarskiller(skills, charLevel);
+              const uid = memberObj?._id || memberObj?.user?._id || null;
+              const warskillerInfo = classifyWarskiller(skills, charLevel, uid);
               const username = payload?.username || payload?.user?.username || payload?.name;
-              if (username && username.toLowerCase() === 'biertierchen') {
-                warskillerInfo.archetype = 'profileClassCreator';
-                warskillerInfo.emoji = '🍻';
-                warskillerInfo.label = 'PROST';
-              }
               const pillInfo = evaluatePillStatus(skills, health, hunger);
               const buffsObj = payload?.buffs || {};
               const combat = {
@@ -11530,7 +11567,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       <span class="wia-cs-badge">PROST</span>
       <div class="wia-cs-title">
         <span class="wia-cs-rune">✦</span>
-        <span class="wia-cs-word">${t(meta.titleKey)}</span>
+        <span class="wia-cs-word">${member.supporterAdjectiveIndex >= 0 ? t('supporterAdj' + member.supporterAdjectiveIndex) + ' ' : ''}${t(meta.titleKey)}</span>
         <span class="wia-cs-rune">✦</span>
         <span class="wia-cs-share">${buildLabel} · ${pct}%</span>
       </div>
