@@ -9941,22 +9941,31 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       const arm = skills.armor?.level || 0;
       const dge = skills.dodge?.level || 0;
       
+      const crt = skills.criticalChance?.level || 0;
+      const cdm = skills.criticalDamages?.level || 0;
+      const prc = skills.precision?.level || 0;
+      
       if (progressionLevel === 0) progressionLevel = atk;
       
-      if (arm >= atk * 0.3 && arm > dge) {
-        if (progressionLevel < 15) archetype = 'profileClassThug';
-        else if (progressionLevel < 20) archetype = 'profileClassMercenary';
-        else if (progressionLevel < 25) archetype = 'profileClassBulwark';
-        else if (progressionLevel < 30) archetype = 'profileClassJuggernaut';
-        else if (progressionLevel < 40) archetype = 'profileClassFortress';
-        else archetype = 'profileClassTitan';
-      } else if (dge >= atk * 0.3 && dge > arm) {
-        if (progressionLevel < 15) archetype = 'profileClassThief';
-        else if (progressionLevel < 20) archetype = 'profileClassScout';
-        else if (progressionLevel < 25) archetype = 'profileClassSkirmisher';
-        else if (progressionLevel < 30) archetype = 'profileClassAssassin';
-        else if (progressionLevel < 40) archetype = 'profileClassPhantom';
-        else archetype = 'profileClassShadow';
+      const offSum = atk + crt + cdm + prc;
+      const defSum = arm + dge;
+      
+      if (defSum >= offSum * 0.5) {
+        if (arm >= dge) {
+          if (progressionLevel < 15) archetype = 'profileClassThug';
+          else if (progressionLevel < 20) archetype = 'profileClassMercenary';
+          else if (progressionLevel < 25) archetype = 'profileClassBulwark';
+          else if (progressionLevel < 30) archetype = 'profileClassJuggernaut';
+          else if (progressionLevel < 40) archetype = 'profileClassFortress';
+          else archetype = 'profileClassTitan';
+        } else {
+          if (progressionLevel < 15) archetype = 'profileClassThief';
+          else if (progressionLevel < 20) archetype = 'profileClassScout';
+          else if (progressionLevel < 25) archetype = 'profileClassSkirmisher';
+          else if (progressionLevel < 30) archetype = 'profileClassAssassin';
+          else if (progressionLevel < 40) archetype = 'profileClassPhantom';
+          else archetype = 'profileClassShadow';
+        }
       } else {
         if (progressionLevel < 15) archetype = 'profileClassBrawler';
         else if (progressionLevel < 20) archetype = 'profileClassGunslinger';
