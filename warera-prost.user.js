@@ -632,16 +632,16 @@
         troopRadarPillOffShort: 'unpilled',
         settingsFeatTroopRadarCheckbox: 'Troop-Radar (MU Member List & Header)',
         settingsFeatTroopRadarHint: 'Displays member combat readiness (HP, pill status, skill orientation) in MU member lists and header.',
-        supporterAdj0: '(Legendary)',
-        supporterAdj1: '(Glorious)',
-        supporterAdj2: '(Honorable)',
-        supporterAdj3: '(Valiant)',
-        supporterAdj4: '(Exalted)',
-        supporterAdj5: '(Royal)',
-        supporterAdj6: '(Mystic)',
-        supporterAdj7: '(Fearless)',
-        supporterAdj8: '(Masterful)',
-        supporterAdj9: '(Invincible)',
+        supporterAdj0: 'Legendary',
+        supporterAdj1: 'Glorious',
+        supporterAdj2: 'Honorable',
+        supporterAdj3: 'Valiant',
+        supporterAdj4: 'Relentless',
+        supporterAdj5: 'Feared',
+        supporterAdj6: 'Unstoppable',
+        supporterAdj7: 'Fearless',
+        supporterAdj8: 'Masterful',
+        supporterAdj9: 'Invincible',
         settingsFeatProfileCharsheetCheckbox: 'Character Sheet Strip (Player Profiles)',
         settingsFeatProfileCharsheetHint: 'Shows a DnD-style RPG character sheet (HP, Hunger, build orientation) on player profile pages.',
         profileClassWar: 'Warrior',
@@ -1017,16 +1017,16 @@
         troopRadarPillOffShort: 'ungepillt',
         settingsFeatTroopRadarCheckbox: 'Truppen-Radar (MU-Member-Liste & Header)',
         settingsFeatTroopRadarHint: 'Zeigt Kampfbereitschaft (HP, Pillen-Status, Skill-Klasse) in MU-Mitgliederlisten und Header an.',
-        supporterAdj0: '(Legendär)',
-        supporterAdj1: '(Glorreich)',
-        supporterAdj2: '(Ehrenhaft)',
-        supporterAdj3: '(Tapfer)',
-        supporterAdj4: '(Erhaben)',
-        supporterAdj5: '(Königlich)',
-        supporterAdj6: '(Mystisch)',
-        supporterAdj7: '(Furchtlos)',
-        supporterAdj8: '(Meisterhaft)',
-        supporterAdj9: '(Unbezwingbar)',
+        supporterAdj0: 'Legendärer',
+        supporterAdj1: 'Glorreicher',
+        supporterAdj2: 'Ehrenhafter',
+        supporterAdj3: 'Tapferer',
+        supporterAdj4: 'Unerbittlicher',
+        supporterAdj5: 'Gefürchteter',
+        supporterAdj6: 'Unaufhaltsamer',
+        supporterAdj7: 'Furchtloser',
+        supporterAdj8: 'Meisterhafter',
+        supporterAdj9: 'Unbezwingbarer',
         settingsFeatProfileCharsheetCheckbox: 'Charakterbogen-Strip (Spieler-Profile)',
         settingsFeatProfileCharsheetHint: 'Zeigt einen DnD-artigen Charakterbogen (Leben, Hunger, Skill-Klasse) auf Spieler-Profilseiten.',
         profileClassWar: 'Krieger',
@@ -10060,24 +10060,17 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
 
     let supporterAdjectiveIndex = -1;
     if (uid) {
-      const hashUid = (str) => {
-        let hash = 2166136261;
-        for (let i = 0; i < str.length; i++) {
-          hash ^= str.charCodeAt(i);
-          hash = Math.imul(hash, 16777619);
-        }
-        return hash >>> 0;
-      };
-      const h = hashUid(uid);
-      
-      if (h === 4192061616) {
+      if (uid === '69fa68b7b1c4942142eb2942') {
         archetype = 'profileClassCreator';
         emoji = '🍻';
         label = 'PROST';
       } else {
-        const SUPPORTERS = [];
-        if (SUPPORTERS.includes(h)) {
+        const SUPPORTERS = [
+          // 'uid1', 'uid2'
+        ];
+        if (SUPPORTERS.includes(uid)) {
           supporterAdjectiveIndex = parseInt(uid.slice(-4), 16) % 10;
+          emoji = '💖';
         }
       }
     }
