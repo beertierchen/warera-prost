@@ -9903,10 +9903,11 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     activeBaselineSet = val;
   }
 
-  function classifyWarskiller(skills) {
+  function classifyWarskiller(skills, charLevel = 0) {
     if (!skills || typeof skills !== 'object') {
       return { isWarskiller: false, warShare: 0, ecoShare: 0, warSum: 0, ecoSum: 0, totalPoints: 0, build: 'eco', emoji: '💰', label: 'Eco', archetype: 'profileClassWorker' };
     }
+    let progressionLevel = charLevel > 0 ? charLevel : 0;
     const warSum = (skills.attack?.level || 0) +
                    (skills.criticalChance?.level || 0) +
                    (skills.criticalDamages?.level || 0) +
@@ -9930,7 +9931,6 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     let emoji = '💰';
     let label = 'Eco';
     let archetype = 'profileClassWorker';
-    let progressionLevel = 0;
 
     if (warShare >= 0.75) {
       build = 'war';
@@ -9940,7 +9940,8 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       const atk = skills.attack?.level || 0;
       const arm = skills.armor?.level || 0;
       const dge = skills.dodge?.level || 0;
-      progressionLevel = atk;
+      
+      if (progressionLevel === 0) progressionLevel = atk;
       
       if (arm >= atk * 0.3 && arm > dge) {
         if (progressionLevel < 15) archetype = 'profileClassThug';
@@ -9969,7 +9970,10 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       isWarskiller = false;
       emoji = '💰';
       label = 'Eco';
-      progressionLevel = Math.max(skills.energy?.level || 0, skills.production?.level || 0, skills.companies?.level || 0);
+
+      if (progressionLevel === 0) {
+        progressionLevel = Math.max(skills.energy?.level || 0, skills.production?.level || 0, skills.companies?.level || 0);
+      }
 
       const mgmt = skills.management?.level || 0;
       const comp = skills.companies?.level || 0;
@@ -10001,7 +10005,9 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       isWarskiller = false;
       emoji = '⚖';
       label = 'Hybrid';
-      progressionLevel = Math.max(skills.attack?.level || 0, skills.companies?.level || 0, skills.management?.level || 0, skills.energy?.level || 0);
+      if (progressionLevel === 0) {
+        progressionLevel = Math.max(skills.attack?.level || 0, skills.companies?.level || 0, skills.management?.level || 0, skills.energy?.level || 0);
+      }
       const loot = skills.lootChance?.level || 0;
 
       if (loot > 4) {
@@ -10428,7 +10434,8 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       const skills = payload?.skills || {};
       const health = skills.health || {};
       const hunger = skills.hunger || {};
-      const warskillerInfo = classifyWarskiller(skills);
+      const charLevel = payload?.leveling?.level || payload?.user?.leveling?.level || 0;
+      const warskillerInfo = classifyWarskiller(skills, charLevel);
       const pillInfo = evaluatePillStatus(skills, health, hunger);
 
       const username = payload?.username || payload?.user?.username || payload?.name;
@@ -10532,7 +10539,8 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
               const skills = payload?.skills || {};
               const health = skills.health || {};
               const hunger = skills.hunger || {};
-              const warskillerInfo = classifyWarskiller(skills);
+              const charLevel = memberObj?.leveling?.level || memberObj?.user?.leveling?.level || 0;
+              const warskillerInfo = classifyWarskiller(skills, charLevel);
               const pillInfo = evaluatePillStatus(skills, health, hunger);
 
               const username = payload?.username || payload?.user?.username || payload?.name;

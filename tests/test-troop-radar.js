@@ -74,7 +74,7 @@ assert.strictEqual(eco85.build, 'eco');
 assert.strictEqual(eco85.emoji, '💰');
 assert.strictEqual(eco85.label, 'Eco');
 
-const emptySkills = globalThis.classifyWarskiller(null);
+const emptySkills = globalThis.classifyWarskiller(null, 0);
 assert.strictEqual(emptySkills.isWarskiller, false);
 assert.strictEqual(emptySkills.warShare, 0);
 
@@ -162,7 +162,7 @@ const liveUser1Skills = {
   management: { level: 0 }
 };
 
-const liveUser1Class = globalThis.classifyWarskiller(liveUser1Skills);
+const liveUser1Class = globalThis.classifyWarskiller(liveUser1Skills, 50);
 assert.strictEqual(liveUser1Class.isWarskiller, true);
 assert.strictEqual(liveUser1Class.build, 'war');
 assert.strictEqual(liveUser1Class.warSum, 54);
@@ -186,7 +186,7 @@ const liveUser2Skills = {
   management: { level: 0 }
 };
 
-const liveUser2Class = globalThis.classifyWarskiller(liveUser2Skills);
+const liveUser2Class = globalThis.classifyWarskiller(liveUser2Skills, 50);
 assert.strictEqual(liveUser2Class.isWarskiller, false);
 assert.strictEqual(liveUser2Class.build, 'hybrid');
 assert.strictEqual(liveUser2Class.emoji, '⚖');
