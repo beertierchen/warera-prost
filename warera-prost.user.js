@@ -8109,42 +8109,60 @@ function updateObserverTarget() {
     return ((cap - current) / pointsPerDay) * 24;
   }
 
-  // Idempotent, diff-guarded badge inside the card's chip row.
-  // "Storage full in ~Xh" line + whether to flag the badge.
-  function ecoStorageInfo(h) {
-    if (h == null || h === Infinity) return { line: '', warn: false };
-    if (h <= 0) return { line: '\n⚠ Storage FULL — collect (PRODUCE) to keep producing', warn: true };
-    const txt = h < 48 ? `~${h.toFixed(1)} h` : `~${(h / 24).toFixed(1)} d`;
-    return { line: `\nStorage: full in ${txt} (engine stops until you collect)`, warn: h < 3 };
-  }
-
   function ecoRenderBadge(chipEl, d) {
-    let badge = chipEl.querySelector(':scope > .wia-eco-profit-badge');
+    let profitBadge = chipEl.querySelector(':scope > .wia-eco-profit-badge');
     const pos = d && d.priced && d.net >= 0;
-    const store = (d && d.priced) ? ecoStorageInfo(d.hoursToFull) : { line: '', warn: false };
-    const sig = (d && d.priced) ? (pos ? '+' : '') + d.net.toFixed(1) + (store.warn ? '!' : '') : 'na';
-    if (!badge) {
-      badge = document.createElement('span');
-      badge.className = 'wia-eco-profit-badge';
-      badge.style.cssText = 'margin-left:6px; padding:0 5px; border-radius:4px; font-weight:700; font-size:0.82em; display:inline-flex; align-items:center; gap:2px; cursor:help; background:rgba(0,0,0,0.35);';
-      chipEl.appendChild(badge);
+    const sigProfit = (d && d.priced) ? (pos ? '+' : '') + d.net.toFixed(1) : 'na';
+    
+    if (!profitBadge) {
+      profitBadge = document.createElement('span');
+      profitBadge.className = 'wia-eco-profit-badge';
+      profitBadge.style.cssText = 'margin-left:6px; padding:0 5px; border-radius:4px; font-weight:700; font-size:0.82em; display:inline-flex; align-items:center; gap:2px; cursor:help; background:rgba(0,0,0,0.35);';
+      chipEl.appendChild(profitBadge);
     }
-    if (badge.dataset.sig === sig) return;
-    badge.dataset.sig = sig;
-    if (d && d.priced) {
-      badge.style.color = pos ? '#4ade80' : '#f87171';
-      badge.innerHTML = ECO_COIN_SVG + (pos ? '+' : '') + d.net.toFixed(1) + '/d' +
-        (store.warn ? ' <span style="color:#f59e0b;">⚠</span>' : '');
-      badge.title = 'Est. net/day — before wages\n' +
-        `Per item: ${d.sellPrice.toFixed(3)} sell ·(1−${d.marketTax}% tax) − ${d.matCost.toFixed(3)} mat = ${d.perItemNet.toFixed(3)}\n` +
-        `Throughput: ${d.engineDaily} PP ×(1+${d.bonus}%) = ${d.pointsPerDay.toFixed(0)} PP/day → ${d.dayItems.toFixed(1)} items/day\n` +
-        `Net: ${d.perItemNet.toFixed(3)} × ${d.dayItems.toFixed(1)} = ${d.net.toFixed(1)}/day` +
-        store.line +
-        (d.taxKnown ? '' : '\n(tax still loading…)');
-    } else {
-      badge.style.color = '#9ca3af';
-      badge.innerHTML = '—/d';
-      badge.title = 'No market price for this item — profit unknown';
+    
+    if (profitBadge.dataset.sig !== sigProfit) {
+      profitBadge.dataset.sig = sigProfit;
+      if (d && d.priced) {
+        profitBadge.style.color = pos ? '#4ade80' : '#f87171';
+        profitBadge.innerHTML = ECO_COIN_SVG + (pos ? '+' : '') + d.net.toFixed(1) + '/d';
+        profitBadge.title = 'Est. net/day — before wages\n' +
+          `Per item: ${d.sellPrice.toFixed(3)} sell ·(1−${d.marketTax}% tax) − ${d.matCost.toFixed(3)} mat = ${d.perItemNet.toFixed(3)}\n` +
+          `Throughput: ${d.engineDaily} PP ×(1+${d.bonus}%) = ${d.pointsPerDay.toFixed(0)} PP/day → ${d.dayItems.toFixed(1)} items/day\n` +
+          `Net: ${d.perItemNet.toFixed(3)} × ${d.dayItems.toFixed(1)} = ${d.net.toFixed(1)}/day` +
+          (d.taxKnown ? '' : '\n(tax still loading…)');
+      } else {
+        profitBadge.style.color = '#9ca3af';
+        profitBadge.innerHTML = '—/d';
+        profitBadge.title = 'No market price for this item — profit unknown';
+      }
+    }
+
+    let storageBadge = chipEl.querySelector(':scope > .wia-eco-storage-badge');
+    const h = d ? d.hoursToFull : null;
+    if (h == null || h === Infinity) {
+      if (storageBadge) storageBadge.remove();
+      return;
+    }
+
+    const isFull = h <= 0;
+    const txt = isFull ? 'FULL' : (h < 48 ? `${h.toFixed(1)}h` : `${(h / 24).toFixed(1)}d`);
+    const warn = isFull || h < 3;
+    const sigStore = txt + '|' + warn;
+    
+    if (!storageBadge) {
+      storageBadge = document.createElement('span');
+      storageBadge.className = 'wia-eco-storage-badge';
+      storageBadge.style.cssText = 'margin-left:4px; padding:0 5px; border-radius:4px; font-weight:700; font-size:0.82em; display:inline-flex; align-items:center; gap:3px; cursor:help; background:rgba(0,0,0,0.35);';
+      chipEl.appendChild(storageBadge);
+    }
+    
+    if (storageBadge.dataset.sig !== sigStore) {
+      storageBadge.dataset.sig = sigStore;
+      storageBadge.style.color = isFull ? '#f87171' : (warn ? '#facc15' : '#9ca3af');
+      const boxSvg = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>';
+      storageBadge.innerHTML = boxSvg + txt;
+      storageBadge.title = isFull ? 'Storage FULL — collect (PRODUCE) to keep producing' : `Storage full in ${txt} (engine stops until you collect)`;
     }
   }
 
