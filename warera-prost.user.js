@@ -10076,7 +10076,15 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
         label = 'PROST';
       } else {
         const SUPPORTERS = [
-          // Add hashed UIDs here (e.g. 123456789)
+          116223963,  // 6976105d8928a96cd233e7ee
+          1464792437, // 69b65b087903e4b84c806a75
+          285976846,  // 69f33095321a7db59a9fb05a
+          3211084130, // 69a6df1fd43e5d2935ed804c
+          2740677414, // 6a12f920d21301174f235ae3
+          858126142,  // 69a74c08df5814a035616dfc
+          1666352841, // 69a1d12f11bedb7dffae3caa
+          1150565605, // 698a09a853e92bbb585d32fc
+          2823877408  // 69a14b324d2abd93de74dc0a
         ];
         if (SUPPORTERS.includes(h)) {
           supporterAdjectiveIndex = parseInt(uid.slice(-4), 16) % 10;
