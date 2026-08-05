@@ -7869,7 +7869,7 @@ function updateObserverTarget() {
         await new Promise(r => setTimeout(r, 600));
 
         const { payload: comp } = await resolveApiBase('company.getById', { companyId: compInfo._id });
-        if (!comp || !comp.region) continue;
+        if (!comp || !comp.region || comp.disabledAt) continue;
 
         if (!state[comp._id]) state[comp._id] = {};
         const st = state[comp._id];
@@ -8547,7 +8547,7 @@ function updateObserverTarget() {
   function ecoComputeNet(id, chipEl, prices, recipes, engineLevels, regionCache, taxCache) {
     const details = ecoCompanyDetailCache.get(id)?.data;
     if (!details) return null;
-    if (details.disabledAt) return null;
+    if (details.disabledAt) return { disabled: true };
     const recipe = recipes[details.itemCode];
     if (!recipe) return null;
 
@@ -8630,6 +8630,16 @@ function updateObserverTarget() {
   }
 
   function ecoRenderBadge(chipEl, d) {
+    if (d && d.disabled) {
+      const p = chipEl.querySelector(':scope > .wia-eco-profit-badge');
+      if (p) p.remove();
+      const s = chipEl.querySelector(':scope > .wia-eco-storage-badge');
+      if (s) s.remove();
+      const db = chipEl.querySelector(':scope > .wia-eco-deposit-badge');
+      if (db) db.remove();
+      return;
+    }
+
     let profitBadge = chipEl.querySelector(':scope > .wia-eco-profit-badge');
     const pos = d && d.priced && d.net >= 0;
     const sigProfit = (d && d.priced) ? (pos ? '+' : '') + d.net.toFixed(1) : 'na';
