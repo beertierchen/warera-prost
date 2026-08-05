@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## 2026-08-05 | Hotfix: Deactivated Companies UI (v0.11.3)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`
+
+**Änderungen (Deutsch):**
+- **Bug Fix**: Zuvor hat der Berater bei deaktivierten Firmen fälschlicherweise eine graue `—/d` Pille angezeigt. Diese wird nun vollständig entfernt, sodass die Karte wieder im Originalzustand erscheint.
+- **Bug Fix**: Der Hintergrund-Tracker hat für deaktivierte Firmen weiterhin Warnungen für volle Lager an ntfy.sh gesendet. Dies wurde behoben.
+- **Feature**: In der Portfoliostatistik (Titelzeile) wird nun zusätzlich in Grau angezeigt, wie viele Firmen gerade deaktiviert sind.
+
+**Changes (English):**
+- **Bug Fix**: The advisor previously displayed a gray `—/d` pill for deactivated companies. This is now completely removed, restoring the card to its original state.
+- **Bug Fix**: The background tracker continued to send full-storage warnings to ntfy.sh for deactivated companies. This has been fixed.
+- **Feature**: The portfolio statistics header now additionally displays the number of currently deactivated companies in gray.
+
 ## 2026-08-05 | Bugfix: Company Advisor Adjustments (v0.11.2)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`

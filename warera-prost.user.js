@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         TEST PROST
+// @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.11.3-unstable
+// @version      0.11.3
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -8755,7 +8755,7 @@ function updateObserverTarget() {
   }
 
   // Flat strip that blends under the "Companies" heading (no tile).
-  function ecoRenderStrip(mainWin, shown, earning, losing, total) {
+  function ecoRenderStrip(mainWin, shown, earning, losing, total, deactivated = 0) {
     let strip = document.getElementById('wia-eco-portfolio-strip');
     if (!strip) {
       const firstCard = ecoFirstCardBlock(mainWin);
@@ -8766,15 +8766,19 @@ function updateObserverTarget() {
       firstCard.parentNode.insertBefore(strip, firstCard);
     }
     const totPos = total >= 0;
-    const sig = shown + '|' + earning + '|' + losing + '|' + total.toFixed(1);
+    const sig = shown + '|' + earning + '|' + losing + '|' + total.toFixed(1) + '|' + deactivated;
     if (strip.dataset.wiaSig === sig) return;
     strip.dataset.wiaSig = sig;
+
+    const deactHtml = deactivated > 0 
+      ? ' · <span style="color:#9aa4b2;">' + deactivated + ' deactivated</span>'
+      : '';
 
     strip.innerHTML =
       '<span style="color:#9aa4b2; font-weight:600;">Companies · daily net</span>' +
       '<span style="display:flex; align-items:center; gap:14px; margin-left:auto;">' +
         '<span style="font-size:12px;"><span style="color:#4ade80;">' + earning + ' profitable</span>' +
-        ' · <span style="color:#f87171;">' + losing + ' losing</span></span>' +
+        ' · <span style="color:#f87171;">' + losing + ' losing</span>' + deactHtml + '</span>' +
         '<span style="font-weight:700; color:' + (totPos ? '#4ade80' : '#f87171') + '; display:inline-flex; align-items:center; gap:3px;">' +
           ECO_COIN_SVG + (totPos ? '+' : '') + total.toFixed(1) + '/day</span>' +
         '<span style="font-size:9px; font-weight:700; letter-spacing:.5px; color:#a78bfa; opacity:.75;">PROST</span>' +
@@ -8839,7 +8843,7 @@ function updateObserverTarget() {
     const regionCache = readCache(KEYS.ecoRegionData) || {};
     const taxCache = readCache(KEYS.ecoCountryTax) || {};
 
-    let total = 0, earning = 0, losing = 0, shown = 0, taxPending = false;
+    let total = 0, earning = 0, losing = 0, shown = 0, deactivated = 0, taxPending = false;
     const balances = {};
 
     for (const id of ecoIdsOnPage(mainWin)) {
@@ -8850,7 +8854,9 @@ function updateObserverTarget() {
 
       const d = ecoComputeNet(id, chipEl, prices, recipes, engineLevels, regionCache, taxCache);
       ecoRenderBadge(chipEl, d);
-      if (d && d.priced) {
+      if (d && d.disabled) {
+        deactivated++;
+      } else if (d && d.priced) {
         total += d.net; shown++;
         if (d.net >= 0) earning++; else losing++;
         if (!d.taxKnown) taxPending = true;
@@ -8862,7 +8868,7 @@ function updateObserverTarget() {
       }
     }
 
-    if (shown > 0) ecoRenderStrip(mainWin, shown, earning, losing, total);
+    if (shown > 0 || deactivated > 0) ecoRenderStrip(mainWin, shown, earning, losing, total, deactivated);
 
     ecoAugmentInventory(mainWin, balances);
 
