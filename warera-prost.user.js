@@ -483,7 +483,7 @@
         settingsFeatCompanyEco: 'Enable Company Economy overlay',
         settingsFeatCompanyEcoHint: 'Shows net profit and storage capacity on companies. If the bell icon is checked, it also sends a desktop & ntfy.sh alert when storage is full.',
         settingsFeatCompanyAlertsInline: '🔔 Storage Alerts',
-        settingsFeatAlertCompanyStorage: 'Alert: Company Storage Full',
+        settingsFeatAlertCompanyStorage: 'Alert: Storage Full / No Materials',
         settingsFeatAlertCompanyBonus: 'Alert: Production Bonus Drop',
         settingsFeatAlertCompanyTax: 'Alert: Income Tax Increase',
         settingsFeatAlertCompanyDeposit: 'Alert: Region Deposit Expiring',
@@ -873,7 +873,7 @@
         settingsFeatCompanyEco: 'Firmen-Ökonomie Overlay aktivieren',
         settingsFeatCompanyEcoHint: 'Zeigt Nettoprofit und Lagerkapazität bei Firmen. Wenn die Glocke aktiviert ist, wird zusätzlich ein Alarm (Desktop & ntfy.sh) gesendet, sobald das Lager voll ist.',
         settingsFeatCompanyAlertsInline: '🔔 Lager-Alarm',
-        settingsFeatAlertCompanyStorage: 'Alarm: Firmenlager voll',
+        settingsFeatAlertCompanyStorage: 'Alarm: Lager voll / Keine Rohstoffe',
         settingsFeatAlertCompanyBonus: 'Alarm: Produktionsbonus gesunken',
         settingsFeatAlertCompanyTax: 'Alarm: Lohnsteuer gestiegen',
         settingsFeatAlertCompanyDeposit: 'Alarm: Regions-Deposit läuft ab',
@@ -7850,6 +7850,44 @@ function updateObserverTarget() {
     }
   }
 
+  function ecoGetTopBarStock() {
+    const stock = {};
+    const coinPath = Array.from(document.querySelectorAll('svg path'))
+      .find(p => p.getAttribute('d')?.startsWith('M12 5C7.031'));
+    if (!coinPath) return stock;
+    
+    let topBar = coinPath;
+    for (let i = 0; i < 4 && topBar; i++) topBar = topBar.parentElement;
+    if (!topBar) return stock;
+
+    for (const img of topBar.querySelectorAll('img[alt]')) {
+      const code = img.getAttribute('alt');
+      if (!code) continue;
+      
+      let numSpan = null, node = img;
+      for (let i = 0; i < 6 && node && !numSpan; i++) {
+        node = node.parentElement;
+        if (!node) break;
+        const spans = Array.from(node.querySelectorAll('span'));
+        for (let j = spans.length - 1; j >= 0; j--) {
+          const t = spans[j].textContent.trim();
+          if (/^[\d.,]+[KM]?$/i.test(t)) { numSpan = spans[j]; break; }
+        }
+      }
+      if (numSpan) {
+        // inline parse logic since ecoParseNum is defined further down
+        const m = /([\d.]+)\s*([KM]?)/i.exec(numSpan.textContent.replace(/[,\s/]/g, ''));
+        if (m) {
+          let n = parseFloat(m[1]);
+          if (m[2].toUpperCase() === 'K') n *= 1e3;
+          if (m[2].toUpperCase() === 'M') n *= 1e6;
+          stock[code] = n;
+        }
+      }
+    }
+    return stock;
+  }
+
   async function ecoTrackingPoll() {
     if (!CONFIG.featAlertCompanyStorage && !CONFIG.featAlertCompanyBonus && !CONFIG.featAlertCompanyTax && !CONFIG.featAlertCompanyDeposit && !CONFIG.featBetterRegion) return;
     const userId = getCurrentUserId();
@@ -7857,6 +7895,7 @@ function updateObserverTarget() {
 
     try {
       await ecoFetchAllRegions();
+      await ecoFetchRecipes();
       const { payload: companiesRes } = await resolveApiBase('company.getCompanies', { userId });
       if (!companiesRes || !companiesRes.items) return;
 
@@ -7884,6 +7923,24 @@ function updateObserverTarget() {
           if (st.full !== full) {
             st.full = full;
             changed = true;
+          }
+
+          // 1.5 Out of Materials Check
+          const recipes = ecoRecipesCache.recipes || {};
+          const recipe = recipes[comp.itemCode];
+          if (recipe && recipe.inputs && recipe.inputs.length > 0) {
+            const topBarStock = ecoGetTopBarStock();
+            for (const inp of recipe.inputs) {
+              const stockAmt = topBarStock[inp.code] || 0;
+              const noMat = stockAmt < 10;
+              if (noMat && !st.noMat) {
+                sendPersonalNtfy('Out of Stock', `WareEra - Material Shortage`, `Company ${compName} has no ${inp.code} and cannot produce!`, 'package,warning', 4);
+              }
+              if (st.noMat !== noMat) {
+                st.noMat = noMat;
+                changed = true;
+              }
+            }
           }
         }
 
@@ -8589,9 +8646,41 @@ function updateObserverTarget() {
     if (engineDaily === 0) return { priced: false, depositEndsAt, depositType };
 
     const perItemNet = sellPrice * (1 - marketTax / 100) - matCost;
-    const pointsPerDay = engineDaily * (1 + bonus / 100);
+    let workerPointsPerDay = 0;
+    let workerWagesPerDay = 0;
+    const ownId = getCurrentUserId();
+    const userLinks = Array.from(chipEl.querySelectorAll('a[href^="/user/"]'));
+    for (const a of userLinks) {
+      const match = (a.getAttribute('href') || '').match(/^\/user\/([a-f0-9]{24})\/?$/i);
+      if (!match || match[1] === ownId) continue;
+      const nameSpan = a.querySelector('span.agd9b40');
+      if (!nameSpan || nameSpan.textContent.trim().length === 0) continue; 
+      const row = a; 
+      let wage = 0, maxProd = 0;
+      const coinPath = row.querySelector('svg path[d^="M12 5C7.031"]');
+      if (coinPath) {
+        const wageSpan = coinPath.closest('svg')?.nextElementSibling;
+        if (wageSpan) wage = parseFloat(wageSpan.textContent.replace(/[^\d.]/g, '')) || 0;
+      }
+      const lightningPath = row.querySelector('svg path[d="M11 15H6L13 1V9H18L11 23V15Z"]');
+      if (lightningPath) {
+         const pickaxeDiv = lightningPath.closest('div')?.previousElementSibling;
+         if (pickaxeDiv) {
+            const prodSpan = pickaxeDiv.querySelector('.agd9b40') || pickaxeDiv;
+            maxProd = parseInt(prodSpan.textContent.replace(/[^\d]/g, ''), 10) || 0;
+         }
+      }
+      if (maxProd > 0) {
+        const dailyProd = 2.4 * maxProd * (1 + bonus / 100);
+        workerPointsPerDay += dailyProd;
+        workerWagesPerDay += dailyProd * wage;
+      }
+    }
+
+    const engineDailyPoints = engineDaily * (1 + bonus / 100);
+    const pointsPerDay = engineDailyPoints + workerPointsPerDay;
     const dayItems = recipe.productionPoints ? pointsPerDay / recipe.productionPoints : 0;
-    const net = perItemNet * dayItems;
+    const net = (perItemNet * dayItems) - workerWagesPerDay;
 
     // storage runway: the DOM production bar shows "current / maxCap" (points).
     // once full, the Automated Engine stops → hoursToFull = (cap − current)/pointsPerDay.
@@ -8599,6 +8688,7 @@ function updateObserverTarget() {
 
     return { 
       priced: true, net, sellPrice, marketTax, matCost, perItemNet, engineDaily, bonus, pointsPerDay, 
+      engineDailyPoints, workerPointsPerDay, workerWagesPerDay,
       dayItems, taxKnown, hoursToFull, itemCode: details.itemCode, inputs: recipe.inputs,
       depositEndsAt: endsAt, depositType: depType, isStrategicResource: isStrategic
     };
@@ -8656,10 +8746,22 @@ function updateObserverTarget() {
       if (d && d.priced) {
         profitBadge.style.color = pos ? '#4ade80' : '#f87171';
         profitBadge.innerHTML = ECO_COIN_SVG + (pos ? '+' : '') + d.net.toFixed(1) + '/d';
-        profitBadge.title = 'Est. net/day — before wages\n' +
+        let workerStr = '';
+        if (d.workerPointsPerDay > 0) {
+          workerStr = `🏭 Engine: ${d.engineDailyPoints.toFixed(0)} PP/day\n` +
+                      `👷 Workers: ${d.workerPointsPerDay.toFixed(0)} PP/day\n` +
+                      `Total Throughput: ${d.pointsPerDay.toFixed(0)} PP/day → ${d.dayItems.toFixed(1)} items/day\n` +
+                      `Gross: ${d.perItemNet.toFixed(3)} × ${d.dayItems.toFixed(1)} = ${(d.perItemNet * d.dayItems).toFixed(1)}/day\n` +
+                      `💸 Wages: -${d.workerWagesPerDay.toFixed(1)}/day\n` +
+                      `Net: ${(d.perItemNet * d.dayItems).toFixed(1)} − ${d.workerWagesPerDay.toFixed(1)} = ${d.net.toFixed(1)}/day`;
+        } else {
+          workerStr = `Throughput: ${d.engineDaily} PP ×(1+${d.bonus}%) = ${d.pointsPerDay.toFixed(0)} PP/day → ${d.dayItems.toFixed(1)} items/day\n` +
+                      `Net: ${d.perItemNet.toFixed(3)} × ${d.dayItems.toFixed(1)} = ${d.net.toFixed(1)}/day`;
+        }
+
+        profitBadge.title = 'Est. net/day\n' +
           `Per item: ${d.sellPrice.toFixed(3)} sell ·(1−${d.marketTax}% tax) − ${d.matCost.toFixed(3)} mat = ${d.perItemNet.toFixed(3)}\n` +
-          `Throughput: ${d.engineDaily} PP ×(1+${d.bonus}%) = ${d.pointsPerDay.toFixed(0)} PP/day → ${d.dayItems.toFixed(1)} items/day\n` +
-          `Net: ${d.perItemNet.toFixed(3)} × ${d.dayItems.toFixed(1)} = ${d.net.toFixed(1)}/day` +
+          workerStr +
           (d.taxKnown ? '' : '\n(tax still loading…)');
       } else {
         profitBadge.style.color = '#9ca3af';
