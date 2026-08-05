@@ -13,9 +13,11 @@
 // @grant        GM_addStyle
 // @grant        GM_getValue
 // @grant        GM_setValue
+// @grant        GM_deleteValue
 // @grant        GM_xmlhttpRequest
 // @grant        GM_notification
 // @grant        GM_registerMenuCommand
+// @grant        window.onurlchange
 // @grant        unsafeWindow
 // @connect      api2.warera.io
 // @connect      gateway.warerastats.io
@@ -2943,7 +2945,7 @@
         const { payload } = await resolveApiBase('transaction.getPaginatedTransactions', {
           limit: 100,
           itemCode: code
-        } /*, { gatewayOnly: true } - disabled due to gateway instability */);
+        });
         const items = payload?.items || [];
 
         const type = getTypeFromCode(code);
@@ -7750,8 +7752,10 @@ function updateObserverTarget() {
         const { payload: details } = await resolveApiBase('company.getById', { companyId: compInfo._id });
         if (!details) continue;
 
-        const full = details.isFull === true ||
-          (details.productionPoints !== undefined && details.storage !== undefined && details.productionPoints >= details.storage && details.storage > 0);
+        if (details.isFull === undefined) {
+          setHealth('companyAlerts', 'warn', 'isFull missing in payload');
+        }
+        const full = details.isFull === true;
 
         if (!ecoAlertState[compInfo._id]) ecoAlertState[compInfo._id] = { full: false };
 
@@ -7883,18 +7887,25 @@ function updateObserverTarget() {
   }
 
   function extractTop3Minimum(modal) {
-    const allText = modal.textContent;
+    // Clone modal and remove injected own-net value to prevent self-pollution
+    const clone = modal.cloneNode(true);
+    const injectedNet = clone.querySelector('#wia-eco-net-wage');
+    if (injectedNet) injectedNet.remove();
+
+    const allText = clone.textContent;
     const idx = allText.toLowerCase().indexOf('top 3');
     if (idx === -1) return null;
 
     // Look at text *after* "top 3"
     const afterText = allText.substring(idx);
 
-    // Find all numbers formatted as floats (e.g. 0.1150)
-    const matches = afterText.match(/\b\d+\.\d+\b/g);
+    // Find all numbers formatted as floats (e.g. 0.1150 or DE 0,1150)
+    // Note: Assuming wage-range < 1000, so thousands separators are not handled.
+    // Also known-open: if each offer row renders >1 float, slice(0,3) is wrong.
+    const matches = afterText.match(/\b\d+[,.]\d+\b/g);
     if (!matches || matches.length === 0) return null;
 
-    const numbers = matches.map(Number).filter(n => n > 0 && n < 100); // sanity check
+    const numbers = matches.map(s => Number(s.replace(',', '.'))).filter(n => n > 0 && n < 100); // sanity check
     if (numbers.length === 0) return null;
 
     // the top 3 are usually the first 1-3 numbers found after the text
@@ -8309,6 +8320,8 @@ function updateObserverTarget() {
     const bonus = getCardBonus(chipEl);
     const lvl = details.activeUpgradeLevels?.automatedEngine || 0;
     const engineDaily = engineLevels?.[lvl]?.stats?.dailyProd || 0;
+
+    if (engineDaily === 0) return { priced: false };
 
     const perItemNet = sellPrice * (1 - marketTax / 100) - matCost;
     const pointsPerDay = engineDaily * (1 + bonus / 100);
@@ -13110,7 +13123,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
           itemCode: code,
           transactionType: 'trading',
           cursor: cursor || undefined
-        } /*, { gatewayOnly: true } - disabled due to gateway instability */);
+        });
         return {
           items: payload?.items || [],
           nextCursor: payload?.nextCursor || null
@@ -14787,7 +14800,7 @@ function processTransactionsList(items, userId) {
         const all = [];
         for (let page = 0; page < MAX_PAGES; page++) {
           const args = cursor ? { limit: 100, userId, cursor } : { limit: 100, userId };
-          const { payload } = await resolveApiBase('transaction.getPaginatedTransactions', args /*, { gatewayOnly: true } - disabled due to gateway instability */);
+          const { payload } = await resolveApiBase('transaction.getPaginatedTransactions', args);
           const items = payload?.items || [];
           if (!items.length) break;
           const firstId = normalizeDbId(items[0]._id || items[0].id);
@@ -17424,10 +17437,14 @@ function checkInventoryDeltaWear() {
     regFeature('muHealDim', 'MU Heal Dim');
     regFeature('notes', 'User Notes');
     regFeature('api', 'API Layer');
-    regFeature('bountyNotify', 'Bounty-Push');
+    // bountyNotify is registered earlier in init
     regFeature('tour', 'Tour of Beers');
     regFeature('companyEco', 'Company Economy');
     regFeature('companyAlerts', 'Company Alerts');
+    regFeature('companyProfit', 'Company Profit');
+    regFeature('companyEnergy', 'Company Energy');
+    regFeature('troopRadar', 'Troop Radar');
+    regFeature('profileCharsheet', 'Profile Charsheet');
     // one-shot onboarding prompt, once the game shell (avatar) is present
     (function scheduleTourPrompt() {
       let tries = 0;
@@ -17508,6 +17525,7 @@ function checkInventoryDeltaWear() {
     if (CONFIG.featMarketGraph) guard('marketGraph', initMarketGraph); else setHealth('marketGraph', 'idle', 'disabled in settings');
     if (CONFIG.featPnlTracker) guard('pnl', initPnlTracker); else setHealth('pnl', 'idle', 'disabled in settings');
     if (CONFIG.featBountyNotify) guard('bountyNotify', initBountyNotify); else setHealth('bountyNotify', 'idle', 'disabled in settings');
+    if (CONFIG.featCompanyAlerts) guard('companyAlerts', initCompanyAlerts); else setHealth('companyAlerts', 'idle', 'disabled in settings');
     if (CONFIG.featSystemAlerts) initSystemAlerts();
     injectGear();
     refreshMenuCommands();
