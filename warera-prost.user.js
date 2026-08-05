@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.11.3
+// @version      0.11.4
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -8543,8 +8543,70 @@ function updateObserverTarget() {
     }
   }
 
+  const ecoWorkersCache = new Map();
+
+  async function fetchCompanyWorkersBatch(companyIds) {
+    if (!getToken()) return; 
+    try {
+       const workerArgs = companyIds.map(id => ({ companyId: id }));
+       const workerResponses = await resolveApiBatch('worker.getWorkers', workerArgs);
+       
+       const userIds = new Set();
+       const companyWorkers = {};
+       const ownId = getCurrentUserId();
+       
+       for (let i = 0; i < companyIds.length; i++) {
+         const res = workerResponses[i];
+         const id = companyIds[i];
+         companyWorkers[id] = [];
+         if (res?.payload?.workers) {
+            for (const w of res.payload.workers) {
+              if (w.user !== ownId) {
+                userIds.add(w.user);
+                companyWorkers[id].push(w);
+              }
+            }
+         }
+       }
+       
+       const userArray = Array.from(userIds);
+       const userProdMap = {};
+       const userRegenMap = {};
+       if (userArray.length > 0) {
+          const userArgs = userArray.map(u => ({ userId: u }));
+          const userResponses = await resolveApiBatch('user.getUserById', userArgs);
+          for (let i = 0; i < userArray.length; i++) {
+             const uRes = userResponses[i];
+             if (uRes?.payload?.skills) {
+                userProdMap[userArray[i]] = uRes.payload.skills.production?.total || 0;
+                userRegenMap[userArray[i]] = uRes.payload.skills.energy?.hourlyBarRegen || 10;
+             }
+          }
+       }
+       
+       const nowMs = now();
+       for (const id of companyIds) {
+          const finalWorkers = [];
+          for (const w of companyWorkers[id]) {
+             finalWorkers.push({
+                wage: w.wage || 0,
+                fidelity: w.fidelity || 0,
+                maxProd: userProdMap[w.user] || 0,
+                hourlyRegen: userRegenMap[w.user] || 10
+             });
+          }
+          ecoWorkersCache.set(id, { at: nowMs, workers: finalWorkers });
+       }
+    } catch (e) {
+       console.warn('[PROST] eco: worker batch fetch failed', e);
+    }
+  }
+
   function getCardBonus(card) {
-    const badges = Array.from(card.querySelectorAll('span')).filter(s => s.textContent.includes('%') || s.textContent.includes('+'));
+    const badges = Array.from(card.querySelectorAll('span')).filter(s => {
+      if (s.closest('a[href^="/user/"]')) return false;
+      return s.textContent.includes('%') || s.textContent.includes('+');
+    });
     for (const b of badges) {
       const match = b.textContent.match(/\+?(\d+(?:\.\d+)?)%/);
       if (match) return parseFloat(match[1]);
@@ -8575,21 +8637,34 @@ function updateObserverTarget() {
 
     const pageIds = ecoIdsOnPage(mainWin);
     let needDetail = !ownedReady;
+    let needWorkers = false;
     for (const id of pageIds) {
       const d = ecoCompanyDetailCache.get(id);
-      if (!d || now() - d.at >= CONFIG.ecoDetailTtlMs) { needDetail = true; break; }
+      if (!d || now() - d.at >= CONFIG.ecoDetailTtlMs) { needDetail = true; }
+      if (getToken()) {
+        const w = ecoWorkersCache.get(id);
+        if (!w || now() - w.at >= CONFIG.ecoDetailTtlMs) needWorkers = true;
+      }
     }
 
-    if (needDetail) {
+    if (needDetail || needWorkers) {
       ecoProfitLoading = true;
       setHealth('companyProfit', 'ok', 'fetching data');
       (async () => {
         await Promise.all([fetchPrices(false), fetchGameConfig(), fetchOwnedCompanyIds(userId)]);
-        const need = pageIds.filter(id => {
+        const detailsToFetch = pageIds.filter(id => {
           const d = ecoCompanyDetailCache.get(id);
           return !d || now() - d.at >= CONFIG.ecoDetailTtlMs;
         });
-        if (need.length) await fetchCompanyDetailBatch(need);
+        const workersToFetch = getToken() ? pageIds.filter(id => {
+          const w = ecoWorkersCache.get(id);
+          return !w || now() - w.at >= CONFIG.ecoDetailTtlMs;
+        }) : [];
+        
+        const tasks = [];
+        if (detailsToFetch.length) tasks.push(fetchCompanyDetailBatch(detailsToFetch));
+        if (workersToFetch.length) tasks.push(fetchCompanyWorkersBatch(workersToFetch));
+        await Promise.all(tasks);
       })().finally(() => {
         ecoProfitLoading = false;
         guard('companyProfit', injectCompanyProfits);
@@ -8601,7 +8676,7 @@ function updateObserverTarget() {
 
   // Compute the pre-wage engine estimate for one owned company. Returns null if
   // we can't price it yet (no market price / recipe / detail not loaded).
-  function ecoComputeNet(id, chipEl, prices, recipes, engineLevels, regionCache, taxCache) {
+  function ecoComputeNet(id, chipEl, prices, recipes, engineLevels, regionCache, taxCache, cardEl) {
     const details = ecoCompanyDetailCache.get(id)?.data;
     if (!details) return null;
     if (details.disabledAt) return { disabled: true };
@@ -8639,7 +8714,8 @@ function updateObserverTarget() {
     let matCost = 0;
     for (const inp of recipe.inputs) matCost += inp.qty * (prices[normalizeItemCode(inp.code)] || 0);
 
-    const bonus = getCardBonus(chipEl);
+    const targetContainer = cardEl || chipEl;
+    const bonus = getCardBonus(targetContainer);
     const lvl = details.activeUpgradeLevels?.automatedEngine || 0;
     const engineDaily = engineLevels?.[lvl]?.stats?.dailyProd || 0;
 
@@ -8648,32 +8724,19 @@ function updateObserverTarget() {
     const perItemNet = sellPrice * (1 - marketTax / 100) - matCost;
     let workerPointsPerDay = 0;
     let workerWagesPerDay = 0;
-    const ownId = getCurrentUserId();
-    const userLinks = Array.from(chipEl.querySelectorAll('a[href^="/user/"]'));
-    for (const a of userLinks) {
-      const match = (a.getAttribute('href') || '').match(/^\/user\/([a-f0-9]{24})\/?$/i);
-      if (!match || match[1] === ownId) continue;
-      const nameSpan = a.querySelector('span.agd9b40');
-      if (!nameSpan || nameSpan.textContent.trim().length === 0) continue; 
-      const row = a; 
-      let wage = 0, maxProd = 0;
-      const coinPath = row.querySelector('svg path[d^="M12 5C7.031"]');
-      if (coinPath) {
-        const wageSpan = coinPath.closest('svg')?.nextElementSibling;
-        if (wageSpan) wage = parseFloat(wageSpan.textContent.replace(/[^\d.]/g, '')) || 0;
-      }
-      const lightningPath = row.querySelector('svg path[d="M11 15H6L13 1V9H18L11 23V15Z"]');
-      if (lightningPath) {
-         const pickaxeDiv = lightningPath.closest('div')?.previousElementSibling;
-         if (pickaxeDiv) {
-            const prodSpan = pickaxeDiv.querySelector('.agd9b40') || pickaxeDiv;
-            maxProd = parseInt(prodSpan.textContent.replace(/[^\d]/g, ''), 10) || 0;
-         }
-      }
-      if (maxProd > 0) {
-        const dailyProd = 2.4 * maxProd * (1 + bonus / 100);
-        workerPointsPerDay += dailyProd;
-        workerWagesPerDay += dailyProd * wage;
+    if (getToken()) {
+      const cachedWorkers = ecoWorkersCache.get(id);
+      if (cachedWorkers) {
+        for (const w of cachedWorkers.workers) {
+          if (w.maxProd > 0) {
+            // Ein Click = 10 Energy, 1 Tag = 24 * hourlyRegen.
+            // Die BaseProd pro Tag ist (24 * hourlyRegen / 10) * w.maxProd
+            const baseProd = (2.4 * (w.hourlyRegen || 10)) * w.maxProd;
+            const totalProd = baseProd * (1 + (bonus + w.fidelity) / 100);
+            workerPointsPerDay += totalProd;
+            workerWagesPerDay += baseProd * w.wage;
+          }
+        }
       }
     }
 
@@ -8794,7 +8857,11 @@ function updateObserverTarget() {
       storageBadge.style.color = isFull ? '#f87171' : (warn ? '#facc15' : '#9ca3af');
       const boxSvg = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>';
       storageBadge.innerHTML = boxSvg + txt;
-      storageBadge.title = isFull ? 'Storage FULL — collect (PRODUCE) to keep producing' : `Storage full in ${txt} (engine stops until you collect)`;
+      let titleTxt = isFull ? 'Storage FULL — collect (PRODUCE) to keep producing' : `Storage full in ${txt} (engine stops until you collect)`;
+      if (d && typeof d.workerPointsPerDay === 'number' && d.workerPointsPerDay > 0 && d.engineDailyPoints > 0) {
+        titleTxt += `\n\nFills faster due to workers:\nEngine: +${d.engineDailyPoints.toFixed(0)} pts/day\nWorkers: +${d.workerPointsPerDay.toFixed(0)} pts/day`;
+      }
+      storageBadge.title = titleTxt;
     }
 
     let depositBadge = chipEl.querySelector(':scope > .wia-eco-deposit-badge');
@@ -8954,7 +9021,16 @@ function updateObserverTarget() {
       const chipEl = links.find(l => /\d%/.test(l.textContent)) || links[0];
       if (!chipEl) continue;
 
-      const d = ecoComputeNet(id, chipEl, prices, recipes, engineLevels, regionCache, taxCache);
+      let cardEl = chipEl;
+      for (let i = 0; i < 15 && cardEl.parentElement && cardEl.parentElement !== mainWin; i++) {
+        const p = cardEl.parentElement;
+        const swallowsOtherCard = Array.from(p.querySelectorAll('a[href^="/company/"]'))
+          .some(l => ecoCompanyIdOf(l) && ecoCompanyIdOf(l) !== id);
+        if (swallowsOtherCard) break;
+        cardEl = p;
+      }
+
+      const d = ecoComputeNet(id, chipEl, prices, recipes, engineLevels, regionCache, taxCache, cardEl);
       ecoRenderBadge(chipEl, d);
       if (d && d.disabled) {
         deactivated++;
