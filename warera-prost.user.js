@@ -85,7 +85,7 @@
     featCompanyAlerts: true,
     ecoTaxTtlMs: 1800000,
     ecoRecipeTtlMs: 6 * 3600 * 1000,
-    ecoDetailTtlMs: 60000,
+    ecoDetailTtlMs: 300000,
     stockKeepCount: 3,
 
     // --- caching / rate-limit ---
