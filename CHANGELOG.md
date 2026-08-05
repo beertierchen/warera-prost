@@ -1,5 +1,21 @@
 # CHANGELOG
 
+## 2026-08-05 | Feature: Company Eco Alerts & Badges (v0.11.1)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`
+
+**Änderungen (Deutsch):**
+- **Feature**: Neue Economy-Badges für die Firmenübersicht, die direkt den täglichen Netto-Gewinn und die verbleibende Lagerkapazität anzeigen.
+- **Feature**: Granulare "Eco Alerts" für Firmen hinzugefügt (Warnungen für Produktionsboni, Steuern und endende Rohstoffvorkommen).
+- **Feature**: Anzeige der verbleibenden Zeit von Rohstoffvorkommen direkt in der Firmenübersicht.
+- **Bug Fix**: Fehler behoben, durch den für Rohstoff-Firmen (wie Öl, Blei) fälschlicherweise "Kein Marktpreis vorhanden" angezeigt wurde.
+
+**Changes (English):**
+- **Feature**: New Economy Badges for the company overview that directly show the daily net profit and remaining storage capacity.
+- **Feature**: Added granular "Eco Alerts" for companies (warnings for production bonuses, taxes, and expiring resource deposits).
+- **Feature**: Display of the remaining time for resource deposits directly in the company list.
+- **Bug Fix**: Fixed an issue where raw material companies (like oil, lead) incorrectly displayed "No market price for this item".
+
 ## 2026-08-03 | Feature: Company Eco Energy (v0.10.7)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`

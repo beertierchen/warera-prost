@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.11.0
+// @version      0.11.1
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -84,6 +84,11 @@
     featCraftingAdvisor: true,
     featCompanyEco: true,
     featCompanyAlerts: true,
+    featAlertCompanyStorage: true,
+    featAlertCompanyBonus: true,
+    featAlertCompanyTax: true,
+    featAlertCompanyDeposit: true,
+    featBetterRegion: true,
     ecoTaxTtlMs: 1800000,
     ecoRecipeTtlMs: 6 * 3600 * 1000,
     ecoDetailTtlMs: 300000,
@@ -478,6 +483,11 @@
         settingsFeatCompanyEco: 'Enable Company Economy overlay',
         settingsFeatCompanyEcoHint: 'Shows net profit and storage capacity on companies. If the bell icon is checked, it also sends a desktop & ntfy.sh alert when storage is full.',
         settingsFeatCompanyAlertsInline: '🔔 Storage Alerts',
+        settingsFeatAlertCompanyStorage: 'Alert: Company Storage Full',
+        settingsFeatAlertCompanyBonus: 'Alert: Production Bonus Drop',
+        settingsFeatAlertCompanyTax: 'Alert: Income Tax Increase',
+        settingsFeatAlertCompanyDeposit: 'Alert: Region Deposit Expiring',
+        settingsFeatBetterRegion: 'Alert: Better Region Available',
         settingsFeatMuHealDim: 'Dim MU heal request while debuffed / at full HP',
         muHealDimReasonDebuff: 'debuff active',
         muHealDimReasonFullHP: 'HP full',
@@ -863,6 +873,11 @@
         settingsFeatCompanyEco: 'Firmen-Ökonomie Overlay aktivieren',
         settingsFeatCompanyEcoHint: 'Zeigt Nettoprofit und Lagerkapazität bei Firmen. Wenn die Glocke aktiviert ist, wird zusätzlich ein Alarm (Desktop & ntfy.sh) gesendet, sobald das Lager voll ist.',
         settingsFeatCompanyAlertsInline: '🔔 Lager-Alarm',
+        settingsFeatAlertCompanyStorage: 'Alarm: Firmenlager voll',
+        settingsFeatAlertCompanyBonus: 'Alarm: Produktionsbonus gesunken',
+        settingsFeatAlertCompanyTax: 'Alarm: Lohnsteuer gestiegen',
+        settingsFeatAlertCompanyDeposit: 'Alarm: Regions-Deposit läuft ab',
+        settingsFeatBetterRegion: 'Alarm: Bessere Region verfügbar',
         settingsFeatMuHealDim: 'MU-Heilung ausgrauen während Debuff / bei vollem Leben',
         muHealDimReasonDebuff: 'Pillen-Debuff aktiv',
         muHealDimReasonFullHP: 'Leben voll',
@@ -1130,8 +1145,15 @@
     stockKeepCount: NS + 'stockKeepCount',
     featCompanyEco: NS + 'featCompanyEco',
     featCompanyAlerts: NS + 'featCompanyAlerts',
+    featAlertCompanyStorage: NS + 'featAlertCompanyStorage',
+    featAlertCompanyBonus: NS + 'featAlertCompanyBonus',
+    featAlertCompanyTax: NS + 'featAlertCompanyTax',
+    featAlertCompanyDeposit: NS + 'featAlertCompanyDeposit',
+    featBetterRegion: NS + 'featBetterRegion',
+    ecoBetterRegionAlerts: NS + 'ecoBetterRegionAlerts',
+    ecoTrackingState: NS + 'ecoTrackingState',
     ecoCountryTax: NS + 'ecoCountryTax',
-    ecoRegionCountry: NS + 'ecoRegionCountry',
+    ecoRegionData: NS + 'ecoRegionData',
     featNotes: NS + 'featNotes',
     featBattleAdvisor: NS + 'featBattle',
     featOrderRadar: NS + 'featOrderRadar',
@@ -5951,7 +5973,11 @@ async function scanInventory(force) {
     const prevFeatItemAdvisor = bg.querySelector('.wia-feat-item-advisor')?.checked ?? CONFIG.featItemAdvisor;
     const prevFeatCraftingAdvisor = bg.querySelector('.wia-feat-crafting-advisor')?.checked ?? CONFIG.featCraftingAdvisor;
     const prevFeatCompanyEco = bg.querySelector('.wia-feat-company-eco')?.checked ?? CONFIG.featCompanyEco;
-    const prevFeatCompanyAlerts = bg.querySelector('.wia-feat-company-alerts')?.checked ?? CONFIG.featCompanyAlerts;
+    const prevFeatAlertCompanyStorage = bg.querySelector('.wia-feat-alert-company-storage')?.checked ?? CONFIG.featAlertCompanyStorage;
+    const prevFeatAlertCompanyBonus = bg.querySelector('.wia-feat-alert-company-bonus')?.checked ?? CONFIG.featAlertCompanyBonus;
+    const prevFeatAlertCompanyTax = bg.querySelector('.wia-feat-alert-company-tax')?.checked ?? CONFIG.featAlertCompanyTax;
+    const prevFeatAlertCompanyDeposit = bg.querySelector('.wia-feat-alert-company-deposit')?.checked ?? CONFIG.featAlertCompanyDeposit;
+    const prevFeatBetterRegion = bg.querySelector('.wia-feat-better-region')?.checked ?? CONFIG.featBetterRegion;
     const prevFeatOrderRadar = bg.querySelector('.wia-feat-order-radar')?.checked ?? CONFIG.featOrderRadar;
     const prevFeatTroopRadar = bg.querySelector('.wia-feat-troop-radar')?.checked ?? CONFIG.featTroopRadar;
     const prevFeatProfileCharsheet = bg.querySelector('.wia-feat-profile-charsheet')?.checked ?? CONFIG.featProfileCharsheet;
@@ -6183,11 +6209,33 @@ async function scanInventory(force) {
               <input type="checkbox" class="wia-feat-company-eco" style="width: auto;" ${prevFeatCompanyEco ? 'checked' : ''} />
               <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatCompanyEco')}</label>
               <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
-              <div style="width: 1px; height: 12px; background: rgba(148,163,184,.3); margin: 0 4px;"></div>
-              <input type="checkbox" class="wia-feat-company-alerts" style="width: auto;" ${prevFeatCompanyAlerts ? 'checked' : ''} />
-              <label style="margin: 0; font-weight: normal; cursor: pointer; color: #8b949e; font-size: 11px;">${t('settingsFeatCompanyAlertsInline')}</label>
             </div>
             <div class="wia-hint" hidden>${t('settingsFeatCompanyEcoHint')}</div>
+            <details class="wia-eco-alert-settings" style="margin-top: 6px; margin-left: 24px;">
+              <summary style="font-size: 11px; color: #8b949e; cursor: pointer; user-select: none; font-weight: bold; outline: none; margin-bottom: 6px;">
+                🔔 Firmen-Alarme
+              </summary>
+              <div style="margin-top: 6px; display: flex; align-items: center; gap: 8px;">
+                <input type="checkbox" class="wia-feat-alert-company-storage" style="width: auto;" ${prevFeatAlertCompanyStorage ? 'checked' : ''} />
+                <label style="font-size: 11px; color: #8b949e; margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatAlertCompanyStorage')}</label>
+              </div>
+              <div style="margin-top: 6px; display: flex; align-items: center; gap: 8px;">
+                <input type="checkbox" class="wia-feat-alert-company-bonus" style="width: auto;" ${prevFeatAlertCompanyBonus ? 'checked' : ''} />
+                <label style="font-size: 11px; color: #8b949e; margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatAlertCompanyBonus')}</label>
+              </div>
+              <div style="margin-top: 6px; display: flex; align-items: center; gap: 8px;">
+                <input type="checkbox" class="wia-feat-alert-company-tax" style="width: auto;" ${prevFeatAlertCompanyTax ? 'checked' : ''} />
+                <label style="font-size: 11px; color: #8b949e; margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatAlertCompanyTax')}</label>
+              </div>
+              <div style="margin-top: 6px; display: flex; align-items: center; gap: 8px;">
+                <input type="checkbox" class="wia-feat-alert-company-deposit" style="width: auto;" ${prevFeatAlertCompanyDeposit ? 'checked' : ''} />
+                <label style="font-size: 11px; color: #8b949e; margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatAlertCompanyDeposit')}</label>
+              </div>
+              <div style="display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: 4px; background: rgba(0,0,0,0.15); border: 1px solid rgba(255,255,255,0.05); margin-top: 6px;">
+                <input type="checkbox" class="wia-feat-better-region" style="width: auto;" ${prevFeatBetterRegion ? 'checked' : ''} />
+                <label style="font-size: 11px; color: #8b949e; margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatBetterRegion')}</label>
+              </div>
+            </details>
           </div>
         </details>
         <details class="wia-category-misc" style="margin-top: 10px; border-top: 1px solid rgba(148,163,184,.15); padding-top: 10px; margin-bottom: 10px;">
@@ -6248,6 +6296,10 @@ async function scanInventory(force) {
                 <button type="button" class="wia-test-notif-window" style="font-size: 11px; padding: 3px 8px; cursor: pointer; color: #fbbf24; background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.2); border-radius: 3px;">Pillenfenster</button>
                 <button type="button" class="wia-test-notif-debuff" style="font-size: 11px; padding: 3px 8px; cursor: pointer; color: #8b5cf6; background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.2); border-radius: 3px;">Debuff abgelaufen</button>
                 <button type="button" class="wia-test-company-alert" style="font-size: 11px; padding: 3px 8px; cursor: pointer; color: #f43f5e; background: rgba(244,63,94,0.1); border: 1px solid rgba(244,63,94,0.2); border-radius: 3px;">Firmenlager voll</button>
+                <button type="button" class="wia-test-company-bonus" style="font-size: 11px; padding: 3px 8px; cursor: pointer; color: #38bdf8; background: rgba(56,189,248,0.1); border: 1px solid rgba(56,189,248,0.2); border-radius: 3px;">Bonus gesunken</button>
+                <button type="button" class="wia-test-company-tax" style="font-size: 11px; padding: 3px 8px; cursor: pointer; color: #f87171; background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.2); border-radius: 3px;">Steuern erhöht</button>
+                <button type="button" class="wia-test-company-deposit" style="font-size: 11px; padding: 3px 8px; cursor: pointer; color: #facc15; background: rgba(250,204,21,0.1); border: 1px solid rgba(250,204,21,0.2); border-radius: 3px;">Regions-Deposit</button>
+                <button type="button" class="wia-test-company-better-region" style="font-size: 11px; padding: 3px 8px; cursor: pointer; color: #a78bfa; background: rgba(167,139,250,0.1); border: 1px solid rgba(167,139,250,0.2); border-radius: 3px;">Bessere Region</button>
               </div>
             </details>
           </div>
@@ -6457,6 +6509,22 @@ async function scanInventory(force) {
     if (testCompanyAlertBtn) {
       testCompanyAlertBtn.onclick = (e) => { e.preventDefault(); sendPersonalNtfy('Storage', 'WareEra - Storage Full', 'Company Test is full and has stopped producing!', 'factory,warning'); };
     }
+    const testCompanyBonusBtn = modal.querySelector('.wia-test-company-bonus');
+    if (testCompanyBonusBtn) {
+      testCompanyBonusBtn.onclick = (e) => { e.preventDefault(); sendPersonalNtfy('Trend Down', 'WareEra - Bonus Drop', 'Company Test production bonus dropped from 150% to 125%', 'chart_with_downwards_trend,warning'); };
+    }
+    const testCompanyTaxBtn = modal.querySelector('.wia-test-company-tax');
+    if (testCompanyTaxBtn) {
+      testCompanyTaxBtn.onclick = (e) => { e.preventDefault(); sendPersonalNtfy('Tax Increase', 'WareEra - Tax Up', 'Income tax for Company Test increased from 5% to 10%', 'money_with_wings,warning'); };
+    }
+    const testCompanyDepositBtn = modal.querySelector('.wia-test-company-deposit');
+    if (testCompanyDepositBtn) {
+      testCompanyDepositBtn.onclick = (e) => { e.preventDefault(); sendPersonalNtfy('Expiring', 'WareEra - Deposit Expiring', 'Company Test: wood bonus expires in < 1 hour!', 'hourglass_flowing_sand,warning'); };
+    }
+    const testCompanyBetterRegionBtn = modal.querySelector('.wia-test-company-better-region');
+    if (testCompanyBetterRegionBtn) {
+      testCompanyBetterRegionBtn.onclick = (e) => { e.preventDefault(); sendPersonalNtfy('Better Region', 'WareEra - Better Region Available', 'Company Test could get 200% bonus in a better region!', 'gem,warning'); };
+    }
     if (healthPanel) { runProbes(); renderHealthPanel(healthPanel); }   // initial fill = live truth
 
     modal.addEventListener('click', (e) => {
@@ -6643,6 +6711,33 @@ async function scanInventory(force) {
       GM_setValue(KEYS.featCraftingAdvisor, featCraftingAdvisor);
       CONFIG.featCraftingAdvisor = featCraftingAdvisor;
       if (!featCraftingAdvisor) { teardownCraftingAdvisor(); } else { guard('craftAdvisor', triggerCraftingAdvisorCheck); }
+
+      const featCompanyEco = bg.querySelector('.wia-feat-company-eco').checked;
+      GM_setValue(KEYS.featCompanyEco, featCompanyEco);
+      CONFIG.featCompanyEco = featCompanyEco;
+      if (!featCompanyEco) { teardownCompanyEco(); } else { guard('companyEco', initCompanyEco); }
+
+      const featAlertCompanyStorage = bg.querySelector('.wia-feat-alert-company-storage').checked;
+      GM_setValue(KEYS.featAlertCompanyStorage, featAlertCompanyStorage);
+      CONFIG.featAlertCompanyStorage = featAlertCompanyStorage;
+
+      const featAlertCompanyBonus = bg.querySelector('.wia-feat-alert-company-bonus').checked;
+      GM_setValue(KEYS.featAlertCompanyBonus, featAlertCompanyBonus);
+      CONFIG.featAlertCompanyBonus = featAlertCompanyBonus;
+
+      const featAlertCompanyTax = bg.querySelector('.wia-feat-alert-company-tax').checked;
+      GM_setValue(KEYS.featAlertCompanyTax, featAlertCompanyTax);
+      CONFIG.featAlertCompanyTax = featAlertCompanyTax;
+
+      const featAlertCompanyDeposit = bg.querySelector('.wia-feat-alert-company-deposit').checked;
+      GM_setValue(KEYS.featAlertCompanyDeposit, featAlertCompanyDeposit);
+      CONFIG.featAlertCompanyDeposit = featAlertCompanyDeposit;
+
+      if (!featAlertCompanyStorage && !featAlertCompanyBonus && !featAlertCompanyTax && !featAlertCompanyDeposit) { 
+        teardownCompanyTracking(); 
+      } else { 
+        guard('companyTracking', initCompanyTracking); 
+      }
 
       const featBounty = bg.querySelector('.wia-feat-bounty').checked;
       const featBountyNotif = featBounty && bg.querySelector('.wia-feat-bounty-notif').checked;
@@ -7728,59 +7823,201 @@ function updateObserverTarget() {
 
 
   // ───────────────────────────────────────────────────────────────────────────
-  // Company Alerts (E9)
+  // Company Tracking (Issue #87 & #88 & Storage Alerts)
   // ───────────────────────────────────────────────────────────────────────────
-  const ecoAlertPollMs = 5 * 60 * 1000;
-  let ecoAlertState = {};
-  let ecoAlertInterval = null;
+  const ecoTrackingPollMs = 15 * 60 * 1000;
+  let ecoTrackingInterval = null;
 
-  async function ecoAlertPoll() {
-    if (!CONFIG.featCompanyAlerts) return;
+  async function ecoFetchAllRegions() {
+    const cache = readCache(KEYS.ecoRegionData) || {};
+    if (cache._lastFetch && Date.now() - cache._lastFetch < 3600000 * 6) return;
+    try {
+      const { payload } = await resolveApiBase('region.getAll', undefined, true);
+      if (payload && Array.isArray(payload)) {
+        payload.forEach(r => {
+          cache[r._id] = {
+            country: r.country,
+            depositEndsAt: r.deposit?.endsAt || null,
+            depositType: r.deposit?.type || null,
+            strategicResource: r.strategicResource || null
+          };
+        });
+        cache._lastFetch = Date.now();
+        writeCache(KEYS.ecoRegionData, cache);
+      }
+    } catch (err) {
+      console.warn('[PROST] ecoFetchAllRegions failed:', err);
+    }
+  }
+
+  async function ecoTrackingPoll() {
+    if (!CONFIG.featAlertCompanyStorage && !CONFIG.featAlertCompanyBonus && !CONFIG.featAlertCompanyTax && !CONFIG.featAlertCompanyDeposit && !CONFIG.featBetterRegion) return;
     const userId = getCurrentUserId();
     if (!userId) return;
 
     try {
+      await ecoFetchAllRegions();
       const { payload: companiesRes } = await resolveApiBase('company.getCompanies', { userId });
       if (!companiesRes || !companiesRes.items) return;
 
+      const state = GM_getValue(KEYS.ecoTrackingState, {});
+      let changed = false;
+      const nowMs = Date.now();
+
       for (const compInfo of companiesRes.items) {
         if (!compInfo._id) continue;
+        await new Promise(r => setTimeout(r, 600));
 
-        await new Promise(r => setTimeout(r, 600)); // space out API calls
+        const { payload: comp } = await resolveApiBase('company.getById', { companyId: compInfo._id });
+        if (!comp || !comp.region) continue;
 
-        const { payload: details } = await resolveApiBase('company.getById', { companyId: compInfo._id });
-        if (!details) continue;
+        if (!state[comp._id]) state[comp._id] = {};
+        const st = state[comp._id];
+        const compName = comp.name || 'Unknown';
 
-        if (details.isFull === undefined) {
-          setHealth('companyAlerts', 'warn', 'isFull missing in payload');
+        // 1. Storage Full Check
+        if (CONFIG.featAlertCompanyStorage) {
+          const full = comp.isFull === true;
+          if (full && !st.full) {
+            sendPersonalNtfy('Storage', `WareEra - Storage Full`, `Company ${compName} is full and has stopped producing!`, 'factory,warning', 4);
+          }
+          if (st.full !== full) {
+            st.full = full;
+            changed = true;
+          }
         }
-        const full = details.isFull === true;
 
-        if (!ecoAlertState[compInfo._id]) ecoAlertState[compInfo._id] = { full: false };
+        let currentTotalBonus = 0;
 
-        const prevState = ecoAlertState[compInfo._id].full;
-        if (full && !prevState) {
-          sendPersonalNtfy('Storage', `WareEra - Storage Full`, `Company ${details.name || 'Unknown'} is full and has stopped producing!`, 'factory,warning', 4);
+        // 2. Production Bonus Drop Check & Better Region Base Fetch
+        if (CONFIG.featAlertCompanyBonus || CONFIG.featBetterRegion) {
+          try {
+            const { payload: bonusData } = await resolveApiBase('company.getProductionBonus', { companyId: comp._id });
+            if (bonusData && typeof bonusData.total === 'number') {
+              currentTotalBonus = bonusData.total;
+              const newBonus = bonusData.total;
+              if (CONFIG.featAlertCompanyBonus) {
+                if (st.bonus !== undefined && newBonus < st.bonus) {
+                   sendPersonalNtfy('Trend Down', 'WareEra - Bonus Drop', `Company ${compName} production bonus dropped from ${st.bonus}% to ${newBonus}%`, 'chart_with_downwards_trend,warning', 3);
+                }
+                if (st.bonus !== newBonus) {
+                  st.bonus = newBonus;
+                  changed = true;
+                }
+              }
+            }
+          } catch (e) {
+            console.warn('[PROST] eco: fetch bonus failed', e);
+          }
         }
-        ecoAlertState[compInfo._id].full = full;
+
+        await new Promise(r => setTimeout(r, 600));
+
+        let regionPayload = null;
+        if (CONFIG.featAlertCompanyTax || CONFIG.featAlertCompanyDeposit || CONFIG.featBetterRegion) {
+          const regionCache = readCache(KEYS.ecoRegionData) || {};
+          regionPayload = regionCache[comp.region];
+          if (!regionPayload) {
+            try {
+              const { payload: regData } = await resolveApiBase('region.getById', { regionId: comp.region });
+              regionPayload = {
+                country: regData.country,
+                depositEndsAt: regData.deposit?.endsAt || null,
+                depositType: regData.deposit?.type || null,
+                strategicResource: regData.strategicResource || null
+              };
+            } catch (e) {}
+          }
+        }
+
+        // 3. Tax Increase Check
+        if (CONFIG.featAlertCompanyTax && comp.workerCount > 0 && regionPayload && regionPayload.country) {
+          try {
+            await new Promise(r => setTimeout(r, 600));
+            const { payload: countryData } = await resolveApiBase('country.getCountryById', { countryId: regionPayload.country });
+            if (countryData && countryData.taxes && typeof countryData.taxes.income === 'number') {
+              const newTax = countryData.taxes.income;
+              if (st.tax !== undefined && newTax > st.tax) {
+                sendPersonalNtfy('Tax Increase', 'WareEra - Tax Up', `Income tax for ${compName} increased from ${st.tax}% to ${newTax}%`, 'money_with_wings,warning', 3);
+              }
+              if (st.tax !== newTax) {
+                st.tax = newTax;
+                changed = true;
+              }
+            }
+          } catch (e) {
+            console.warn('[PROST] eco: fetch country tax failed', e);
+          }
+        }
+
+        // 4. Region Deposit Expiry Check
+        if (CONFIG.featAlertCompanyDeposit && regionPayload && regionPayload.depositEndsAt) {
+          const endsAtMs = new Date(regionPayload.depositEndsAt).getTime();
+          const msLeft = endsAtMs - nowMs;
+          
+          if (msLeft > 0 && msLeft < 3600000) {
+            if (st.depositEndsAt !== regionPayload.depositEndsAt) {
+               sendPersonalNtfy('Expiring', 'WareEra - Deposit Expiring', `Company ${compName}: ${regionPayload.depositType} bonus expires in < 1 hour!`, 'hourglass_flowing_sand,warning', 3);
+               st.depositEndsAt = regionPayload.depositEndsAt;
+               changed = true;
+            }
+          }
+        }
+
+        // 5. Better Region Check
+        if (CONFIG.featBetterRegion && currentTotalBonus > 0 && comp.activeProduction?.itemCode) {
+          const itemCode = comp.activeProduction.itemCode;
+          try {
+            await new Promise(r => setTimeout(r, 600));
+            const { payload: recommended } = await resolveApiBase('company.getRecommendedRegionIdsByItemCode', { itemCode, count: 1 });
+            if (recommended && recommended.length > 0) {
+              const topRec = recommended[0];
+              if (topRec.bonus > currentTotalBonus) {
+                const alerts = readCache(KEYS.ecoBetterRegionAlerts) || {};
+                const prevAlert = alerts[comp._id];
+                const topRecRegionId = topRec.regionId;
+                
+                const recRegionCache = (readCache(KEYS.ecoRegionData) || {})[topRecRegionId];
+                const topRecCountry = recRegionCache ? recRegionCache.country : 'unknown';
+
+                if (prevAlert && prevAlert.companyRegionAtTimeOfAlert !== comp.region) {
+                  delete alerts[comp._id];
+                } else if (!prevAlert || topRec.bonus > prevAlert.alertedBonus || (topRecCountry !== prevAlert.alertedCountry && topRec.bonus > currentTotalBonus)) {
+                   sendPersonalNtfy('Better Region', 'WareEra - Better Region Available', `Company ${compName} could get ${topRec.bonus}% bonus in a better region!`, 'gem,warning', 3);
+                   alerts[comp._id] = {
+                     alertedCountry: topRecCountry,
+                     alertedBonus: topRec.bonus,
+                     companyRegionAtTimeOfAlert: comp.region
+                   };
+                   writeCache(KEYS.ecoBetterRegionAlerts, alerts);
+                }
+              }
+            }
+          } catch(e) {
+            console.warn('[PROST] eco: fetch recommended regions failed', e);
+          }
+        }
       }
-      setHealth('companyAlerts', 'ok', 'polled ' + companiesRes.items.length + ' companies');
+
+      if (changed) GM_setValue(KEYS.ecoTrackingState, state);
+      setHealth('companyTracking', 'ok', 'polled ' + companiesRes.items.length + ' companies');
     } catch (e) {
-      console.warn('[PROST] eco: alert poll failed', e);
-      setHealth('companyAlerts', 'warn', e.message);
+      console.warn('[PROST] eco: tracking poll failed', e);
+      setHealth('companyTracking', 'warn', e.message);
     }
   }
 
-  function initCompanyAlerts() {
-    if (ecoAlertInterval) clearInterval(ecoAlertInterval);
-    ecoAlertInterval = setInterval(ecoAlertPoll, ecoAlertPollMs);
-    setTimeout(ecoAlertPoll, 8000); // initial run after boot
+  function initCompanyTracking() {
+    if (ecoTrackingInterval) clearInterval(ecoTrackingInterval);
+    ecoTrackingInterval = setInterval(ecoTrackingPoll, ecoTrackingPollMs);
+    setTimeout(ecoTrackingPoll, 10000);
   }
 
-  function teardownCompanyAlerts() {
-    if (ecoAlertInterval) clearInterval(ecoAlertInterval);
-    ecoAlertInterval = null;
+  function teardownCompanyTracking() {
+    if (ecoTrackingInterval) clearInterval(ecoTrackingInterval);
+    ecoTrackingInterval = null;
   }
+
 
   // ───────────────────────────────────────────────────────────────────────────
   // Company Economy (Wave 1)
@@ -7849,19 +8086,29 @@ function updateObserverTarget() {
 
   async function regionToCountry(regionId) {
     if (!regionId) return null;
-    const cache = readCache(KEYS.ecoRegionCountry) || {};
-    if (cache[regionId]) return cache[regionId];
+    const cache = readCache(KEYS.ecoRegionData) || {};
+    const nowMs = Date.now();
+    // Cache valid via global fetch or manual fetch
+    if (cache[regionId] && (cache._lastFetch || (cache[regionId].at && nowMs - cache[regionId].at < 7200000))) {
+      return cache[regionId].country;
+    }
     try {
       const { payload: res } = await resolveApiBase('region.getById', { regionId });
       if (res && res.country) {
-        cache[regionId] = res.country;
-        writeCache(KEYS.ecoRegionCountry, cache);
+        cache[regionId] = { 
+          country: res.country, 
+          depositEndsAt: res.deposit?.endsAt || null,
+          depositType: res.deposit?.type || null,
+          strategicResource: res.strategicResource || null,
+          at: nowMs 
+        };
+        writeCache(KEYS.ecoRegionData, cache);
         return res.country;
       }
     } catch (err) {
-      console.warn('[PROST] eco: regionToCountry fetch failed', err);
+      console.warn('[PROST] eco: region fetch failed', err);
     }
-    return null;
+    return cache[regionId] ? cache[regionId].country : null;
   }
 
   async function getCountryTax(countryId) {
@@ -8247,17 +8494,18 @@ function updateObserverTarget() {
     return 0;
   }
 
-  function ecoOwnedIdsOnPage(mainWin) {
+  function ecoIdsOnPage(mainWin) {
     const on = [];
-    const ids = ecoOwnedCache.ids;
-    if (!ids) return on;
-    for (const id of ids) {
-      if (mainWin.querySelector('a[href="/company/' + id + '"]')) on.push(id);
+    const links = mainWin.querySelectorAll('a[href^="/company/"]');
+    for (const l of links) {
+      const m = l.getAttribute('href').match(/^\/company\/([a-f0-9]{24})$/);
+      if (m && !on.includes(m[1])) on.push(m[1]);
     }
     return on;
   }
 
   function ensureCompanyProfitInjected() {
+    if (!isCompaniesPage()) { setHealth('companyProfit', 'idle', 'not on companies list'); return; }
     if (ecoProfitLoading) return;
     const mainWin = document.getElementById('main-window');
     if (!mainWin) { setHealth('companyProfit', 'idle', 'no main-window'); return; }
@@ -8267,13 +8515,11 @@ function updateObserverTarget() {
     const ownedReady = ecoOwnedCache.ids && ecoOwnedCache.userId === userId &&
                        now() - ecoOwnedCache.at < CONFIG.ecoDetailTtlMs;
 
-    // Do we still need detail for any owned card currently on the page?
+    const pageIds = ecoIdsOnPage(mainWin);
     let needDetail = !ownedReady;
-    if (ownedReady) {
-      for (const id of ecoOwnedIdsOnPage(mainWin)) {
-        const d = ecoCompanyDetailCache.get(id);
-        if (!d || now() - d.at >= CONFIG.ecoDetailTtlMs) { needDetail = true; break; }
-      }
+    for (const id of pageIds) {
+      const d = ecoCompanyDetailCache.get(id);
+      if (!d || now() - d.at >= CONFIG.ecoDetailTtlMs) { needDetail = true; break; }
     }
 
     if (needDetail) {
@@ -8281,7 +8527,7 @@ function updateObserverTarget() {
       setHealth('companyProfit', 'ok', 'fetching data');
       (async () => {
         await Promise.all([fetchPrices(false), fetchGameConfig(), fetchOwnedCompanyIds(userId)]);
-        const need = ecoOwnedIdsOnPage(mainWin).filter(id => {
+        const need = pageIds.filter(id => {
           const d = ecoCompanyDetailCache.get(id);
           return !d || now() - d.at >= CONFIG.ecoDetailTtlMs;
         });
@@ -8304,23 +8550,41 @@ function updateObserverTarget() {
     if (!recipe) return null;
 
     const sellPrice = prices[normalizeItemCode(details.itemCode)] || 0;
-    if (sellPrice <= 0) return { priced: false };  // no market price → show n/a, don't count
-
-    let matCost = 0;
-    for (const inp of recipe.inputs) matCost += inp.qty * (prices[normalizeItemCode(inp.code)] || 0);
-
+    
     // market/sell tax (lazy: kick off region→country→tax resolution if missing)
-    const countryId = regionCache[details.region];
+    const regionObj = regionCache[details.region];
+    const countryId = regionObj?.country;
+    let endsAt = regionObj?.depositEndsAt || null;
+    let depType = regionObj?.depositType || null;
+    let isStrategic = false;
+
+    if (!endsAt && regionObj?.strategicResource) {
+      const now = new Date();
+      const nextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1, 0, 0, 0));
+      endsAt = nextMonth.toISOString();
+      depType = regionObj.strategicResource;
+      isStrategic = true;
+    }
+    
     let marketTax = 0, taxKnown = false;
     if (countryId && taxCache[countryId]?.data) { marketTax = taxCache[countryId].data.market || 0; taxKnown = true; }
     else if (countryId) getCountryTax(countryId);
-    else if (details.region) regionToCountry(details.region);
+
+    // If region is completely missing, kick off a background fetch
+    if (details.region && !regionObj) {
+      regionToCountry(details.region);
+    }
+
+    if (sellPrice <= 0) return { priced: false, depositEndsAt: endsAt, depositType: depType, isStrategicResource: isStrategic };
+
+    let matCost = 0;
+    for (const inp of recipe.inputs) matCost += inp.qty * (prices[normalizeItemCode(inp.code)] || 0);
 
     const bonus = getCardBonus(chipEl);
     const lvl = details.activeUpgradeLevels?.automatedEngine || 0;
     const engineDaily = engineLevels?.[lvl]?.stats?.dailyProd || 0;
 
-    if (engineDaily === 0) return { priced: false };
+    if (engineDaily === 0) return { priced: false, depositEndsAt, depositType };
 
     const perItemNet = sellPrice * (1 - marketTax / 100) - matCost;
     const pointsPerDay = engineDaily * (1 + bonus / 100);
@@ -8331,7 +8595,11 @@ function updateObserverTarget() {
     // once full, the Automated Engine stops → hoursToFull = (cap − current)/pointsPerDay.
     const hoursToFull = ecoStorageHoursToFull(id, pointsPerDay);
 
-    return { priced: true, net, sellPrice, marketTax, matCost, perItemNet, engineDaily, bonus, pointsPerDay, dayItems, taxKnown, hoursToFull, itemCode: details.itemCode, inputs: recipe.inputs };
+    return { 
+      priced: true, net, sellPrice, marketTax, matCost, perItemNet, engineDaily, bonus, pointsPerDay, 
+      dayItems, taxKnown, hoursToFull, itemCode: details.itemCode, inputs: recipe.inputs,
+      depositEndsAt: endsAt, depositType: depType, isStrategicResource: isStrategic
+    };
   }
 
   // Parse a game number span like "800", "1K", "1.5K", "2M" → Number.
@@ -8414,6 +8682,34 @@ function updateObserverTarget() {
       storageBadge.innerHTML = boxSvg + txt;
       storageBadge.title = isFull ? 'Storage FULL — collect (PRODUCE) to keep producing' : `Storage full in ${txt} (engine stops until you collect)`;
     }
+
+    let depositBadge = chipEl.querySelector(':scope > .wia-eco-deposit-badge');
+    if (d && d.depositEndsAt) {
+      const rem = Math.max(0, new Date(d.depositEndsAt) - Date.now());
+      if (rem > 0) {
+        const hrs = (rem / 3600000).toFixed(1);
+        const depWarn = rem < 3600000 * 24; // yellow if < 24h
+        const sigDep = hrs + '|' + (d.depositType || '');
+        if (!depositBadge) {
+          depositBadge = document.createElement('span');
+          depositBadge.className = 'wia-eco-deposit-badge';
+          depositBadge.style.cssText = 'margin-left:4px; padding:0 5px; border-radius:4px; font-weight:700; font-size:0.82em; display:inline-flex; align-items:center; gap:3px; cursor:help; background:rgba(0,0,0,0.35);';
+          chipEl.appendChild(depositBadge);
+        }
+        if (depositBadge.dataset.sig !== sigDep) {
+          depositBadge.dataset.sig = sigDep;
+          depositBadge.style.color = depWarn ? '#facc15' : '#9ca3af';
+          const depType = d.depositType || 'unknown';
+          const iconUrl = d.isStrategicResource 
+            ? `https://media.warera.io/images/strategicResources/${depType}.png` 
+            : `https://assets.warera.io/assets/items/${depType}.png`;
+          depositBadge.innerHTML = `<img src="${iconUrl}" style="width:12px;height:12px;object-fit:contain;filter:drop-shadow(1px 1px 0 #000);"> ${hrs}h`;
+          depositBadge.title = d.isStrategicResource 
+            ? `Strategic region resource (${depType}) rotates in ${hrs} hours` 
+            : `Temporary region deposit (${depType}) expires in ${hrs} hours`;
+        }
+      } else if (depositBadge) depositBadge.remove();
+    } else if (depositBadge) depositBadge.remove();
   }
 
   // The outermost block of the first company card = climb from the first company
@@ -8528,13 +8824,13 @@ function updateObserverTarget() {
     const prices = readCache(KEYS.priceCache)?.data || {};
     const recipes = ecoRecipesCache.recipes || {};
     const engineLevels = ecoRecipesCache.engineLevels || null;
-    const regionCache = readCache(KEYS.ecoRegionCountry) || {};
+    const regionCache = readCache(KEYS.ecoRegionData) || {};
     const taxCache = readCache(KEYS.ecoCountryTax) || {};
 
     let total = 0, earning = 0, losing = 0, shown = 0, taxPending = false;
     const balances = {};
 
-    for (const id of ecoOwnedIdsOnPage(mainWin)) {
+    for (const id of ecoIdsOnPage(mainWin)) {
       const links = Array.from(mainWin.querySelectorAll('a[href="/company/' + id + '"]'));
       // the chip-row link is the one carrying the %-chips (bonus/tax); title link has none
       const chipEl = links.find(l => /\d%/.test(l.textContent)) || links[0];
@@ -9103,6 +9399,11 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
   // Order-Radar module
   // Header-embedded strip showing active battle orders set by country or MU
   // ───────────────────────────────────────────────────────────────────────────
+  function isCompaniesPage() {
+    const path = getPagePathname();
+    return path === '/companies' || /^\/user\/[a-f0-9]+\/companies$/.test(path);
+  }
+
   function isCountryPage() {
     return /^\/country(\/|$)/.test(getPagePathname());
   }
@@ -10088,15 +10389,16 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
         label = 'PROST';
       } else {
         const SUPPORTERS = [
-          116223963,  // 6976105d8928a96cd233e7ee
-          1464792437, // 69b65b087903e4b84c806a75
-          285976846,  // 69f33095321a7db59a9fb05a
-          3211084130, // 69a6df1fd43e5d2935ed804c
-          2740677414, // 6a12f920d21301174f235ae3
-          858126142,  // 69a74c08df5814a035616dfc
-          1666352841, // 69a1d12f11bedb7dffae3caa
-          1150565605, // 698a09a853e92bbb585d32fc
-          2823877408  // 69a14b324d2abd93de74dc0a
+          116223963,
+          1464792437,
+          285976846,
+          3211084130,
+          2740677414,
+          858126142,
+          1666352841,
+          1150565605,
+          2823877408,
+          2865049335
         ];
         if (SUPPORTERS.includes(h)) {
           supporterAdjectiveIndex = parseInt(uid.slice(-4), 16) % 10;
@@ -11595,7 +11897,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
         <span class="wia-cs-rune">✦</span>
         <span class="wia-cs-word">${member.supporterAdjectiveIndex >= 0 ? t('supporterAdj' + member.supporterAdjectiveIndex) + ' ' : ''}${t(meta.titleKey)}${member.supporterAdjectiveIndex >= 0 ? '<img src="data:image/png;base64,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" style="height:1.1em;vertical-align:-10%;margin-left:6px;filter:drop-shadow(0 0 2px rgba(236,72,153,0.8));" title="PROST Supporter" alt="💖">' : ''}</span>
         <span class="wia-cs-rune">✦</span>
-        <span class="wia-cs-share">${buildLabel} · ${pct}%</span>
+    <span class="wia-cs-share">${buildLabel} · ${pct}%</span>
       </div>
       <div class="wia-cs-bars">
         <div class="wia-cs-bar hp">
@@ -17483,7 +17785,11 @@ function checkInventoryDeltaWear() {
     CONFIG.featItemAdvisor = GM_getValue(KEYS.featItemAdvisor, true);
     CONFIG.featCraftingAdvisor = GM_getValue(KEYS.featCraftingAdvisor, true);
     CONFIG.featCompanyEco = GM_getValue(KEYS.featCompanyEco, true);
-    CONFIG.featCompanyAlerts = GM_getValue(KEYS.featCompanyAlerts, true);
+    CONFIG.featAlertCompanyStorage = GM_getValue(KEYS.featAlertCompanyStorage, true);
+    CONFIG.featAlertCompanyBonus = GM_getValue(KEYS.featAlertCompanyBonus, true);
+    CONFIG.featAlertCompanyTax = GM_getValue(KEYS.featAlertCompanyTax, true);
+    CONFIG.featAlertCompanyDeposit = GM_getValue(KEYS.featAlertCompanyDeposit, true);
+    CONFIG.featBetterRegion = GM_getValue(KEYS.featBetterRegion, true);
     CONFIG.featSystemAlerts = GM_getValue(KEYS.featSystemAlerts, true);
     CONFIG.pillBuffH = GM_getValue(KEYS.pillBuffH, CONFIG.pillBuffH);
     CONFIG.pillKnifeH = GM_getValue(KEYS.pillKnifeH, CONFIG.pillKnifeH);
@@ -17524,7 +17830,7 @@ function checkInventoryDeltaWear() {
     if (CONFIG.featMarketGraph) guard('marketGraph', initMarketGraph); else setHealth('marketGraph', 'idle', 'disabled in settings');
     if (CONFIG.featPnlTracker) guard('pnl', initPnlTracker); else setHealth('pnl', 'idle', 'disabled in settings');
     if (CONFIG.featBountyNotify) guard('bountyNotify', initBountyNotify); else setHealth('bountyNotify', 'idle', 'disabled in settings');
-    if (CONFIG.featCompanyAlerts) guard('companyAlerts', initCompanyAlerts); else setHealth('companyAlerts', 'idle', 'disabled in settings');
+    if (CONFIG.featAlertCompanyStorage || CONFIG.featAlertCompanyBonus || CONFIG.featAlertCompanyTax || CONFIG.featAlertCompanyDeposit || CONFIG.featBetterRegion) guard('companyTracking', initCompanyTracking); else setHealth('companyTracking', 'idle', 'disabled in settings');
     if (CONFIG.featSystemAlerts) initSystemAlerts();
     injectGear();
     refreshMenuCommands();
