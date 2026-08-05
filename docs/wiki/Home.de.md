@@ -23,6 +23,7 @@ Browserspiel [**WareEra**](https://app.warera.io).
 | [Inventory Advisor](Inventory-Advisor.de) | KEEP / HOLD / SELL / SCRAP-Empfehlung auf jeder Inventarkarte, inkl. Stat-Ranking, Schrott-vs-Markt-Leisten, Skin-/Ausrüstungserkennung und Haltbarkeit. |
 | [Täglicher P&L Tracker](Daily-PnL-Tracker.de) | Täglicher Gewinn/Verlust in der Topbar neben deinem Gold, inkl. automatisch gebuchter Verschleiß-(Reparatur-)Kosten. Standardmäßig an. |
 | [Ressourcen-Markt-Graph](Market-Graph.de) | *Experimentell.* Intraday-Preisverlauf (24h/3d) im Kauf-/Verkaufs-Modal von Ressourcen. |
+| [Firmen-Berater](Company-Advisor.de) | Economy-Badges für täglichen Netto-Gewinn und verbleibende Lagerkapazität sowie Warnungen für Produktionsboni, Steuern und endende Rohstoffe. |
 | [Crafting-Rechner](Crafting-Calculator.de) | *Experimentell.* Profit-Schätzung fürs Herstellen - Ressourcenkosten vs. Marktwert. |
 | [Battle Advisor](Battle-Advisor.de) | *Experimentell.* Hebt auf Kampfseiten den Button deiner Seite hervor und zeigt aktive Befehle inline. |
 | [Truppen-Radar](Troop-Radar.de) | Zeigt HP, Skillung, aktive Pillenlaufzeit und Debuff-Erholungszeiten in MU-Mitgliederliste und Header. |
