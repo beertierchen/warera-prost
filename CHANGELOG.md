@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 2026-08-05 | Bugfix: Company Advisor Adjustments (v0.11.2)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`
+
+**Änderungen (Deutsch):**
+- **Bug Fix**: Deaktivierte Unternehmen (`disabledAt`) werden nun vom Firmenberater ignoriert, da sie nichts produzieren.
+- **Refactor**: Der Firmenberater bündelt HTTP-Anfragen nun via tRPC Batching, um Netzwerk-Traffic und 429-Fehler zu vermeiden.
+
+**Changes (English):**
+- **Bug Fix**: Deactivated companies (`disabledAt`) are now ignored by the Company Advisor as they do not produce anything.
+- **Refactor**: The Company Advisor now uses tRPC batching to combine HTTP requests, reducing network traffic and preventing 429 errors.
+
 ## 2026-08-05 | Feature: Company Eco Alerts & Badges (v0.11.1)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`

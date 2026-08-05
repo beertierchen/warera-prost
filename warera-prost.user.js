@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.11.1
+// @version      0.11.2
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -8474,14 +8474,15 @@ function updateObserverTarget() {
     });
 
     if (uncachedIds.length > 0) {
-      await Promise.all(uncachedIds.map(async id => {
-        try {
-          const { payload } = await resolveApiBase('company.getById', { companyId: id });
-          if (payload) {
-            ecoCompanyDetailCache.set(id, { at: now(), data: payload });
+      try {
+        const batchArgs = uncachedIds.map(id => ({ companyId: id }));
+        const batchResults = await resolveApiBatch('company.getById', batchArgs);
+        batchResults.forEach((res, i) => {
+          if (res?.payload) {
+            ecoCompanyDetailCache.set(uncachedIds[i], { at: now(), data: res.payload });
           }
-        } catch (e) { console.warn('[PROST] eco: detail fetch failed', e); }
-      }));
+        });
+      } catch (e) { console.warn('[PROST] eco: detail batch fetch failed', e); }
     }
   }
 
@@ -8546,6 +8547,7 @@ function updateObserverTarget() {
   function ecoComputeNet(id, chipEl, prices, recipes, engineLevels, regionCache, taxCache) {
     const details = ecoCompanyDetailCache.get(id)?.data;
     if (!details) return null;
+    if (details.disabledAt) return null;
     const recipe = recipes[details.itemCode];
     if (!recipe) return null;
 
