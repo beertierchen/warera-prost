@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## 2026-08-06 | Bugfix: Company Ownership Filter (v0.11.6)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`
+
+**Änderungen (Deutsch):**
+- **Bug Fix**: Der Arbeitgeber wurde fälschlicherweise in die Berechnung der eigenen Firmen-Profite und in den Unternehmens-Monitor einbezogen (weil die API alle verbundenen Firmen ausgibt). Dies wurde korrigiert. Der Profit-Monitor und die tägliche Berechnung filtern nun strikt nach dem tatsächlichen Besitzer.
+- **Bug Fix**: Ein Fehler bei den Hintergrund-Abfragen der Firmen (Lager-Alarme), verursacht durch eine API-Änderung (String statt Objekt), wurde behoben.
+- **UI Update**: Für Firmen, die nicht dem eigenen Account gehören (z.B. der Arbeitgeber oder auf fremden Profilen), wird nun gar keine Profit-Pille (früher `—/d`) mehr eingeblendet.
+
+**Changes (English):**
+- **Bug Fix**: Your employer's company was incorrectly included in your personal company profit monitor and calculations because the API returns all associated companies. This has been fixed to strictly filter by true ownership.
+- **Bug Fix**: Fixed a bug in background polling for companies (Storage Full alerts) caused by an API format change.
+- **UI Update**: Companies that you do not own (like your workplace or companies on other players' profiles) will no longer show a useless `—/d` profit badge; the badge is completely hidden.
+
 ## 2026-08-06 | Bugfix: Raw Materials Profit Calculation (v0.11.5)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`
