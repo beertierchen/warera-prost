@@ -8683,7 +8683,7 @@ function updateObserverTarget() {
   function ecoComputeNet(id, chipEl, prices, recipes, engineLevels, regionCache, taxCache, cardEl) {
     const details = ecoCompanyDetailCache.get(id)?.data;
     if (!details) return null;
-    if (details.user !== ecoProfileUserId()) return null;
+    if (details.user !== ecoProfileUserId()) return { skip: true };
     if (details.disabledAt) return { disabled: true };
     const recipe = recipes[details.itemCode];
     if (!recipe) return null;
@@ -8788,7 +8788,7 @@ function updateObserverTarget() {
   }
 
   function ecoRenderBadge(chipEl, d) {
-    if (d && d.disabled) {
+    if (d && (d.disabled || d.skip)) {
       const p = chipEl.querySelector(':scope > .wia-eco-profit-badge');
       if (p) p.remove();
       const s = chipEl.querySelector(':scope > .wia-eco-storage-badge');
@@ -9042,7 +9042,9 @@ function updateObserverTarget() {
 
       const d = ecoComputeNet(id, chipEl, prices, recipes, engineLevels, regionCache, taxCache, cardEl);
       ecoRenderBadge(chipEl, d);
-      if (d && d.disabled) {
+      if (d && d.skip) {
+        continue;
+      } else if (d && d.disabled) {
         deactivated++;
       } else if (d && d.priced) {
         total += d.net; shown++;
