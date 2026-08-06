@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.11.4
+// @version      0.11.5
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -8488,7 +8488,11 @@ function updateObserverTarget() {
             const inputs = Object.entries(item.productionNeeds).map(([ic, q]) => ({ code: ic, qty: q }));
             if (inputs.length > 0) {
               recipes[code] = { inputs, productionPoints: item.productionPoints };
+            } else {
+              recipes[code] = { inputs: [], productionPoints: item.productionPoints };
             }
+          } else if (item.type === 'raw' || item.type === 'product') {
+            recipes[code] = { inputs: [], productionPoints: item.productionPoints };
           }
         }
         ecoRecipesCache.recipes = recipes;

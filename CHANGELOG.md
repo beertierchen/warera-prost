@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## 2026-08-06 | Bugfix: Raw Materials Profit Calculation (v0.11.5)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`
+
+**Änderungen (Deutsch):**
+- **Bug Fix**: Firmen, die Rohstoffe (z.B. Eisen, Öl) oder Basis-Produkte herstellen, wurden zuvor bei der Profit-Berechnung ignoriert und zeigten fälschlicherweise `—/d` an. Dies wurde behoben. Das Skript erkennt nun korrekt, dass diese Items 0 Materialkosten haben und berechnet den Netto-Profit basierend auf den Lohnkosten und dem Verkaufspreis.
+
+**Changes (English):**
+- **Bug Fix**: Companies producing raw materials (e.g., Iron, Oil) or basic products were previously ignored in the profit calculation, incorrectly showing `—/d`. This has been fixed. The script now correctly recognizes that these items have 0 material costs and calculates the net profit based on wages and selling prices.
+
 ## 2026-08-06 | Feature: Accurate Worker Calculation via API (v0.11.4)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`
