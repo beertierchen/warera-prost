@@ -8683,7 +8683,7 @@ function updateObserverTarget() {
   function ecoComputeNet(id, chipEl, prices, recipes, engineLevels, regionCache, taxCache, cardEl) {
     const details = ecoCompanyDetailCache.get(id)?.data;
     if (!details) return null;
-    if (details.user !== getCurrentUserId()) return null;
+    if (details.user !== ecoProfileUserId()) return null;
     if (details.disabledAt) return { disabled: true };
     const recipe = recipes[details.itemCode];
     if (!recipe) return null;
@@ -8908,14 +8908,14 @@ function updateObserverTarget() {
   function ecoFirstCardBlock(mainWin) {
     const owned = ecoOwnedCache.ids;
     const links = Array.from(mainWin.querySelectorAll('a[href^="/company/"]'));
-    const uid = getCurrentUserId();
+    const profileUid = ecoProfileUserId();
     // first OWNED company link in DOM order (skips the top "Job" company)
     let first = null, firstId = null;
     for (const a of links) {
       const id = ecoCompanyIdOf(a);
       if (id && (!owned || owned.has(id))) {
         const detail = ecoCompanyDetailCache.get(id)?.data;
-        if (detail && detail.user !== uid) continue;
+        if (detail && detail.user !== profileUid) continue;
         first = a; firstId = id; break;
       }
     }
