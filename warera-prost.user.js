@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.11.7
+// @version      0.11.8
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -7595,6 +7595,7 @@ function updateObserverTarget() {
     }
 
     if (isInventoryPage()) {
+      try { ecoTrackingPollOnRoute(); } catch (e) { dbg('companyTracking', 'error', 'route-trigger failed (inventory)', e); }
       updateObserverTarget();
       if (CONFIG.featItemAdvisor) {
         if (document.querySelector("[id^='item-code-selector-']") || findItemCards().size > 0) {
@@ -7639,6 +7640,9 @@ function updateObserverTarget() {
       }
     } else if (isUserProfilePage() || pagePath.startsWith('/companies') || pagePath.startsWith('/company/') || /^\/user\/[0-9a-zA-Z_-]+\/companies\/?$/.test(pagePath)) {
       observer.disconnect();
+      if (pagePath.startsWith('/companies') || pagePath.startsWith('/company/') || /^\/user\/[0-9a-zA-Z_-]+\/companies\/?$/.test(pagePath)) {
+        try { ecoTrackingPollOnRoute(); } catch (e) { dbg('companyTracking', 'error', 'route-trigger failed (companies)', e); }
+      }
       if (isUserProfilePage() && CONFIG.featProfileCharsheet) {
         guard('profileCharsheet', applyProfileCharsheet);
         initSharedBodyObserver();
@@ -7838,7 +7842,11 @@ function updateObserverTarget() {
   // Company Tracking (Issue #87 & #88 & Storage Alerts)
   // ───────────────────────────────────────────────────────────────────────────
   const ecoTrackingPollMs = 15 * 60 * 1000;
+  const ecoTrackingPollMinGap = 2 * 60 * 1000;
   let ecoTrackingInterval = null;
+  let ecoTrackingLastPollAt = 0;
+  const ecoTopBarStockCache = { stock: {}, at: 0 };
+  const ECO_STOCK_CACHE_MAX_AGE = 30 * 60 * 1000;
 
   async function ecoFetchAllRegions() {
     const cache = readCache(KEYS.ecoRegionData) || {};
@@ -7897,11 +7905,25 @@ function updateObserverTarget() {
         }
       }
     }
+    if (Object.keys(stock).length > 0) {
+      ecoTopBarStockCache.stock = stock;
+      ecoTopBarStockCache.at = Date.now();
+    }
     return stock;
+  }
+
+  function ecoGetCachedStock() {
+    const fresh = ecoGetTopBarStock();
+    if (Object.keys(fresh).length > 0) return fresh;
+    if (ecoTopBarStockCache.at && (Date.now() - ecoTopBarStockCache.at < ECO_STOCK_CACHE_MAX_AGE)) {
+      return ecoTopBarStockCache.stock;
+    }
+    return null;
   }
 
   async function ecoTrackingPoll() {
     if (!CONFIG.featAlertCompanyStorage && !CONFIG.featAlertCompanyBonus && !CONFIG.featAlertCompanyTax && !CONFIG.featAlertCompanyDeposit && !CONFIG.featBetterRegion) return;
+    ecoTrackingLastPollAt = Date.now();
     dbg('companyTracking', 'Starting poll...');
     const userId = getCurrentUserId();
     if (!userId) {
@@ -7925,6 +7947,8 @@ function updateObserverTarget() {
       const state = GM_getValue(KEYS.ecoTrackingState, {});
       let changed = false;
       const nowMs = Date.now();
+      const activeCompanyIds = new Set();
+      const materialConsumption = {};
 
       for (const item of itemsList) {
         if (!item) continue;
@@ -7935,9 +7959,24 @@ function updateObserverTarget() {
         const { payload: comp } = await resolveApiBase('company.getById', { companyId: compId });
         if (!comp || !comp.region || comp.disabledAt || comp.user !== userId) continue;
 
+        activeCompanyIds.add(comp._id);
         if (!state[comp._id]) state[comp._id] = {};
         const st = state[comp._id];
         const compName = comp.name || 'Unknown';
+
+        let currentTotalBonus = 0;
+
+        // 0. Fetch production bonus early (needed for material depletion estimate)
+        if (CONFIG.featAlertCompanyBonus || CONFIG.featBetterRegion || CONFIG.featAlertCompanyStorage) {
+          try {
+            const { payload: bonusData } = await resolveApiBase('company.getProductionBonus', { companyId: comp._id });
+            if (bonusData && typeof bonusData.total === 'number') {
+              currentTotalBonus = bonusData.total;
+            }
+          } catch (e) {
+            console.warn('[PROST] eco: fetch bonus failed (early)', e);
+          }
+        }
 
         // 1. Storage Full Check
         if (CONFIG.featAlertCompanyStorage) {
@@ -7950,46 +7989,34 @@ function updateObserverTarget() {
             changed = true;
           }
 
-          // 1.5 Out of Materials Check
+          // Collect per-material consumption for aggregate check after loop
           const recipes = ecoRecipesCache.recipes || {};
           const recipe = recipes[comp.itemCode];
           if (recipe && recipe.inputs && recipe.inputs.length > 0) {
-            const topBarStock = ecoGetTopBarStock();
+            const engineLevels = ecoRecipesCache.engineLevels;
+            const lvl = comp.activeUpgradeLevels?.automatedEngine || 0;
+            const engineDaily = engineLevels?.[lvl]?.stats?.dailyProd || 0;
+            const bonus = currentTotalBonus || 0;
+            const pointsPerDay = engineDaily * (1 + bonus / 100);
+            const dayItems = recipe.productionPoints ? pointsPerDay / recipe.productionPoints : 0;
+
             for (const inp of recipe.inputs) {
-              const stockAmt = topBarStock[inp.code] || 0;
-              const noMat = stockAmt < 10;
-              if (noMat && !st.noMat) {
-                sendPersonalNtfy('Out of Stock', `WareEra - Material Shortage`, `Company ${compName} has no ${inp.code} and cannot produce!`, 'package,warning', 4);
-              }
-              if (st.noMat !== noMat) {
-                st.noMat = noMat;
-                changed = true;
-              }
+              if (!materialConsumption[inp.code]) materialConsumption[inp.code] = { totalDaily: 0, count: 0 };
+              materialConsumption[inp.code].totalDaily += dayItems * (inp.qty || 1);
+              materialConsumption[inp.code].count++;
             }
           }
         }
 
-        let currentTotalBonus = 0;
-
-        // 2. Production Bonus Drop Check & Better Region Base Fetch
-        if (CONFIG.featAlertCompanyBonus || CONFIG.featBetterRegion) {
-          try {
-            const { payload: bonusData } = await resolveApiBase('company.getProductionBonus', { companyId: comp._id });
-            if (bonusData && typeof bonusData.total === 'number') {
-              currentTotalBonus = bonusData.total;
-              const newBonus = bonusData.total;
-              if (CONFIG.featAlertCompanyBonus) {
-                if (st.bonus !== undefined && newBonus < st.bonus) {
-                   sendPersonalNtfy('Trend Down', 'WareEra - Bonus Drop', `Company ${compName} production bonus dropped from ${st.bonus}% to ${newBonus}%`, 'chart_with_downwards_trend,warning', 3);
-                }
-                if (st.bonus !== newBonus) {
-                  st.bonus = newBonus;
-                  changed = true;
-                }
-              }
-            }
-          } catch (e) {
-            console.warn('[PROST] eco: fetch bonus failed', e);
+        // 2. Production Bonus Drop Check (bonus already fetched in step 0)
+        if (CONFIG.featAlertCompanyBonus) {
+          const newBonus = currentTotalBonus;
+          if (st.bonus !== undefined && newBonus < st.bonus) {
+            sendPersonalNtfy('Trend Down', 'WareEra - Bonus Drop', `Company ${compName} production bonus dropped from ${st.bonus}% to ${newBonus}%`, 'chart_with_downwards_trend,warning', 3);
+          }
+          if (st.bonus !== newBonus) {
+            st.bonus = newBonus;
+            changed = true;
           }
         }
 
@@ -8081,6 +8108,41 @@ function updateObserverTarget() {
         }
       }
 
+      // Aggregate material shortage check (batched across all companies)
+      if (CONFIG.featAlertCompanyStorage && Object.keys(materialConsumption).length > 0) {
+        const prevMatState = state.__materials || {};
+        const matState = {};
+        const cachedStock = ecoGetCachedStock();
+        dbg('companyTracking', 'Material check', { hasCachedStock: !!cachedStock, materialConsumption, prevMatState: { ...prevMatState }, cacheAge: ecoTopBarStockCache.at ? ((nowMs - ecoTopBarStockCache.at) / 60000).toFixed(1) + 'min' : 'none' });
+        if (cachedStock) {
+          const cacheAgeHours = ecoTopBarStockCache.at ? (nowMs - ecoTopBarStockCache.at) / 3600000 : 0;
+          for (const [matCode, info] of Object.entries(materialConsumption)) {
+            const rawStock = cachedStock[matCode] || 0;
+            const hourlyRate = info.totalDaily / 24;
+            const estimatedStock = Math.max(0, rawStock - hourlyRate * cacheAgeHours);
+            const hoursLeft = hourlyRate > 0 ? estimatedStock / hourlyRate : Infinity;
+            const noMat = estimatedStock < 10 || hoursLeft < 2;
+            matState[matCode] = noMat;
+            dbg('companyTracking', `Material ${matCode}: raw=${rawStock} est=${estimatedStock.toFixed(0)} rate=${hourlyRate.toFixed(1)}/h hours=${hoursLeft.toFixed(1)} noMat=${noMat} prev=${prevMatState[matCode]}`);
+            if (noMat && !prevMatState[matCode]) {
+              const timeInfo = estimatedStock >= 10 ? ` (~${hoursLeft.toFixed(1)}h left)` : '';
+              sendPersonalNtfy('Out of Stock', `WareEra - Material Shortage`, `Low ${matCode}${timeInfo} — ${info.count} ${info.count === 1 ? 'company' : 'companies'} affected`, 'package,warning', 4);
+            }
+          }
+        }
+        state.__materials = matState;
+        changed = true;
+      }
+
+      // Prune orphaned state entries for companies no longer owned
+      for (const key of Object.keys(state)) {
+        if (key.startsWith('__')) continue;
+        if (!activeCompanyIds.has(key)) {
+          delete state[key];
+          changed = true;
+        }
+      }
+
       if (changed) GM_setValue(KEYS.ecoTrackingState, state);
       setHealth('companyTracking', 'ok', 'polled ' + companiesRes.items.length + ' companies');
     } catch (e) {
@@ -8091,8 +8153,37 @@ function updateObserverTarget() {
 
   function initCompanyTracking() {
     if (ecoTrackingInterval) clearInterval(ecoTrackingInterval);
+    const state = GM_getValue(KEYS.ecoTrackingState, {});
+    if (state.__materials) {
+      delete state.__materials;
+      GM_setValue(KEYS.ecoTrackingState, state);
+    }
     ecoTrackingInterval = setInterval(ecoTrackingPoll, ecoTrackingPollMs);
     setTimeout(ecoTrackingPoll, 10000);
+  }
+
+  function ecoTrackingPollOnRoute() {
+    const freshStock = ecoGetTopBarStock();
+    dbg('companyTracking', 'Route-trigger stock scrape', { keys: Object.keys(freshStock), stock: freshStock, sincePoll: ((Date.now() - ecoTrackingLastPollAt) / 1000).toFixed(0) + 's' });
+    if (Object.keys(freshStock).length > 0) {
+      const state = GM_getValue(KEYS.ecoTrackingState, {});
+      const matState = state.__materials;
+      if (matState) {
+        let changed = false;
+        for (const [matCode, isLow] of Object.entries(matState)) {
+          if (!isLow) continue;
+          const stockAmt = freshStock[matCode];
+          if (stockAmt !== undefined && stockAmt >= 10) {
+            matState[matCode] = false;
+            changed = true;
+          }
+        }
+        if (changed) GM_setValue(KEYS.ecoTrackingState, state);
+      }
+    }
+    if (Date.now() - ecoTrackingLastPollAt < ecoTrackingPollMinGap) return;
+    dbg('companyTracking', 'Route-triggered poll');
+    ecoTrackingPoll();
   }
 
   function teardownCompanyTracking() {
@@ -9169,13 +9260,18 @@ function updateObserverTarget() {
     if (!mainWin) return;
     const ownUserId = getCurrentUserId();
     const links = mainWin.querySelectorAll('a[href^="/company/"]');
+    
     for (const link of links) {
       const compId = ecoCompanyIdOf(link);
       if (!compId) continue;
 
       let cardEl = link;
-      for (let i = 0; i < 15 && cardEl.parentElement && cardEl.parentElement !== mainWin; i++) {
+      for (let i = 0; i < 8 && cardEl.parentElement; i++) {
         const p = cardEl.parentElement;
+        
+        // Prevent climbing too high and accidentally swallowing global page wrappers (like the Inventory top-bar).
+        if (p === mainWin || p.parentElement === mainWin) break;
+
         const swallowsOther = Array.from(p.querySelectorAll('a[href^="/company/"]'))
           .some(l => !cardEl.contains(l) && ecoCompanyIdOf(l) && ecoCompanyIdOf(l) !== compId);
         if (swallowsOther) break;

@@ -1,5 +1,25 @@
 # CHANGELOG
 
+## 2026-08-07 | Bugfix: Material Shortage Notifications & Inventory Net Wage (v0.11.8)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`
+
+**Änderungen (Deutsch):**
+- **Bug Fix**: Falsche Material-Knappheits-Benachrichtigungen behoben — vorher wurden für Firmen fälschlicherweise „Out of Stock"-Alarme ausgelöst, obwohl genügend Material vorhanden war.
+- **Feature**: Material-Verbrauch wird jetzt firmenübergreifend aggregiert berechnet und mit dem gemeinsamen Inventar abgeglichen (gemeinsame Ressourcen wie Eisen werden korrekt über alle Firmen summiert).
+- **Feature**: Vorausschauende Verbrauchsprognose — Warnung erscheint bereits, wenn Material in weniger als 2 Stunden aufgebraucht sein wird.
+- **Feature**: Benachrichtigungen werden gebündelt pro Material gesendet (z.B. „Low iron — 3 companies affected") statt einzeln pro Firma.
+- **Bug Fix**: Netto-Lohn-Anzeige im Inventar-Bereich wurde fälschlicherweise in die Top-Bar injiziert. Behoben durch Tiefenbegrenzung beim DOM-Traversal.
+- **Verbesserung**: Verwaiste Tracking-Einträge für verkaufte/gelöschte Firmen werden automatisch bereinigt.
+
+**Changes (English):**
+- **Bug Fix**: Fixed false positive material shortage notifications — previously triggered "Out of Stock" alerts for companies even when sufficient materials existed.
+- **Feature**: Material consumption is now calculated as an aggregate across all companies sharing the global inventory (e.g. iron demand is summed across all iron-consuming companies).
+- **Feature**: Predictive depletion alerts — warning fires when estimated stock will run out within 2 hours based on consumption rate.
+- **Feature**: Notifications are batched per material (e.g. "Low iron — 3 companies affected") instead of per company.
+- **Bug Fix**: Net wage display was incorrectly injected into the inventory top bar. Fixed with depth-limited DOM climbing.
+- **Improvement**: Orphaned tracking state for sold/deleted companies is automatically pruned.
+
 ## 2026-08-07 | Feature: Detailed Net Wage & PP Info in Eco Modals (v0.11.7)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`
