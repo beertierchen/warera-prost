@@ -1,5 +1,20 @@
 # CHANGELOG
 
+## 2026-08-07 | Feature: Detailed Net Wage & PP Info in Eco Modals (v0.11.7)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`
+
+**Änderungen (Deutsch):**
+- **Feature**: Die Modals "Arbeiter verwalten" und "Firma verwalten" wurden um detaillierte Netto-Lohn-Anzeigen und PP-Berechnungen (Profit per Production-Point) erweitert.
+- **Bug Fix**: Der Produktionsbonus wird nun korrekt multiplikativ berechnet.
+- **Bug Fix**: Das Layout für die Netto-Lohn-Anzeige in der Mitarbeiter-Liste wurde robuster gemacht, um sich nicht mit anderen Elementen zu überschneiden.
+- **Bug Fix**: Marktsteuern wurden aus der Eco-Kalkulation entfernt, da diese hier nicht anfallen.
+
+**Changes (English):**
+- **Feature**: The "Edit Worker" and "Company" modals have been enhanced with detailed net wage displays and PP (Profit per Production-Point) calculations.
+- **Bug Fix**: Production bonus is now correctly calculated as a multiplicative factor.
+- **Bug Fix**: The layout for net wage injection in the worker list is now more robust and won't conflict with other elements.
+- **Bug Fix**: Market taxes have been removed from eco calculations as they do not apply.
 ## 2026-08-06 | Bugfix: Company Ownership Filter (v0.11.6)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`

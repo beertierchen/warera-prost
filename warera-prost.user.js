@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.11.6
+// @version      0.11.7
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -6235,6 +6235,9 @@ async function scanInventory(force) {
                 <input type="checkbox" class="wia-feat-better-region" style="width: auto;" ${prevFeatBetterRegion ? 'checked' : ''} />
                 <label style="font-size: 11px; color: #8b949e; margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatBetterRegion')}</label>
               </div>
+              <div style="margin-top: 8px;">
+                <button type="button" class="wia-btn wia-clear-tracking-state" style="font-size: 10px; padding: 2px 6px; border: 1px solid rgba(248,81,73,0.4); border-radius: 4px; background: transparent; color: #f85149; cursor: pointer;">Clear Tracking State</button>
+              </div>
             </details>
           </div>
         </details>
@@ -6378,6 +6381,15 @@ async function scanInventory(force) {
           if (pillNotifWindow) pillNotifWindow.checked = false;
           if (pillNotifDebuff) pillNotifDebuff.checked = false;
         }
+      };
+    }
+
+    const clearTrackingBtn = modal.querySelector('.wia-clear-tracking-state');
+    if (clearTrackingBtn) {
+      clearTrackingBtn.onclick = () => {
+        GM_deleteValue(KEYS.ecoTrackingState);
+        clearTrackingBtn.textContent = 'Cleared!';
+        setTimeout(() => clearTrackingBtn.textContent = 'Clear Tracking State', 2000);
       };
     }
 
@@ -7890,20 +7902,33 @@ function updateObserverTarget() {
 
   async function ecoTrackingPoll() {
     if (!CONFIG.featAlertCompanyStorage && !CONFIG.featAlertCompanyBonus && !CONFIG.featAlertCompanyTax && !CONFIG.featAlertCompanyDeposit && !CONFIG.featBetterRegion) return;
+    dbg('companyTracking', 'Starting poll...');
     const userId = getCurrentUserId();
-    if (!userId) return;
+    if (!userId) {
+      dbg('companyTracking', 'No userId found (DOM might not be ready).');
+      return;
+    }
+    dbg('companyTracking', 'UserId ok: ' + userId);
 
     try {
       await ecoFetchAllRegions();
-      await ecoFetchRecipes();
+      await fetchGameConfig();
       const { payload: companiesRes } = await resolveApiBase('company.getCompanies', { userId });
-      if (!companiesRes || !companiesRes.items) return;
+      if (!companiesRes || !companiesRes.items) {
+        dbg('companyTracking', 'No companies found in API response.');
+        return;
+      }
+
+      const itemsList = companiesRes.items;
+      dbg('companyTracking', `Found ${itemsList.length} companies to check.`);
 
       const state = GM_getValue(KEYS.ecoTrackingState, {});
       let changed = false;
       const nowMs = Date.now();
 
-      for (const compId of companiesRes.items) {
+      for (const item of itemsList) {
+        if (!item) continue;
+        const compId = typeof item === 'object' ? item._id : item;
         if (!compId) continue;
         await new Promise(r => setTimeout(r, 600));
 
@@ -8022,8 +8047,8 @@ function updateObserverTarget() {
         }
 
         // 5. Better Region Check
-        if (CONFIG.featBetterRegion && currentTotalBonus > 0 && comp.activeProduction?.itemCode) {
-          const itemCode = comp.activeProduction.itemCode;
+        if (CONFIG.featBetterRegion && currentTotalBonus > 0 && comp.itemCode) {
+          const itemCode = comp.itemCode;
           try {
             await new Promise(r => setTimeout(r, 600));
             const { payload: recommended } = await resolveApiBase('company.getRecommendedRegionIdsByItemCode', { itemCode, count: 1 });
@@ -8086,13 +8111,32 @@ function updateObserverTarget() {
   let companyEcoTaxResolved = false;
   let companyEcoRafId = null;
   let companyEcoLastWage = null;
+  let isEditWorkerModal = false;
+  let companyEcoWorkerData = null;
+  let companyEcoTeardownTimer = null;
+  let companyEcoWorkerFetchPending = false;
+  let editWorkerPpSection = null;
+
+  function ecoFindWorkerByUserId(userId) {
+    dbg('companyEco', `findWorker: searching for userId=${userId}, cache size=${ecoWorkersCache.size}`);
+    for (const [companyId, data] of ecoWorkersCache.entries()) {
+      if (!data || !data.workers) continue;
+      dbg('companyEco', `findWorker: company=${companyId.substring(0,8)}, workers=${data.workers.length}, ids=[${data.workers.map(w => typeof w.userId + ':' + String(w.userId).substring(0,8)).join(',')}]`);
+      const worker = data.workers.find(w => {
+        const wid = typeof w.userId === 'object' ? (w.userId?._id || w.userId?.id) : w.userId;
+        return wid === userId;
+      });
+      if (worker) return { companyId, worker };
+    }
+    return null;
+  }
 
   function ecoPoll() {
     if (!companyEcoModalNode || !document.contains(companyEcoModalNode)) {
       companyEcoRafId = null;
       return;
     }
-    const inp = companyEcoModalNode.querySelector('input[name="wage"]');
+    const inp = companyEcoModalNode.querySelector('input[name="wage"], input[name="newWage"]');
     const v = inp ? inp.value : null;
     if (v !== companyEcoLastWage) {
       companyEcoLastWage = v;
@@ -8100,6 +8144,8 @@ function updateObserverTarget() {
     }
     companyEcoRafId = requestAnimationFrame(ecoPoll);
   }
+
+  function numF(n, d) { return Number(n).toFixed(d); }
 
   const ECO_COIN_SVG = '<svg viewBox="0 0 24 24" fill="currentColor" ' +
     'style="width:1em;height:1em;display:inline-block;vertical-align:-0.15em;margin-right:2px;' +
@@ -8218,7 +8264,7 @@ function updateObserverTarget() {
 
   function handleWageInputUpdate() {
     if (!companyEcoModalNode) return;
-    const wageInput = companyEcoModalNode.querySelector('input[name="wage"]');
+    const wageInput = companyEcoWageInput;
     const netLine = companyEcoModalNode.querySelector('#wia-eco-net-wage');
     if (!netLine) return;
 
@@ -8238,16 +8284,83 @@ function updateObserverTarget() {
         wageInput.style.borderWidth = '';
       }
     }
+
+    if (isEditWorkerModal && editWorkerPpSection && companyEcoWorkerData) {
+      try {
+        const w = companyEcoWorkerData.worker;
+        const compId = companyEcoWorkerData.companyId;
+        const bonus = ecoBonusCache.get(compId)?.bonus || 0;
+
+        const baseProd = 2.4 * (w.hourlyRegen || 10) * w.maxProd;
+        const totalProd = baseProd * (1 + bonus / 100) * (1 + w.fidelity / 100);
+        const wageCostDay = baseProd * (isNaN(wage) ? 0 : wage);
+
+        const compDetails = ecoCompanyDetailCache.get(compId)?.data;
+        const priceMap = (readCache(KEYS.priceCache) || {}).data;
+        let breakdownHtml = '';
+
+        if (compDetails && compDetails.itemCode && priceMap) {
+          const itemCode = compDetails.itemCode;
+          const normCode = normalizeItemCode(itemCode);
+          const sellPrice = priceMap[normCode] || 0;
+          const grossDay = totalProd * sellPrice;
+
+          breakdownHtml = `
+            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+              <span>Base PP/day (2.4 &times; ${w.hourlyRegen || 10} &times; ${w.maxProd}):</span>
+              <span title="hourlyRegen=${w.hourlyRegen || 10}, maxProd=${w.maxProd}, bonus=${bonus}%, fidelity=${w.fidelity}%">${numF(baseProd, 1)}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #a78bfa;">
+              <span>Bonus (+${bonus}%) &times; Fidelity (+${w.fidelity}%):</span>
+              <span>&times;${numF((1 + bonus / 100) * (1 + w.fidelity / 100), 2)}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 4px; font-weight: bold;">
+              <span>Total Prod (Items/day):</span>
+              <span>${numF(totalProd, 1)}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+              <span>Gross Revenue (sell @ ${numF(sellPrice, 2)}):</span>
+              <span style="color: #3fb950;">+${numF(grossDay, 2)} G</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+              <span>Wage Cost (${numF(wageCostDay / baseProd || 0, 2)}/basePP):</span>
+              <span style="color: #f85149;">-${numF(wageCostDay, 2)} G</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-top: 6px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.1); font-weight: bold;">
+              <span>Worker Net / day:</span>
+              <span style="color: ${grossDay - wageCostDay >= 0 ? '#3fb950' : '#f85149'};">${numF(grossDay - wageCostDay, 2)} G</span>
+            </div>
+            <div style="text-align: right; margin-top: 4px;"><span style="border: 1px solid #7c3aed; color: #a78bfa; padding: 2px 6px; font-size: 9px; font-weight: 700; border-radius: 4px; letter-spacing: 0.5px;">PROST</span></div>
+          `;
+        } else {
+          breakdownHtml = `<div style="color: #8b949e; font-style: italic;">Loading company market data...</div>`;
+        }
+
+        if (editWorkerPpSection.dataset.hash !== breakdownHtml.length.toString()) {
+          editWorkerPpSection.dataset.hash = breakdownHtml.length.toString();
+          editWorkerPpSection.innerHTML = breakdownHtml;
+        }
+      } catch (e) {
+        console.warn('[PROST] eco: PP section render failed', e);
+      }
+    }
   }
 
   async function fetchCompanyTaxRate(companyId) {
     try {
-      const { payload: compData } = await resolveApiBase('company.getById', { companyId });
+      let compData = ecoCompanyDetailCache.get(companyId)?.data;
+      if (!compData) {
+        const res = await resolveApiBase('company.getById', { companyId });
+        compData = res.payload;
+      }
       if (!compData || !compData.region) return null;
       const countryId = await regionToCountry(compData.region);
       if (!countryId) return null;
       const taxes = await getCountryTax(countryId);
-      if (taxes && taxes.income !== undefined) return taxes.income;
+      if (!taxes) return null;
+      const income = taxes.income ?? taxes.incomeTax ?? taxes.Income ?? null;
+      if (income !== null && income !== undefined) return income;
+      return 0;
     } catch (e) {
       console.warn('[PROST] eco: tax fetch failed', e);
     }
@@ -8521,7 +8634,8 @@ function updateObserverTarget() {
     try {
       const { payload } = await resolveApiBase('company.getCompanies', { userId, perPage: 100 });
       const items = (payload && payload.items) || [];
-      ecoOwnedCache.ids = new Set(items);
+      const parsedIds = items.map(item => typeof item === 'object' ? item._id : item).filter(Boolean);
+      ecoOwnedCache.ids = new Set(parsedIds);
       ecoOwnedCache.userId = userId;
       ecoOwnedCache.at = now();
     } catch (e) { console.warn('[PROST] eco: getCompanies failed', e); }
@@ -8537,10 +8651,18 @@ function updateObserverTarget() {
     if (uncachedIds.length > 0) {
       try {
         const batchArgs = uncachedIds.map(id => ({ companyId: id }));
-        const batchResults = await resolveApiBatch('company.getById', batchArgs);
+        const [batchResults, bonusResults] = await Promise.all([
+          resolveApiBatch('company.getById', batchArgs),
+          resolveApiBatch('company.getProductionBonus', batchArgs)
+        ]);
         batchResults.forEach((res, i) => {
           if (res?.payload) {
             ecoCompanyDetailCache.set(uncachedIds[i], { at: now(), data: res.payload });
+          }
+        });
+        bonusResults.forEach((res, i) => {
+          if (res?.payload) {
+            ecoBonusCache.set(uncachedIds[i], { at: now(), bonus: res.payload.total || 0 });
           }
         });
       } catch (e) { console.warn('[PROST] eco: detail batch fetch failed', e); }
@@ -8548,6 +8670,7 @@ function updateObserverTarget() {
   }
 
   const ecoWorkersCache = new Map();
+  const ecoBonusCache = new Map();
 
   async function fetchCompanyWorkersBatch(companyIds) {
     if (!getToken()) return; 
@@ -8565,9 +8688,10 @@ function updateObserverTarget() {
          companyWorkers[id] = [];
          if (res?.payload?.workers) {
             for (const w of res.payload.workers) {
-              if (w.user !== ownId) {
-                userIds.add(w.user);
-                companyWorkers[id].push(w);
+              const wUserId = typeof w.user === 'object' ? (w.user?._id || w.user?.id || String(w.user)) : w.user;
+              if (wUserId !== ownId) {
+                userIds.add(wUserId);
+                companyWorkers[id].push({ ...w, user: wUserId });
               }
             }
          }
@@ -8593,6 +8717,7 @@ function updateObserverTarget() {
           const finalWorkers = [];
           for (const w of companyWorkers[id]) {
              finalWorkers.push({
+                userId: w.user,
                 wage: w.wage || 0,
                 fidelity: w.fidelity || 0,
                 maxProd: userProdMap[w.user] || 0,
@@ -8606,17 +8731,7 @@ function updateObserverTarget() {
     }
   }
 
-  function getCardBonus(card) {
-    const badges = Array.from(card.querySelectorAll('span')).filter(s => {
-      if (s.closest('a[href^="/user/"]')) return false;
-      return s.textContent.includes('%') || s.textContent.includes('+');
-    });
-    for (const b of badges) {
-      const match = b.textContent.match(/\+?(\d+(?:\.\d+)?)%/);
-      if (match) return parseFloat(match[1]);
-    }
-    return 0;
-  }
+
 
   function ecoIdsOnPage(mainWin) {
     const on = [];
@@ -8672,15 +8787,19 @@ function updateObserverTarget() {
       })().finally(() => {
         ecoProfitLoading = false;
         guard('companyProfit', injectCompanyProfits);
+        const mw = document.getElementById('main-window');
+        if (mw) guard('netWages', () => injectNetWagesLoop(mw));
       });
     } else {
       guard('companyProfit', injectCompanyProfits);
+      const mw = document.getElementById('main-window');
+      if (mw) guard('netWages', () => injectNetWagesLoop(mw));
     }
   }
 
   // Compute the pre-wage engine estimate for one owned company. Returns null if
   // we can't price it yet (no market price / recipe / detail not loaded).
-  function ecoComputeNet(id, chipEl, prices, recipes, engineLevels, regionCache, taxCache, cardEl) {
+  function ecoComputeNet(id, chipEl, prices, recipes, engineLevels, regionCache, taxCache) {
     const details = ecoCompanyDetailCache.get(id)?.data;
     if (!details) return null;
     if (details.user !== ecoProfileUserId()) return { skip: true };
@@ -8705,13 +8824,17 @@ function updateObserverTarget() {
       isStrategic = true;
     }
     
-    let marketTax = 0, taxKnown = false;
-    if (countryId && taxCache[countryId]?.data) { marketTax = taxCache[countryId].data.market || 0; taxKnown = true; }
-    else if (countryId) getCountryTax(countryId);
+    let marketTax = 0;
+    let taxKnown = !!(regionObj && countryId && taxCache[countryId]?.data);
 
     // If region is completely missing, kick off a background fetch
     if (details.region && !regionObj) {
       regionToCountry(details.region);
+    }
+
+    // Pre-load country tax in background (needed for net wage calculation)
+    if (countryId && !(taxCache[countryId]?.data)) {
+      getCountryTax(countryId);
     }
 
     if (sellPrice <= 0) return { priced: false, depositEndsAt: endsAt, depositType: depType, isStrategicResource: isStrategic };
@@ -8719,8 +8842,7 @@ function updateObserverTarget() {
     let matCost = 0;
     for (const inp of recipe.inputs) matCost += inp.qty * (prices[normalizeItemCode(inp.code)] || 0);
 
-    const targetContainer = cardEl || chipEl;
-    const bonus = getCardBonus(targetContainer);
+    const bonus = ecoBonusCache.get(id)?.bonus || 0;
     const lvl = details.activeUpgradeLevels?.automatedEngine || 0;
     const engineDaily = engineLevels?.[lvl]?.stats?.dailyProd || 0;
 
@@ -8737,7 +8859,7 @@ function updateObserverTarget() {
             // Ein Click = 10 Energy, 1 Tag = 24 * hourlyRegen.
             // Die BaseProd pro Tag ist (24 * hourlyRegen / 10) * w.maxProd
             const baseProd = (2.4 * (w.hourlyRegen || 10)) * w.maxProd;
-            const totalProd = baseProd * (1 + (bonus + w.fidelity) / 100);
+            const totalProd = baseProd * (1 + bonus / 100) * (1 + w.fidelity / 100);
             workerPointsPerDay += totalProd;
             workerWagesPerDay += baseProd * w.wage;
           }
@@ -8828,7 +8950,7 @@ function updateObserverTarget() {
         }
 
         profitBadge.title = 'Est. net/day\n' +
-          `Per item: ${d.sellPrice.toFixed(3)} sell ·(1−${d.marketTax}% tax) − ${d.matCost.toFixed(3)} mat = ${d.perItemNet.toFixed(3)}\n` +
+          `Per item: ${d.sellPrice.toFixed(3)} sell − ${d.matCost.toFixed(3)} mat = ${d.perItemNet.toFixed(3)}\n` +
           workerStr +
           (d.taxKnown ? '' : '\n(tax still loading…)');
       } else {
@@ -9012,6 +9134,132 @@ function updateObserverTarget() {
     }
   }
 
+  function ecoCalcNetWage(grossWage, companyId) {
+    const details = ecoCompanyDetailCache.get(companyId)?.data;
+    if (!details?.region) return null;
+    const regionObj = (readCache(KEYS.ecoRegionData) || {})[details.region];
+    if (!regionObj?.country) return null;
+    const taxData = (readCache(KEYS.ecoCountryTax) || {})[regionObj.country]?.data;
+    if (!taxData) return null;
+    const incomeTax = taxData.income || 0;
+    return grossWage * (1 - incomeTax / 100);
+  }
+
+  const ecoPendingTaxes = new Set();
+  async function ensureCompanyTaxReady(companyId) {
+    let details = ecoCompanyDetailCache.get(companyId)?.data;
+    if (!details) {
+      await fetchCompanyDetailBatch([companyId]);
+      details = ecoCompanyDetailCache.get(companyId)?.data;
+    }
+    if (!details?.region) return;
+    let regionObj = (readCache(KEYS.ecoRegionData) || {})[details.region];
+    if (!regionObj) {
+      await regionToCountry(details.region);
+      regionObj = (readCache(KEYS.ecoRegionData) || {})[details.region];
+    }
+    if (!regionObj?.country) return;
+    let taxData = (readCache(KEYS.ecoCountryTax) || {})[regionObj.country]?.data;
+    if (!taxData) {
+      await getCountryTax(regionObj.country);
+    }
+  }
+
+  function injectNetWagesLoop(mainWin) {
+    if (!mainWin) return;
+    const ownUserId = getCurrentUserId();
+    const links = mainWin.querySelectorAll('a[href^="/company/"]');
+    for (const link of links) {
+      const compId = ecoCompanyIdOf(link);
+      if (!compId) continue;
+
+      let cardEl = link;
+      for (let i = 0; i < 15 && cardEl.parentElement && cardEl.parentElement !== mainWin; i++) {
+        const p = cardEl.parentElement;
+        const swallowsOther = Array.from(p.querySelectorAll('a[href^="/company/"]'))
+          .some(l => !cardEl.contains(l) && ecoCompanyIdOf(l) && ecoCompanyIdOf(l) !== compId);
+        if (swallowsOther) break;
+        cardEl = p;
+      }
+
+      const coinSvgs = cardEl.querySelectorAll('svg path[d^="M12 5C7.031"]');
+      for (const p of coinSvgs) {
+        const svg = p.closest('svg');
+        if (!svg || svg.closest('.wia-eco-profit-badge') || svg.closest('.wia-worker-net-wage')) continue;
+
+        // Skip coin SVGs in the current user's worker row — game already shows native net
+        if (ownUserId) {
+          let row = svg.parentElement;
+          let isOwnRow = false;
+          for (let i = 0; i < 6 && row && row !== cardEl; i++) {
+            const userLink = row.querySelector('a[href^="/user/"]');
+            if (userLink) {
+              isOwnRow = userLink.getAttribute('href') === '/user/' + ownUserId;
+              break;
+            }
+            row = row.parentElement;
+          }
+          if (isOwnRow) continue;
+        }
+
+        let val = NaN;
+        let anchorEl = null;
+        let current = svg;
+        while (current && current !== cardEl) {
+          const parent = current.parentElement;
+          if (!parent) break;
+          for (const child of parent.childNodes) {
+            if (child === current || (child.contains && child.contains(svg))) continue;
+            const t = (child.textContent || '').replace(/[^\d.]/g, '');
+            if (t) {
+              const n = parseFloat(t);
+              if (!isNaN(n) && n > 0 && n < 10) {
+                val = n;
+                anchorEl = child;
+                break;
+              }
+            }
+          }
+          if (!isNaN(val)) break;
+          current = parent;
+        }
+
+        if (isNaN(val) || !anchorEl) continue;
+        let hasInjected = false;
+        if (anchorEl.nodeType === 1) {
+          hasInjected = !!anchorEl.querySelector('.wia-worker-net-wage');
+        } else {
+          hasInjected = anchorEl.nextSibling && anchorEl.nextSibling.classList && anchorEl.nextSibling.classList.contains('wia-worker-net-wage');
+        }
+        if (hasInjected) continue;
+        
+        
+        const net = ecoCalcNetWage(val, compId);
+        if (net != null) {
+          const span = document.createElement('span');
+          span.className = 'wia-worker-net-wage';
+          span.style.cssText = 'color: #8b949e; font-size: 0.85em; margin-left: 4px; font-weight: normal;';
+          span.innerHTML = `(${ECO_COIN_SVG}${numF(net, 3)})`;
+          span.title = 'Net wage (after income tax)';
+          if (anchorEl.nodeType === 1) {
+            anchorEl.appendChild(span);
+          } else if (anchorEl.parentNode) {
+            anchorEl.parentNode.insertBefore(span, anchorEl.nextSibling);
+          }
+        } else if (!ecoPendingTaxes.has(compId)) {
+          ecoPendingTaxes.add(compId);
+          ensureCompanyTaxReady(compId).then(() => {
+            ecoPendingTaxes.delete(compId);
+            const mw = document.getElementById('main-window');
+            if (mw) guard('netWages', () => injectNetWagesLoop(mw));
+          }).catch(() => {
+            ecoPendingTaxes.delete(compId);
+          });
+        }
+      }
+    }
+  }
+
   function injectCompanyProfits() {
     const mainWin = document.getElementById('main-window');
     if (!mainWin) return;
@@ -9031,16 +9279,7 @@ function updateObserverTarget() {
       const chipEl = links.find(l => /\d%/.test(l.textContent)) || links[0];
       if (!chipEl) continue;
 
-      let cardEl = chipEl;
-      for (let i = 0; i < 15 && cardEl.parentElement && cardEl.parentElement !== mainWin; i++) {
-        const p = cardEl.parentElement;
-        const swallowsOtherCard = Array.from(p.querySelectorAll('a[href^="/company/"]'))
-          .some(l => ecoCompanyIdOf(l) && ecoCompanyIdOf(l) !== id);
-        if (swallowsOtherCard) break;
-        cardEl = p;
-      }
-
-      const d = ecoComputeNet(id, chipEl, prices, recipes, engineLevels, regionCache, taxCache, cardEl);
+      const d = ecoComputeNet(id, chipEl, prices, recipes, engineLevels, regionCache, taxCache);
       ecoRenderBadge(chipEl, d);
       if (d && d.skip) {
         continue;
@@ -9067,33 +9306,89 @@ function updateObserverTarget() {
     // tax resolves via async region→country→tax; re-render once it lands even on a static page
     if (taxPending && !ecoTaxReinjectPending) {
       ecoTaxReinjectPending = true;
-      setTimeout(() => { ecoTaxReinjectPending = false; guard('companyProfit', injectCompanyProfits); }, 1600);
+      setTimeout(() => {
+        ecoTaxReinjectPending = false;
+        guard('companyProfit', injectCompanyProfits);
+        const mw = document.getElementById('main-window');
+        if (mw) guard('netWages', () => injectNetWagesLoop(mw));
+      }, 1600);
     }
   }
 
   function checkCompanyEcoModal() {
     const modals = document.querySelectorAll('div[id^="headlessui-dialog-panel-"]');
     let modal = null;
+    let titleStr = '';
     for (const m of modals) {
       if (m.getAttribute('data-headlessui-state') !== 'open') continue;
-      const titleSpan = Array.from(m.querySelectorAll('span')).find(s => s.textContent.trim().toLowerCase() === 'new job offer');
+      const titleSpan = Array.from(m.querySelectorAll('span')).find(s => {
+        const t = s.textContent.trim().toLowerCase();
+        return t === 'new job offer' || t.startsWith('edit worker');
+      });
       if (titleSpan) {
         modal = m;
+        titleStr = titleSpan.textContent.trim().toLowerCase();
         break;
       }
     }
 
     if (!modal) {
-      if (companyEcoModalNode) teardownCompanyEco();
+      if (companyEcoModalNode && !companyEcoTeardownTimer) {
+        companyEcoTeardownTimer = setTimeout(() => {
+          companyEcoTeardownTimer = null;
+          const stillOpen = Array.from(document.querySelectorAll('div[id^="headlessui-dialog-panel-"]'))
+            .some(m => m.getAttribute('data-headlessui-state') === 'open' &&
+              Array.from(m.querySelectorAll('span')).some(s => {
+                const t = s.textContent.trim().toLowerCase();
+                return t === 'new job offer' || t.startsWith('edit worker');
+              }));
+          if (!stillOpen) teardownCompanyEco();
+        }, 200);
+      }
       return;
+    }
+    if (companyEcoTeardownTimer) {
+      clearTimeout(companyEcoTeardownTimer);
+      companyEcoTeardownTimer = null;
     }
 
     companyEcoModalNode = modal;
-    const companyInput = modal.querySelector('input[name="companyId"]');
-    companyEcoWageInput = modal.querySelector('input[name="wage"]');
+    isEditWorkerModal = titleStr.startsWith('edit worker');
+    
+    companyEcoWageInput = modal.querySelector('input[name="wage"], input[name="newWage"]');
+    
+    let companyId = null;
+    if (isEditWorkerModal) {
+      const profileLink = modal.querySelector('a[href^="/user/"]');
+      const workerUserId = profileLink ? profileLink.getAttribute('href').split('/user/')[1] : null;
+      if (workerUserId) {
+        companyEcoWorkerData = ecoFindWorkerByUserId(workerUserId);
+        if (companyEcoWorkerData) {
+          companyId = companyEcoWorkerData.companyId;
+        } else {
+          const compInput = modal.querySelector('input[name="newCompanyId"], input[name="companyId"]');
+          companyId = compInput?.value || null;
+          if (!companyId) {
+            const urlMatch = window.location.pathname.match(/\/company\/([a-f0-9]{24})/);
+            if (urlMatch) companyId = urlMatch[1];
+          }
+          if (companyId && !companyEcoWorkerFetchPending) {
+            companyEcoWorkerFetchPending = true;
+            fetchCompanyWorkersBatch([companyId]).then(() => {
+              companyEcoWorkerFetchPending = false;
+              companyEcoWorkerData = ecoFindWorkerByUserId(workerUserId);
+              handleWageInputUpdate();
+            });
+          }
+        }
+      }
+    } else {
+      const companyInput = modal.querySelector('input[name="companyId"]');
+      if (companyInput) companyId = companyInput.value;
+    }
 
-    if (!companyInput || !companyEcoWageInput) {
-      setHealth('companyEco', 'warn', 'missing inputs in modal');
+    if (!companyId || !companyEcoWageInput) {
+      setHealth('companyEco', 'warn', 'missing inputs or companyId in modal');
       return;
     }
     setHealth('companyEco', 'ok');
@@ -9104,11 +9399,6 @@ function updateObserverTarget() {
 
     let netLine = modal.querySelector('#wia-eco-net-wage');
     if (!netLine) {
-      const labelSpan = Array.from(modal.querySelectorAll('span')).find(s => s.textContent.toLowerCase().includes('estimated benefit'));
-      if (!labelSpan || !labelSpan.parentElement) {
-        setHealth('companyEco', 'warn', 'no benefit anchor');
-        return;
-      }
       netLine = document.createElement('div');
       netLine.id = 'wia-eco-net-wage';
       netLine.style.fontSize = '0.875rem';
@@ -9117,12 +9407,60 @@ function updateObserverTarget() {
       netLine.style.justifyContent = 'space-between';
       netLine.style.alignItems = 'center';
       netLine.style.width = '100%';
-      labelSpan.parentElement.appendChild(netLine);
+      
+      if (isEditWorkerModal) {
+        const netBenefitSpan = Array.from(modal.querySelectorAll('span')).find(s =>
+          s.textContent.toLowerCase().includes('net benefit'));
+        const netBenefitDiv = netBenefitSpan?.closest('div');
+        if (netBenefitDiv?.parentElement) {
+          netBenefitDiv.parentElement.insertBefore(netLine, netBenefitDiv.nextSibling);
+        } else {
+          const grandparent = companyEcoWageInput.parentElement?.parentElement;
+          if (grandparent) grandparent.appendChild(netLine);
+        }
+      } else {
+        const labelSpan = Array.from(modal.querySelectorAll('span')).find(s => s.textContent.toLowerCase().includes('estimated benefit'));
+        if (!labelSpan || !labelSpan.parentElement) {
+          setHealth('companyEco', 'warn', 'no benefit anchor');
+          return;
+        }
+        labelSpan.parentElement.appendChild(netLine);
+      }
+      
       if (companyEcoTaxRate != null) netLine.dataset.taxRate = companyEcoTaxRate;
     }
 
-    const companyId = companyInput.value;
-    if (companyId && companyId !== companyEcoCompanyId) {
+    if (isEditWorkerModal && !editWorkerPpSection) {
+      editWorkerPpSection = modal.querySelector('#wia-eco-worker-pp');
+      if (!editWorkerPpSection) {
+        editWorkerPpSection = document.createElement('div');
+        editWorkerPpSection.id = 'wia-eco-worker-pp';
+        editWorkerPpSection.style.fontSize = '0.875rem';
+        editWorkerPpSection.style.marginTop = '0.5rem';
+        editWorkerPpSection.style.padding = '0.5rem';
+        editWorkerPpSection.style.background = 'rgba(0,0,0,0.2)';
+        editWorkerPpSection.style.borderRadius = '4px';
+        editWorkerPpSection.style.border = '1px solid rgba(255,255,255,0.05)';
+        
+        const transferSpan = Array.from(modal.querySelectorAll('span')).find(s =>
+          s.textContent.toLowerCase().includes('transfer to company'));
+        if (transferSpan) {
+          const transferDiv = transferSpan.closest('div');
+          if (transferDiv?.parentElement) {
+            transferDiv.parentElement.insertBefore(editWorkerPpSection, transferDiv);
+          }
+        } else {
+          const benefitSpan = Array.from(modal.querySelectorAll('span')).find(s =>
+            s.textContent.toLowerCase().includes('net benefit'));
+          const anchor = benefitSpan?.closest('div')?.parentElement;
+          if (anchor) {
+            anchor.appendChild(editWorkerPpSection);
+          }
+        }
+      }
+    }
+
+    if (companyId !== companyEcoCompanyId) {
       companyEcoCompanyId = companyId;
       companyEcoTaxRate = null;
       companyEcoTaxResolved = false;
@@ -9157,6 +9495,8 @@ function updateObserverTarget() {
     if (companyEcoModalNode) {
       const injected = companyEcoModalNode.querySelector('#wia-eco-net-wage');
       if (injected) injected.remove();
+      const ppSection = companyEcoModalNode.querySelector('#wia-eco-worker-pp');
+      if (ppSection) ppSection.remove();
     }
     const strip = (typeof document !== 'undefined' && document.getElementById)
       ? document.getElementById('wia-eco-portfolio-strip') : null;
@@ -9175,6 +9515,11 @@ function updateObserverTarget() {
     companyEcoTaxResolved = false;
     companyEcoRafId = null;
     companyEcoLastWage = null;
+    isEditWorkerModal = false;
+    companyEcoWorkerData = null;
+    editWorkerPpSection = null;
+    if (companyEcoTeardownTimer) { clearTimeout(companyEcoTeardownTimer); companyEcoTeardownTimer = null; }
+    companyEcoWorkerFetchPending = false;
     setHealth('companyEco', 'idle', 'modal closed or off-route');
     setHealth('companyEnergy', 'idle', 'off-route');
   }
@@ -9232,6 +9577,10 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
         guard('companyEco', checkCompanyEcoModal);
         guard('companyEnergy', ensureCompanyCoworkersInjected);
         guard('companyProfit', ensureCompanyProfitInjected);
+      }
+      if (CONFIG.featCompanyEco && (getPagePathname().startsWith('/companies') || getPagePathname().startsWith('/company/') || /^\/user\/[0-9a-zA-Z_-]+\/companies\/?$/.test(getPagePathname()) || getPagePathname().startsWith('/job'))) {
+        const mw = document.getElementById('main-window');
+        if (mw) guard('netWages', () => injectNetWagesLoop(mw));
       }
     });
     sharedBodyObserver.observe(document.body, { childList: true, subtree: true });
