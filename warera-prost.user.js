@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.11.8
+// @version      0.11.9
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -70,6 +70,7 @@
     pricesEndpoint: 'itemTrading.getPrices',
     // getPrices returns MATERIALS only; the scrap unit price is the 'scraps' key.
     scrapItemCode: 'scraps',
+    featScratchpad: false,               // In-game Scratchpad / Notepad
     featNotes: false,                    // experimental: user notes on /user/ links (off by default)
     featBattleAdvisor: false,            // experimental: highlight ally button on /battle/<id> pages
     featOrderRadar: true,                // compact order radar in country & MU headers
@@ -385,6 +386,8 @@
         noteClose: 'Close',
         noteCloseAria: 'Close note editor',
         noteUserLabel: 'User',
+        settingsFeatScratchpadCheckbox: 'In-game Scratchpad / Notepad (floating panel)',
+        settingsFeatScratchpadHint: 'Provides a draggable, persistent notepad for quick notes in-game.',
         settingsFeatNotesCheckbox: 'User notes on player links 📒 (experimental)',
         settingsFeatNotesHint: 'Adds a note icon next to player links. Disable if the standalone Warera User Notes script is also active.',
         settingsFeatItemAdvisorCheckbox: 'Item Advisor (KEEP/SELL/SCRAP badges)',
@@ -775,6 +778,8 @@
         noteClose: 'Schließen',
         noteCloseAria: 'Notizeditor schließen',
         noteUserLabel: 'Benutzer',
+        settingsFeatScratchpadCheckbox: 'In-Game Scratchpad / Notizen-Tool (schwebendes Panel)',
+        settingsFeatScratchpadHint: 'Bietet einen verschiebbaren, persistenten Notizblock für schnelle Notizen im Spiel.',
         settingsFeatNotesCheckbox: 'Spieler-Notizen bei Spieler-Links 📒 (experimentell)',
         settingsFeatNotesHint: 'Fügt ein Notiz-Icon neben Spieler-Links hinzu. Deaktivieren, wenn das separate Warera User Notes-Script ebenfalls aktiv ist.',
         settingsFeatItemAdvisorCheckbox: 'Item Advisor (KEEP/SELL/SCRAP Badges)',
@@ -1154,6 +1159,7 @@
     ecoTrackingState: NS + 'ecoTrackingState',
     ecoCountryTax: NS + 'ecoCountryTax',
     ecoRegionData: NS + 'ecoRegionData',
+    featScratchpad: NS + 'featScratchpad',
     featNotes: NS + 'featNotes',
     featBattleAdvisor: NS + 'featBattle',
     featOrderRadar: NS + 'featOrderRadar',
@@ -2019,7 +2025,10 @@
       <div class="wia-hud-panel" style="display:none; width:300px; margin-bottom:8px; background:#161b22; border:1px solid #30363d; border-radius:8px; box-shadow:0 8px 30px rgba(0,0,0,.6); padding:8px;">
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
           <strong style="color:#c9d1d9;">Feature-Health</strong>
-          <button type="button" class="wia-hud-refresh" style="font-size:11px; padding:2px 8px; cursor:pointer; background:#21262d; color:#c9d1d9; border:1px solid #30363d; border-radius:5px;">↻</button>
+          <div>
+            <button type="button" class="wia-hud-reset-sp" style="font-size:11px; padding:2px 8px; cursor:pointer; background:#21262d; color:#c9d1d9; border:1px solid #30363d; border-radius:5px; margin-right:4px;" title="Reset Scratchpad Position">SP Reset</button>
+            <button type="button" class="wia-hud-refresh" style="font-size:11px; padding:2px 8px; cursor:pointer; background:#21262d; color:#c9d1d9; border:1px solid #30363d; border-radius:5px;">↻</button>
+          </div>
         </div>
         <div class="wia-hud-body"></div>
       </div>
@@ -2035,6 +2044,19 @@
       if (debugHudOpen) { runProbes(); renderHealthPanel(body); }
     };
     wrap.querySelector('.wia-hud-refresh').onclick = () => { runProbes(); renderHealthPanel(body); };
+    const spResetBtn = wrap.querySelector('.wia-hud-reset-sp');
+    if (spResetBtn) {
+      spResetBtn.onclick = () => {
+        try { GM_deleteValue('wia.scratchpadPanel'); } catch(e){}
+        const sp = document.querySelector('.sp-panel');
+        if (sp) {
+          sp.style.left = '70px';
+          sp.style.top = '60px';
+          sp.style.width = '340px';
+          sp.style.height = '420px';
+        }
+      };
+    }
     return wrap;
   }
 
@@ -4916,6 +4938,402 @@ async function scanInventory(force) {
   // ───────────────────────────────────────────────────────────────────────────
   function injectStyles() {
     GM_addStyle(`
+    /* ====== SCRATCHPAD ====== */
+
+    .sp-trigger {
+      position: fixed;
+      top: 12px;
+      left: 16px;
+      width: 38px;
+      height: 38px;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 50%;
+      box-shadow: 0 4px 14px rgba(0,0,0,.5);
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.1s;
+    }
+    .sp-trigger:hover {
+      background: #21262d;
+      border-color: #58a6ff;
+    }
+    .sp-trigger:hover + .sp-quick-create, .sp-quick-create:hover {
+      opacity: 1;
+      visibility: visible;
+      transition-delay: 0s;
+    }
+    .sp-trigger svg {
+      width: 18px;
+      height: 18px;
+      stroke: #c9d1d9;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .sp-trigger-dot {
+      position: absolute;
+      top: -2px;
+      right: -2px;
+      width: 10px;
+      height: 10px;
+      background: #58a6ff;
+      border: 2px solid #161b22;
+      border-radius: 50%;
+    }
+    .sp-quick-create {
+      position: fixed;
+      left: 62px;
+      top: 14px;
+      height: 34px;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #8b949e;
+      font-size: 11px;
+      font-weight: 600;
+      display: flex;
+      opacity: 0;
+      visibility: hidden;
+      align-items: center;
+      gap: 4px;
+      padding: 0 10px;
+      cursor: pointer;
+      z-index: 9999;
+      transition: opacity 0.2s, visibility 0.2s, border-color 0.1s, color 0.1s;
+      transition-delay: 1.5s;
+    }
+    .sp-quick-create::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: -20px;
+      width: 20px;
+    }
+    .sp-quick-create:hover {
+      color: #c9d1d9;
+      border-color: #58a6ff;
+    }
+    .sp-quick-create svg {
+      width: 13px;
+      height: 13px;
+      stroke-width: 2;
+    }
+    .sp-panel {
+      position: fixed;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      box-shadow: 0 8px 30px rgba(0,0,0,.6);
+      z-index: 9998;
+      display: flex;
+      flex-direction: column;
+      resize: both;
+      overflow: hidden;
+      min-width: 280px;
+      min-height: 260px;
+    }
+    .sp-header {
+      padding: 8px 10px;
+      border-bottom: 1px solid #30363d;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      user-select: none;
+      cursor: grab;
+    }
+    .sp-header-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: #c9d1d9;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .sp-close-btn {
+      width: 28px;
+      height: 28px;
+      background: transparent;
+      border: none;
+      color: #c9d1d9;
+      cursor: pointer;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .sp-close-btn:hover {
+      background: #21262d;
+    }
+    .sp-close-btn svg {
+      width: 15px;
+      height: 15px;
+      stroke-width: 1.8;
+    }
+    .sp-body {
+      flex: 1;
+      display: flex;
+      overflow-y: auto;
+      flex-direction: column;
+    }
+    .sp-body::-webkit-scrollbar {
+      width: 6px;
+    }
+    .sp-body::-webkit-scrollbar-thumb {
+      background: #30363d;
+      border-radius: 3px;
+    }
+    .sp-body::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .sp-body-empty {
+      flex: 1;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px;
+      color: #6e7681;
+      font-size: 12px;
+    }
+    .sp-body-empty svg {
+      width: 36px;
+      height: 36px;
+      opacity: 0.5;
+      stroke-width: 1.2;
+      margin-bottom: 8px;
+    }
+    .sp-list-actions {
+      padding: 8px 10px;
+      border-bottom: 1px solid rgba(148,163,184,.15);
+      display: flex;
+      align-items: center;
+    }
+    .sp-new-btn {
+      height: 28px;
+      background: #238636;
+      border: 1px solid #2ea043;
+      border-radius: 6px;
+      color: white;
+      font-size: 11px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 0 10px;
+      cursor: pointer;
+    }
+    .sp-new-btn svg {
+      width: 12px;
+      height: 12px;
+    }
+    .sp-count {
+      margin-left: auto;
+      color: #6e7681;
+      font-size: 11px;
+    }
+    .sp-list-row {
+      padding: 10px 12px;
+      border-bottom: 1px solid rgba(148,163,184,.15);
+      display: flex;
+      gap: 8px;
+      cursor: pointer;
+      position: relative;
+    }
+    .sp-list-row:hover {
+      background: #21262d;
+    }
+    .sp-list-row:focus-visible {
+      outline: 2px solid #58a6ff;
+      outline-offset: -2px;
+    }
+    .sp-row-icon {
+      width: 20px;
+      display: flex;
+      justify-content: center;
+      margin-top: 2px;
+    }
+    .sp-row-icon svg {
+      width: 16px;
+      height: 16px;
+      stroke: #6e7681;
+      stroke-width: 1.6;
+    }
+    .sp-row-content {
+      flex: 1;
+      min-width: 0;
+    }
+    .sp-row-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: #c9d1d9;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-bottom: 2px;
+    }
+    .sp-row-preview {
+      font-size: 11px;
+      color: #8b949e;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .sp-row-meta {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      justify-content: center;
+    }
+    .sp-row-date {
+      font-size: 10px;
+      color: #6e7681;
+      font-variant-numeric: tabular-nums;
+    }
+    .sp-row-delete {
+      width: 24px;
+      height: 24px;
+      border: none;
+      background: transparent;
+      border-radius: 4px;
+      color: #c9d1d9;
+      opacity: 0;
+      transition: opacity 0.1s;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 4px;
+    }
+    .sp-list-row:hover .sp-row-delete {
+      opacity: 1;
+    }
+    .sp-row-delete:hover {
+      background: #6e2024;
+      color: white;
+    }
+    .sp-row-delete svg {
+      width: 13px;
+      height: 13px;
+    }
+    .sp-delete-toast {
+      position: absolute;
+      bottom: 8px;
+      left: 8px;
+      right: 8px;
+      background: #2d1214;
+      border: 1px solid #b62324;
+      border-radius: 6px;
+      padding: 8px 10px;
+      display: flex;
+      align-items: center;
+      z-index: 9999;
+      animation: toastSlideUp 0.15s ease-out;
+    }
+    @keyframes toastSlideUp {
+      from { transform: translateY(6px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    .sp-toast-msg {
+      flex: 1;
+      color: #f0a0a0;
+      font-size: 11px;
+    }
+    .sp-toast-actions {
+      display: flex;
+      gap: 6px;
+    }
+    .sp-toast-btn-del, .sp-toast-btn-cancel {
+      height: 24px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      padding: 0 8px;
+    }
+    .sp-toast-btn-del {
+      background: #b62324;
+      color: white;
+    }
+    .sp-toast-btn-cancel {
+      background: #21262d;
+      border: 1px solid #30363d;
+      color: #8b949e;
+    }
+    .sp-body-editor {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+    .sp-editor-toolbar {
+      padding: 6px 10px;
+      border-bottom: 1px solid rgba(148,163,184,.15);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .sp-btn-back {
+      height: 26px;
+      background: #21262d;
+      border: 1px solid #30363d;
+      color: #8b949e;
+      border-radius: 4px;
+      font-size: 11px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 0 8px;
+      cursor: pointer;
+    }
+    .sp-btn-back:hover {
+      color: #c9d1d9;
+      border-color: #58a6ff;
+    }
+    .sp-btn-back svg {
+      width: 12px;
+      height: 12px;
+    }
+    .sp-editor-date {
+      font-size: 10px;
+      color: #6e7681;
+      font-variant-numeric: tabular-nums;
+    }
+    .sp-editor-textarea {
+      flex: 1;
+      background: #0d1117;
+      color: #c9d1d9;
+      font-family: system-ui, sans-serif;
+      font-size: 13px;
+      line-height: 1.55;
+      padding: 12px;
+      border: none;
+      outline: none;
+      resize: none;
+    }
+    .sp-editor-textarea::placeholder {
+      color: #6e7681;
+    }
+    .sp-autosave-bar {
+      border-top: 1px solid rgba(148,163,184,.15);
+      padding: 5px 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .sp-autosave-dot {
+      width: 5px;
+      height: 5px;
+      background: #2ea043;
+      border-radius: 50%;
+    }
+    .sp-autosave-text {
+      font-size: 10px;
+      color: #6e7681;
+    }
+
       .wia-badge {
         position: absolute; right: 2px; top: 2px; z-index: 50;
         width: 16px; height: 16px; border-radius: 50%;
@@ -5965,6 +6383,7 @@ async function scanInventory(force) {
     const prevToken = bg.querySelector('.wia-token')?.value ?? getToken();
     const hasKey = !!prevToken.trim();
     const prevFeatNotes = bg.querySelector('.wia-feat-notes')?.checked ?? CONFIG.featNotes;
+    const prevFeatScratchpad = bg.querySelector('.wia-feat-scratchpad')?.checked ?? CONFIG.featScratchpad;
     const prevFeatBattle = bg.querySelector('.wia-feat-battle')?.checked ?? CONFIG.featBattleAdvisor;
     const prevFeatPill = bg.querySelector('.wia-feat-pill')?.checked ?? CONFIG.featPillReminder;
     const prevFeatMuHealDim = bg.querySelector('.wia-feat-mu-heal-dim')?.checked ?? CONFIG.featMuHealDim;
@@ -6247,6 +6666,14 @@ async function scanInventory(force) {
           </summary>
           <div class="wia-feat-row" style="margin-top: 6px;">
             <div style="display: flex; align-items: center; gap: 8px;">
+              <input type="checkbox" class="wia-feat-scratchpad" style="width: auto;" ${prevFeatScratchpad ? 'checked' : ''} />
+              <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatScratchpadCheckbox')}</label>
+              <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
+            </div>
+            <div class="wia-hint" hidden>${t('settingsFeatScratchpadHint')}</div>
+          </div>
+          <div class="wia-feat-row" style="margin-top: 6px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
               <input type="checkbox" class="wia-feat-notes" style="width: auto;" ${prevFeatNotes ? 'checked' : ''} />
               <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatNotesCheckbox')}</label>
               <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
@@ -6285,6 +6712,7 @@ async function scanInventory(force) {
             <details class="wia-health-details" style="margin-top: 6px;">
               <summary style="font-size: 11px; color: #8b949e; cursor: pointer; user-select: none; font-weight: bold; outline: none;">Feature-Health / Diagnose</summary>
               <button type="button" class="wia-health-btn" style="margin: 6px 0; font-size: 11px; padding: 3px 8px; cursor: pointer;">Aktualisieren</button>
+              <button type="button" class="wia-sp-reset-btn" style="margin: 6px 4px; font-size: 11px; padding: 3px 8px; cursor: pointer; color: #a78bfa; background: rgba(167,139,250,0.1); border: 1px solid rgba(167,139,250,0.2); border-radius: 3px;">SP Reset</button>
               <button type="button" class="wia-debug-export-btn" style="margin: 6px 4px; font-size: 11px; padding: 3px 8px; cursor: pointer; color: #10b981; background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.2); border-radius: 3px;">📋 Debug-Log kopieren</button>
               <button type="button" class="wia-pnl-print-btn" style="margin: 6px 4px; font-size: 11px; padding: 3px 8px; cursor: pointer; color: #58a6ff; background: rgba(88,166,255,0.1); border: 1px solid rgba(88,166,255,0.2); border-radius: 3px;">P&L Kassenzettel (Konsole)</button>
               <button type="button" class="wia-skins-dump-btn" style="margin: 6px 4px; font-size: 11px; padding: 3px 8px; cursor: pointer; color: #ff9800; background: rgba(255,152,0,0.1); border: 1px solid rgba(255,152,0,0.2); border-radius: 3px;">Skins Dump (Konsole)</button>
@@ -6469,6 +6897,23 @@ async function scanInventory(force) {
     if (healthBtn && healthPanel) {
       healthBtn.onclick = (e) => { e.preventDefault(); runProbes(); renderHealthPanel(healthPanel); };
     }
+    const spResetBtn = modal.querySelector('.wia-sp-reset-btn');
+    if (spResetBtn) {
+      spResetBtn.onclick = (e) => {
+        e.preventDefault();
+        try { GM_deleteValue('wia.scratchpadPanel'); } catch(err){}
+        const sp = document.querySelector('.sp-panel');
+        if (sp) {
+          sp.style.left = '70px';
+          sp.style.top = '60px';
+          sp.style.width = '340px';
+          sp.style.height = '420px';
+        }
+        const originalText = spResetBtn.textContent;
+        spResetBtn.textContent = '✓ Reset!';
+        setTimeout(() => { spResetBtn.textContent = originalText; }, 2000);
+      };
+    }
     const debugExportBtn = modal.querySelector('.wia-debug-export-btn');
     if (debugExportBtn) {
       debugExportBtn.onclick = (e) => {
@@ -6644,6 +7089,11 @@ async function scanInventory(force) {
       GM_setValue(KEYS.featNotes, featNotes);
       CONFIG.featNotes = featNotes;
       if (featNotes) { initNotes(); } else { teardownNotes(); }
+
+      const featScratchpad = bg.querySelector('.wia-feat-scratchpad').checked;
+      GM_setValue(KEYS.featScratchpad, featScratchpad);
+      CONFIG.featScratchpad = featScratchpad;
+      if (featScratchpad) { guard('scratchpad', initScratchpad); } else { teardownScratchpad(); }
 
       const featBattle = bg.querySelector('.wia-feat-battle').checked;
       GM_setValue(KEYS.featBattleAdvisor, featBattle);
@@ -7826,6 +8276,424 @@ function updateObserverTarget() {
     setHealth('orderRadar', 'idle', 'disabled in settings');
     setHealth('troopRadar', 'idle', 'disabled in settings');
   }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Scratchpad / Notizen-Tool
+  // ───────────────────────────────────────────────────────────────────────────
+const KEYS_SCRATCHPAD = {
+  index: 'wia.scratchpadIndex',
+  notePfx: 'wia.scratchpad.',
+  panel: 'wia.scratchpadPanel',
+  state: 'wia.scratchpadState'
+};
+
+function scratchpadLoadIndex() {
+  return GM_getValue(KEYS_SCRATCHPAD.index, []);
+}
+
+function scratchpadSaveIndex(index) {
+  GM_setValue(KEYS_SCRATCHPAD.index, index);
+}
+
+function scratchpadLoadNote(id) {
+  return GM_getValue(KEYS_SCRATCHPAD.notePfx + id, '');
+}
+
+function scratchpadSaveNote(id, text) {
+  GM_setValue(KEYS_SCRATCHPAD.notePfx + id, text);
+  const index = scratchpadLoadIndex();
+  const entry = index.find(n => n.id === id);
+  if (entry) {
+    entry.updatedAt = Date.now();
+    index.sort((a, b) => b.updatedAt - a.updatedAt);
+    scratchpadSaveIndex(index);
+  }
+}
+
+function scratchpadDeleteNote(id) {
+  GM_deleteValue(KEYS_SCRATCHPAD.notePfx + id);
+  const index = scratchpadLoadIndex();
+  scratchpadSaveIndex(index.filter(n => n.id !== id));
+}
+
+let spTrigger = null;
+let spPanel = null;
+let spQuickCreate = null;
+let spState = { view: 'list', lastNoteId: null };
+let spTypingTimeout = null;
+let spCurrentNoteId = null;
+
+function renderSpList() {
+  const index = scratchpadLoadIndex();
+  spPanel.querySelector('.sp-header-title').textContent = 'Scratchpad';
+  const body = spPanel.querySelector('.sp-body');
+  if (index.length === 0) {
+    body.className = 'sp-body sp-body-empty';
+    body.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+      <span style="margin-bottom: 12px;">Noch keine Notizen</span>
+      <button class="sp-new-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"></path></svg>Neue Notiz</button>
+    `;
+    body.querySelector('.sp-new-btn').onclick = () => createNewNote();
+    return;
+  }
+  body.className = 'sp-body sp-body-list';
+  
+  const actions = document.createElement('div');
+  actions.className = 'sp-list-actions';
+  
+  const newBtn = document.createElement('button');
+  newBtn.className = 'sp-new-btn';
+  newBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"></path></svg>Neue Notiz`;
+  if (index.length >= 50) {
+    newBtn.disabled = true;
+    newBtn.style.opacity = '0.5';
+  }
+  newBtn.onclick = () => createNewNote();
+  
+  const countLabel = document.createElement('span');
+  countLabel.className = 'sp-count';
+  countLabel.textContent = `${index.length} / 50`;
+  
+  actions.appendChild(newBtn);
+  actions.appendChild(countLabel);
+  
+  const listContainer = document.createElement('div');
+  listContainer.className = 'sp-list-container';
+  
+  index.forEach(entry => {
+    const noteText = scratchpadLoadNote(entry.id);
+    const lines = noteText.split('\n').filter(l => l.trim().length > 0);
+    const title = lines.length > 0 ? lines[0] : 'Unbenannte Notiz';
+    const preview = lines.length > 1 ? lines.slice(1).join(' ').substring(0, 60) : '';
+    const date = new Date(entry.createdAt);
+    const dateStr = `${String(date.getDate()).padStart(2,'0')}.${String(date.getMonth()+1).padStart(2,'0')}.${String(date.getFullYear()).slice(-2)}`;
+    
+    const row = document.createElement('div');
+    row.className = 'sp-list-row';
+    row.tabIndex = 0;
+    
+    row.innerHTML = `
+      <div class="sp-row-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg></div>
+      <div class="sp-row-content">
+        <div class="sp-row-title">${escapeHtml(title)}</div>
+        <div class="sp-row-preview">${escapeHtml(preview)}</div>
+      </div>
+      <div class="sp-row-meta">
+        <div class="sp-row-date">${dateStr}</div>
+        <button class="sp-row-delete" aria-label="Delete">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+        </button>
+      </div>
+    `;
+    
+    row.onclick = (e) => {
+      if (e.target.closest('.sp-row-delete')) {
+        showDeleteConfirm(entry.id);
+      } else {
+        openEditor(entry.id);
+      }
+    };
+    listContainer.appendChild(row);
+  });
+  
+  body.innerHTML = '';
+  body.appendChild(actions);
+  body.appendChild(listContainer);
+}
+
+function showDeleteConfirm(id) {
+  let toast = spPanel.querySelector('.sp-delete-toast');
+  if (toast) toast.remove();
+  
+  toast = document.createElement('div');
+  toast.className = 'sp-delete-toast';
+  toast.innerHTML = `
+    <div class="sp-toast-msg">Notiz endgültig löschen?</div>
+    <div class="sp-toast-actions">
+      <button class="sp-toast-btn-del">Löschen</button>
+      <button class="sp-toast-btn-cancel">Abbrechen</button>
+    </div>
+  `;
+  toast.querySelector('.sp-toast-btn-cancel').onclick = () => toast.remove();
+  toast.querySelector('.sp-toast-btn-del').onclick = () => {
+    scratchpadDeleteNote(id);
+    toast.remove();
+    renderSpList();
+  };
+  spPanel.appendChild(toast);
+}
+
+function createNewNote() {
+  const index = scratchpadLoadIndex();
+  if (index.length >= 50) return; // limit
+  
+  const id = Date.now().toString();
+  index.unshift({ id, createdAt: Date.now(), updatedAt: Date.now() });
+  scratchpadSaveIndex(index);
+  scratchpadSaveNote(id, '');
+  openEditor(id);
+}
+
+function autosaveCurrentNote() {
+  if (spCurrentNoteId && spPanel.querySelector('.sp-editor-textarea')) {
+    const text = spPanel.querySelector('.sp-editor-textarea').value;
+    scratchpadSaveNote(spCurrentNoteId, text);
+  }
+}
+
+function openEditor(id) {
+  spCurrentNoteId = id;
+  spState = { view: 'editor', lastNoteId: id };
+  GM_setValue(KEYS_SCRATCHPAD.state, spState);
+  
+  const index = scratchpadLoadIndex();
+  const entry = index.find(n => n.id === id);
+  if (!entry) {
+    renderSpList();
+    return;
+  }
+  
+  const noteText = scratchpadLoadNote(id);
+  const date = new Date(entry.createdAt);
+  const dateStr = `${String(date.getDate()).padStart(2,'0')}.${String(date.getMonth()+1).padStart(2,'0')}.${String(date.getFullYear()).slice(-2)}`;
+  
+  const body = spPanel.querySelector('.sp-body');
+  body.className = 'sp-body sp-body-editor';
+  
+  body.innerHTML = `
+    <div class="sp-editor-toolbar">
+      <button class="sp-btn-back">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"></path></svg> Alle Notizen
+      </button>
+      <div class="sp-editor-date">${dateStr}</div>
+    </div>
+    <textarea class="sp-editor-textarea" placeholder="Notiz schreiben..."></textarea>
+    <div class="sp-autosave-bar">
+      <div class="sp-autosave-dot"></div>
+      <div class="sp-autosave-text">Autosave aktiv</div>
+    </div>
+  `;
+  
+  const ta = body.querySelector('.sp-editor-textarea');
+  ta.value = noteText;
+  
+  const updateTitle = () => {
+    const lines = ta.value.split('\n').filter(l => l.trim().length > 0);
+    const title = lines.length > 0 ? lines[0] : 'Unbenannte Notiz';
+    spPanel.querySelector('.sp-header-title').textContent = title;
+  };
+  updateTitle();
+  
+  ta.addEventListener('input', () => {
+    updateTitle();
+    clearTimeout(spTypingTimeout);
+    spTypingTimeout = setTimeout(() => autosaveCurrentNote(), 2000);
+  });
+  
+  body.querySelector('.sp-btn-back').onclick = () => {
+    autosaveCurrentNote();
+    spCurrentNoteId = null;
+    spState = { view: 'list', lastNoteId: null };
+    GM_setValue(KEYS_SCRATCHPAD.state, spState);
+    renderSpList();
+  };
+  
+  setTimeout(() => ta.focus(), 50);
+}
+
+function escapeHtml(unsafe) {
+    return (unsafe || '').replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+}
+
+function initScratchpadDrag() {
+  const header = spPanel.querySelector('.sp-header');
+  let isDragging = false;
+  let startX, startY, initialX, initialY;
+
+  header.addEventListener('mousedown', (e) => {
+    if (e.target.closest('.sp-close-btn')) return;
+    isDragging = true;
+    startX = e.clientX;
+    startY = e.clientY;
+    initialX = spPanel.offsetLeft;
+    initialY = spPanel.offsetTop;
+    header.style.cursor = 'grabbing';
+    document.body.style.userSelect = 'none';
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    spPanel.style.left = `${initialX + dx}px`;
+    spPanel.style.top = `${initialY + dy}px`;
+  });
+
+  const stopDrag = () => {
+    if (!isDragging) return;
+    isDragging = false;
+    header.style.cursor = '';
+    document.body.style.userSelect = '';
+    clampAndSavePosition();
+  };
+  window.addEventListener('mouseup', stopDrag);
+}
+
+function clampAndSavePosition() {
+  if (!spPanel || spPanel.style.display === 'none' || spPanel.offsetWidth === 0) return;
+  const rect = spPanel.getBoundingClientRect();
+  const maxLeft = window.innerWidth - 40;
+  const maxTop = window.innerHeight - 40;
+  
+  let newLeft = Math.max(0, Math.min(rect.left, maxLeft));
+  let newTop = Math.max(0, Math.min(rect.top, maxTop));
+  
+  if (window.innerWidth < 320) {
+    newLeft = 0;
+    spPanel.style.width = '100%';
+  }
+  
+  spPanel.style.left = newLeft + 'px';
+  spPanel.style.top = newTop + 'px';
+  
+  GM_setValue(KEYS_SCRATCHPAD.panel, {
+    x: newLeft,
+    y: newTop,
+    w: spPanel.offsetWidth,
+    h: spPanel.offsetHeight
+  });
+}
+
+let spResizeTimeout = null;
+function initScratchpadResize() {
+  const ro = new ResizeObserver(() => {
+    clearTimeout(spResizeTimeout);
+    spResizeTimeout = setTimeout(() => clampAndSavePosition(), 300);
+  });
+  ro.observe(spPanel);
+}
+
+function handleSpGlobalEsc(e) {
+  if (e.key === 'Escape' && spPanel && spPanel.style.display !== 'none') {
+    if (spState.view === 'editor') {
+      autosaveCurrentNote();
+      spCurrentNoteId = null;
+      spState = { view: 'list', lastNoteId: null };
+      GM_setValue(KEYS_SCRATCHPAD.state, spState);
+      renderSpList();
+    } else {
+      spPanel.style.display = 'none';
+    }
+  }
+}
+
+function handleSpBeforeUnload() {
+  if (spState.view === 'editor' && spPanel.style.display !== 'none') {
+    autosaveCurrentNote();
+  }
+}
+
+let handleRouteChangeRef = null;
+
+function teardownScratchpad() {
+  if (spTrigger) { spTrigger.remove(); spTrigger = null; }
+  if (spQuickCreate) { spQuickCreate.remove(); spQuickCreate = null; }
+  if (spPanel) { spPanel.remove(); spPanel = null; }
+  window.removeEventListener('keydown', handleSpGlobalEsc);
+  window.removeEventListener('beforeunload', handleSpBeforeUnload);
+  handleRouteChangeRef = null;
+  setHealth('scratchpad', 'idle', 'disabled in settings');
+}
+
+function initScratchpad() {
+  teardownScratchpad();
+  
+  spTrigger = document.createElement('div');
+  spTrigger.className = 'sp-trigger';
+  spTrigger.innerHTML = `
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+      <path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+    </svg>
+  `;
+  
+  const index = scratchpadLoadIndex();
+  if (index.length > 0) {
+    const dot = document.createElement('div');
+    dot.className = 'sp-trigger-dot';
+    spTrigger.appendChild(dot);
+  }
+
+  spQuickCreate = document.createElement('button');
+  spQuickCreate.className = 'sp-quick-create';
+  spQuickCreate.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"></path></svg>Neue Notiz`;
+  spQuickCreate.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"></path></svg>Neue Notiz`;
+  
+  spTrigger.addEventListener('click', () => {
+    if (spPanel.style.display === 'none') {
+      spPanel.style.display = 'flex';
+      if (spState.view === 'editor' && spState.lastNoteId) {
+        openEditor(spState.lastNoteId);
+      } else {
+        renderSpList();
+      }
+    } else {
+      if (spState.view === 'editor') autosaveCurrentNote();
+      spPanel.style.display = 'none';
+    }
+  });
+  
+  spQuickCreate.onclick = () => {
+    spPanel.style.display = 'flex';
+    createNewNote();
+  };
+
+  document.body.appendChild(spTrigger);
+  document.body.appendChild(spQuickCreate);
+
+  spPanel = document.createElement('div');
+  spPanel.className = 'sp-panel';
+  spPanel.style.display = 'none';
+  spPanel.innerHTML = `
+    <div class="sp-header">
+      <span class="sp-header-title">Scratchpad</span>
+      <button class="sp-close-btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"></path></svg>
+      </button>
+    </div>
+    <div class="sp-body"></div>
+  `;
+
+  const savedPos = GM_getValue(KEYS_SCRATCHPAD.panel, { x: 70, y: 60, w: 340, h: 420 });
+  spPanel.style.left = savedPos.x + 'px';
+  spPanel.style.top = savedPos.y + 'px';
+  spPanel.style.width = Math.max(280, savedPos.w) + 'px';
+  spPanel.style.height = Math.max(260, savedPos.h) + 'px';
+
+  spPanel.querySelector('.sp-close-btn').addEventListener('click', () => {
+    if (spState.view === 'editor') autosaveCurrentNote();
+    spPanel.style.display = 'none';
+  });
+
+  document.body.appendChild(spPanel);
+  
+  initScratchpadDrag();
+  initScratchpadResize();
+  
+  spState = GM_getValue(KEYS_SCRATCHPAD.state, { view: 'list', lastNoteId: null });
+  
+  window.addEventListener('keydown', handleSpGlobalEsc);
+  window.addEventListener('beforeunload', handleSpBeforeUnload);
+  
+  handleRouteChangeRef = () => {
+    if (spState.view === 'editor' && spPanel.style.display !== 'none') {
+      autosaveCurrentNote();
+    }
+  };
+  
+  setHealth('scratchpad', 'ok');
+}
+
 
   // ───────────────────────────────────────────────────────────────────────────
   // Notes module (ported from warera-notes.user.js-reuses same GM keys/selectors
@@ -9283,20 +10151,26 @@ function updateObserverTarget() {
         const svg = p.closest('svg');
         if (!svg || svg.closest('.wia-eco-profit-badge') || svg.closest('.wia-worker-net-wage')) continue;
 
-        // Skip coin SVGs in the current user's worker row — game already shows native net
-        if (ownUserId) {
-          let row = svg.parentElement;
-          let isOwnRow = false;
-          for (let i = 0; i < 6 && row && row !== cardEl; i++) {
-            const userLink = row.querySelector('a[href^="/user/"]');
-            if (userLink) {
-              isOwnRow = userLink.getAttribute('href') === '/user/' + ownUserId;
-              break;
-            }
-            row = row.parentElement;
+        // Ensure it's an employee row (has a user link) and skip the current user's own row.
+        let row = svg.parentElement;
+        let isOwnRow = false;
+        let hasUserLink = false;
+        let isJobOffer = false;
+        for (let i = 0; i < 6 && row && row !== cardEl; i++) {
+          if (row.textContent && /current offer|aktuelles angebot|slots/i.test(row.textContent)) {
+            isJobOffer = true;
           }
-          if (isOwnRow) continue;
+          const userLink = row.querySelector('a[href^="/user/"]');
+          if (userLink) {
+            hasUserLink = true;
+            if (ownUserId && userLink.getAttribute('href') === '/user/' + ownUserId) {
+              isOwnRow = true;
+            }
+            break;
+          }
+          row = row.parentElement;
         }
+        if (isOwnRow || isJobOffer || !hasUserLink) continue;
 
         let val = NaN;
         let anchorEl = null;
@@ -18381,6 +19255,7 @@ function checkInventoryDeltaWear() {
     CONFIG.debug = GM_getValue(KEYS.debug, false);
     if (typeof location !== 'undefined' && /(?:^|[#&])wia-debug/.test(location.hash)) CONFIG.debug = true;
     // Register all features so the registry/HUD knows about them up front.
+    regFeature('scratchpad', 'Scratchpad');
     regFeature('advisor', 'Item Advisor');
     regFeature('craftAdvisor', 'Crafting Advisor');
     regFeature('pnl', 'P&L Tracker');
@@ -18413,6 +19288,8 @@ function checkInventoryDeltaWear() {
       window.__WIA_LOCALE__ = CONFIG.locale;
     }
     CONFIG.stockKeepCount = Number.parseInt(GM_getValue(KEYS.stockKeepCount, 3), 10) || 3;
+    CONFIG.featPnlTracker = GM_getValue(KEYS.featPnlTracker, false);
+    CONFIG.featScratchpad = GM_getValue(KEYS.featScratchpad, false);
     CONFIG.featNotes = GM_getValue(KEYS.featNotes, false);
     CONFIG.featBattleAdvisor = GM_getValue(KEYS.featBattleAdvisor, false);
     CONFIG.featOrderRadar = GM_getValue(KEYS.featOrderRadar, true);
@@ -18451,6 +19328,7 @@ function checkInventoryDeltaWear() {
     CONFIG.pillPrefWindowTo = GM_getValue(KEYS.pillPrefWindowTo, CONFIG.pillPrefWindowTo);
     injectStyles();
     // Each entrypoint guarded → a crash in one feature can't abort the rest of start().
+    if (CONFIG.featScratchpad) guard('scratchpad', initScratchpad); else setHealth('scratchpad', 'idle', 'disabled in settings');
     if (CONFIG.featNotes) guard('notes', initNotes); else setHealth('notes', 'idle', 'disabled in settings');
     if (CONFIG.featBattleAdvisor) {
       guard('battleAdvisor', refreshAlliedCodes);

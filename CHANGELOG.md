@@ -1,5 +1,24 @@
 # CHANGELOG
 
+## 2026-08-08 | Feature: Notizen / Scratchpad & UI Bugfixes (v0.11.9)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`
+
+**Änderungen (Deutsch):**
+- **Feature**: Neues Scratchpad (Notizblock) hinzugefügt. Über ein neues Icon links im Menü erreichbar.
+- **Feature**: Das Scratchpad lässt sich frei verschieben, in der Größe ändern und speichert seine Position automatisch ab.
+- **Feature**: Notizen werden beim Tippen automatisch gespeichert.
+- **Feature**: Über den "Neue Notiz"-Schnellzugriff können Notizen blitzschnell erstellt werden.
+- **Bug Fix**: Die Netto-Gehalts-Berechnung in Firmen-Ansichten injiziert nun keine Werte mehr fälschlicherweise in offene Jobangebote.
+- **Verbesserung**: Es wurde ein "SP Reset"-Button im Diagnose-Menü der Einstellungen hinzugefügt, falls das Scratchpad einmal außerhalb des Bildschirms feststecken sollte.
+
+**Changes (English):**
+- **Feature**: Added a new draggable and resizable Scratchpad feature, accessible via a new icon in the left menu.
+- **Feature**: Scratchpad automatically saves its position, size, and notes as you type.
+- **Feature**: Added a quick "New Note" hover button for rapid note creation.
+- **Bug Fix**: Net wage calculations in company views no longer falsely inject values into active job offers.
+- **Enhancement**: Added an "SP Reset" button in the diagnostic settings menu in case the scratchpad gets stuck off-screen.
+
 ## 2026-08-07 | Bugfix: Material Shortage Notifications & Inventory Net Wage (v0.11.8)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`

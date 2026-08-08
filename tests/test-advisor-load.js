@@ -700,9 +700,12 @@ try {
   const modalEl = bg.querySelector('.wia-modal');
   assert.ok(modalEl, 'Settings modal should be rendered');
 
-  const hintBtns = bg.querySelectorAll('.wia-hint-toggle');
-  const expectedToggles = 11;
-  assert.strictEqual(hintBtns.length, expectedToggles, `Should have exactly ${expectedToggles} hint toggle buttons (Notes, Battle, Profile Charsheet, Pill Reminder, Market Graph, P&L Tracker, Order Radar, Troop Radar, Item Advisor, Crafting Advisor, Company Eco, Company Tracking)`);
+  const hintToggles = bg.querySelectorAll('.wia-hint-toggle');
+  assert.strictEqual(
+    hintToggles.length,
+    12,
+    "Should have exactly 12 hint toggle buttons"
+  );
 
   const featPillCheckbox = bg.querySelector('.wia-feat-pill');
   const featMarketGraphCheckbox = bg.querySelector('.wia-feat-market-graph');
