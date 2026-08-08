@@ -1,5 +1,23 @@
 # CHANGELOG
 
+## 2026-08-08 | Fix: MU Troop Radar & CI Pipeline (v0.11.11)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `tests/test-troop-radar.js`, `.github/workflows/test.yml`, `.github/workflows/normalize-release-header.yml`, `scripts/static-analysis.sh`
+
+**Änderungen (Deutsch):**
+- **Bug Fix**: MU Troop Radar zeigte nur Standardwerte statt echte Mitgliederdaten an. Ursache: falscher Variablenname im Batch-Fetch (eingeführt in v0.11.0).
+- **CI**: Automatische Test-Pipeline auf jede PR gegen main (Unit-Tests + statische Analyse).
+- **CI**: Normalize-Release-Workflow erstellt nun PRs statt direkt auf main zu pushen.
+- **Sicherheit**: Hartcodierte API-Keys aus 7 Dateien entfernt, alle lesen nun aus Umgebungsvariablen.
+- **Test**: Regressions-Test für Batch-Fetch mit echtem API-Fixture hinzugefügt.
+
+**Changes (English):**
+- **Bug Fix**: MU Troop Radar showed only default values instead of real member data. Root cause: wrong variable name in batch-fetch code (introduced in v0.11.0).
+- **CI**: Automated test pipeline on every PR to main (unit tests + static analysis).
+- **CI**: Normalize-release workflow now creates PRs instead of pushing directly to main.
+- **Security**: Removed hardcoded API keys from 7 files, all now read from environment variables.
+- **Test**: Regression test for batch-fetch with real API fixture added.
+
 ## 2026-08-08 | Feature: Lohn-Median Sparkline (v0.11.10)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`
