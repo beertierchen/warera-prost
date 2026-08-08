@@ -447,6 +447,7 @@
         settingsFeatPillCheckbox: 'Pill Reminder (configurable pill-timing overlay) 💊',
         settingsFeatPillHint: 'Shows a top-bar status and countdown timer for the pill cycle, highlights ready pills, and checks health/hunger levels.',
         wageMedianLine: '📊 {sparkline} (you: {pctl} pctl, median: {median})',
+        wageMedianOnly: '📊 {sparkline} (median: {median})',
         wageMedianFallback: '(Median unavailable)',
         wageUncompetitive25: '⚠ Below 25th percentile',
         ntfyBountyTitle: '⚔️ {type}: {defender} vs {attacker}',
@@ -842,6 +843,7 @@
         settingsFeatPillCheckbox: 'Pill-Reminder (konfigurierbares Pillen-Timing Overlay)',
         settingsFeatPillHint: 'Zeigt einen Status und Countdown in der Menüleiste, markiert nimmbereite Pillen und prüft HP/Hunger-Werte.',
         wageMedianLine: '📊 {sparkline} (du: {pctl}. Pzt, Median: {median})',
+        wageMedianOnly: '📊 {sparkline} (Median: {median})',
         wageMedianFallback: '(Median nicht verfügbar)',
         wageUncompetitive25: '⚠ Unter 25. Perzentil',
         ntfyBountyTitle: '⚔️ {type}: {defender} vs {attacker}',
@@ -1891,6 +1893,11 @@
       }
 
       return ['ok', skinCount > 0 ? `${skinCount} Skins erkannt` : ''];
+    },
+    wageMedian() {
+      if (!companyEcoModalNode) return ['idle', 'modal closed'];
+      if (companyEcoMarketWages) return ['ok', 'market API data active'];
+      return ['warn', 'API fallback / top-3 active'];
     },
     battleAdvisor() {
       if (!CONFIG.featBattleAdvisor) return ['idle', 'disabled in settings'];
@@ -9141,8 +9148,8 @@ function initScratchpad() {
     let warnHTML = '';
     if (marketData) {
       if (marketData.type === 'median') {
-        warnHTML = '<div style="width:100%; font-size:11px; margin-top:6px; text-align:right;">' + renderWageSparkline(marketData.stats, CONFIG.locale) + '</div>';
-        if (marketData.stats.percentile !== -1 && marketData.stats.percentile < 25) {
+        warnHTML = '<div style="width:100%; font-size:11px; margin-top:6px; text-align:right;">' + renderWageSparkline(marketData.stats) + '</div>';
+        if (isWageUncompetitive(marketData.stats)) {
           warnHTML += '<div style="width:100%; color:#f87171; font-size:11px; font-weight:700; margin-top:2px; text-align:right;">' + t('wageUncompetitive25') + '</div>';
         }
       } else if (marketData.type === 'top3') {
@@ -9235,6 +9242,10 @@ function initScratchpad() {
     }
   }
 
+  function isWageUncompetitive(stats) {
+    return stats && stats.percentile !== -1 && stats.percentile < 25;
+  }
+
   function computeWageStats(wages, userWage) {
     if (!wages || wages.length === 0) return null;
     const sorted = [...wages].sort((a, b) => a - b);
@@ -9250,25 +9261,26 @@ function initScratchpad() {
     const belowOrEqualCount = hasUserWage ? sorted.filter(w => w <= userWage).length : 0;
     const percentile = hasUserWage ? Math.floor((belowOrEqualCount / n) * 100) : -1;
 
-    const minWage = sorted[0];
-    const maxWage = sorted[n - 1];
+    const p5 = sorted[Math.floor(n * 0.05)];
+    const p95 = sorted[Math.floor(n * 0.95)];
     
-    const buckets = new Array(10).fill(0);
+    const buckets = new Array(20).fill(0);
     let userBucket = -1;
     
-    if (minWage === maxWage) {
+    if (p5 === p95) {
       buckets[0] = n;
       if (hasUserWage) userBucket = 0;
     } else {
       for (const w of sorted) {
-        let b = Math.floor(((w - minWage) / (maxWage - minWage)) * 10);
-        if (b === 10) b = 9;
+        let b = Math.floor(((w - p5) / (p95 - p5)) * 20);
+        if (b < 0) b = 0;
+        if (b > 19) b = 19;
         buckets[b]++;
       }
       if (hasUserWage) {
-        let ub = Math.floor(((userWage - minWage) / (maxWage - minWage)) * 10);
+        let ub = Math.floor(((userWage - p5) / (p95 - p5)) * 20);
         if (ub < 0) ub = 0;
-        if (ub > 9) ub = 9;
+        if (ub > 19) ub = 19;
         userBucket = ub;
       }
     }
@@ -9276,14 +9288,14 @@ function initScratchpad() {
     return { median, percentile, buckets, userBucket };
   }
 
-  function renderWageSparkline(stats, lang) {
+  function renderWageSparkline(stats) {
     if (!stats) return '';
     const blocks = [' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
     let maxCount = Math.max(...stats.buckets);
     if (maxCount === 0) maxCount = 1;
 
     let sparklineHtml = '';
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 20; i++) {
       const bCount = stats.buckets[i];
       const intensity = Math.floor((bCount / maxCount) * 8);
       const char = blocks[intensity];
@@ -9292,7 +9304,7 @@ function initScratchpad() {
       if (i < stats.userBucket) {
         colorStyle = 'color: #6b7280;'; // gray
       } else if (i === stats.userBucket) {
-        colorStyle = stats.percentile >= 25 ? 'color: #22c55e;' : 'color: #ef4444;';
+        colorStyle = isWageUncompetitive(stats) ? 'color: #ef4444;' : 'color: #22c55e;';
       }
       
       if (colorStyle) {
@@ -9303,9 +9315,9 @@ function initScratchpad() {
     }
 
     if (stats.userBucket !== -1) {
-      return t('wageMedianLine', { sparkline: sparklineHtml, pctl: stats.percentile, median: stats.median.toFixed(4) }, lang);
+      return t('wageMedianLine', { sparkline: sparklineHtml, pctl: stats.percentile, median: stats.median.toFixed(4) });
     } else {
-      return `📊 ${sparklineHtml} (Median: ${stats.median.toFixed(4)})`;
+      return t('wageMedianOnly', { sparkline: sparklineHtml, median: stats.median.toFixed(4) });
     }
   }
 
@@ -9353,7 +9365,7 @@ function initScratchpad() {
       const stats = computeWageStats(companyEcoMarketWages, wage);
       if (stats) {
         marketData = { type: 'median', stats };
-        isUncompetitive = stats.percentile !== -1 && stats.percentile < 25;
+        isUncompetitive = isWageUncompetitive(stats);
       }
     }
     
@@ -10568,13 +10580,25 @@ function initScratchpad() {
       delete netLine.dataset.taxRate;
       
       companyEcoMarketWages = null;
-      fetchMarketWages((wagesSoFar) => {
+      guard('wageMedian', () => fetchMarketWages((wagesSoFar) => {
+        if (!companyEcoModalNode) return;
         companyEcoMarketWages = wagesSoFar;
         handleWageInputUpdate();
+      }).then((res) => {
+        if (!companyEcoModalNode) return;
+        if (res) {
+          setHealth('wageMedian', 'ok', 'market API data active');
+        } else {
+          companyEcoMarketWages = null;
+          handleWageInputUpdate();
+          setHealth('wageMedian', 'warn', 'API fallback');
+        }
       }).catch(() => {
+        if (!companyEcoModalNode) return;
         companyEcoMarketWages = null;
         handleWageInputUpdate();
-      });
+        setHealth('wageMedian', 'warn', 'API fallback');
+      }));
 
       handleWageInputUpdate();
 
@@ -10634,6 +10658,7 @@ function initScratchpad() {
     companyEcoMarketWages = null;
     setHealth('companyEco', 'idle', 'modal closed or off-route');
     setHealth('companyEnergy', 'idle', 'off-route');
+    setHealth('wageMedian', 'idle', 'modal closed');
   }
 
 
@@ -19414,6 +19439,7 @@ function checkInventoryDeltaWear() {
     regFeature('companyAlerts', 'Company Alerts');
     regFeature('companyProfit', 'Company Profit');
     regFeature('companyEnergy', 'Company Energy');
+    regFeature('wageMedian', 'Wage Median Sparkline');
     regFeature('troopRadar', 'Troop Radar');
     regFeature('profileCharsheet', 'Profile Charsheet');
     // one-shot onboarding prompt, once the game shell (avatar) is present
