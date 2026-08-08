@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         PROST
+// @name         TEST PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.11.9
+// @version      0.11.9-unstable
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -446,6 +446,9 @@
         hintToggleLabel: 'Explanation',
         settingsFeatPillCheckbox: 'Pill Reminder (configurable pill-timing overlay) 💊',
         settingsFeatPillHint: 'Shows a top-bar status and countdown timer for the pill cycle, highlights ready pills, and checks health/hunger levels.',
+        wageMedianLine: '📊 {sparkline} (you: {pctl} pctl, median: {median})',
+        wageMedianFallback: '(Median unavailable)',
+        wageUncompetitive25: '⚠ Below 25th percentile',
         ntfyBountyTitle: '⚔️ {type}: {defender} vs {attacker}',
         ntfyBountyBody: 'Fight for {allyCountry} ({side}) · Pool {moneyPool} · {ratePer1k}/1k',
         bountyAttackerSide: 'Attacker',
@@ -838,6 +841,9 @@
         hintToggleLabel: 'Erklärung',
         settingsFeatPillCheckbox: 'Pill-Reminder (konfigurierbares Pillen-Timing Overlay)',
         settingsFeatPillHint: 'Zeigt einen Status und Countdown in der Menüleiste, markiert nimmbereite Pillen und prüft HP/Hunger-Werte.',
+        wageMedianLine: '📊 {sparkline} (du: {pctl}. Pzt, Median: {median})',
+        wageMedianFallback: '(Median nicht verfügbar)',
+        wageUncompetitive25: '⚠ Unter 25. Perzentil',
         ntfyBountyTitle: '⚔️ {type}: {defender} vs {attacker}',
         ntfyBountyBody: 'Kämpfe für {allyCountry} ({side}) · Topf {moneyPool} · {ratePer1k}/1k',
         bountyAttackerSide: 'Angreifer',
@@ -9074,6 +9080,7 @@ function initScratchpad() {
   let companyEcoWorkerData = null;
   let companyEcoTeardownTimer = null;
   let companyEcoWorkerFetchPending = false;
+  let companyEcoMarketWages = null;
   let editWorkerPpSection = null;
 
   function ecoFindWorkerByUserId(userId) {
@@ -9113,7 +9120,7 @@ function initScratchpad() {
     '.54v3a20.994 20.994 0 0 0 4-.541v-3a20.994 20.994 0 0 1-4 .541zm6-1.181v3c1.801-.755 3-1.857 3-3.297v-3c0 ' +
     '1.44-1.199 2.542-3 3.297zm-14 3v-3C3.2 13.542 2 12.439 2 11v3c0 1.439 1.2 2.542 3 3.297z"></path></svg>';
 
-  function renderNetLine(netLine, wage, rate, resolved, top3Min) {
+  function renderNetLine(netLine, wage, rate, resolved, marketData) {
     const label = '<span style="color:#e5e7eb;font-weight:600;">Net (tax excl.):</span> ';
     let valueHTML = '';
     if (rate == null) {
@@ -9132,8 +9139,20 @@ function initScratchpad() {
     const badgeHTML = '<span style="border: 1px solid #7c3aed; color: #a78bfa; padding: 2px 6px; font-size: 9px; font-weight: 700; border-radius: 4px; letter-spacing: 0.5px;">PROST</span>';
 
     let warnHTML = '';
-    if (top3Min !== null && !isNaN(wage) && wage > 0 && wage < top3Min) {
-      warnHTML = '<div style="width:100%; color:#f87171; font-size:11px; font-weight:700; margin-top:6px; text-align:right;">⚠ Uncompetitive (Top 3 min: ' + top3Min + ')</div>';
+    if (marketData) {
+      if (marketData.type === 'median') {
+        warnHTML = '<div style="width:100%; font-size:11px; margin-top:6px; text-align:right;">' + renderWageSparkline(marketData.stats, CONFIG.locale) + '</div>';
+        if (marketData.stats.percentile !== -1 && marketData.stats.percentile < 25) {
+          warnHTML += '<div style="width:100%; color:#f87171; font-size:11px; font-weight:700; margin-top:2px; text-align:right;">' + t('wageUncompetitive25') + '</div>';
+        }
+      } else if (marketData.type === 'top3') {
+        const fallbackHint = t('wageMedianFallback');
+        if (marketData.top3Min !== null && !isNaN(wage) && wage > 0 && wage < marketData.top3Min) {
+          warnHTML = '<div style="width:100%; color:#f87171; font-size:11px; font-weight:700; margin-top:6px; text-align:right;">⚠ Uncompetitive (Top 3 min: ' + marketData.top3Min + ') ' + fallbackHint + '</div>';
+        } else {
+          warnHTML = '<div style="width:100%; color:#9ca3af; font-size:11px; margin-top:6px; text-align:right;">' + fallbackHint + '</div>';
+        }
+      }
     }
 
     const newHTML = '<div style="display:flex; justify-content:space-between; align-items:center; width:100%;">' +
@@ -9194,6 +9213,102 @@ function initScratchpad() {
     return null;
   }
 
+  async function fetchMarketWages(onPage) {
+    let cursor = undefined;
+    let allWages = [];
+    let pageCount = 0;
+    try {
+      while (pageCount < 4) {
+        const { payload } = await resolveApiBase('workOffer.getWorkOffersPaginated', { limit: 100, cursor });
+        if (!payload || !payload.items) break;
+        const pageWages = payload.items.map(item => item.wage);
+        allWages = allWages.concat(pageWages);
+        if (onPage) onPage([...allWages]);
+        if (!payload.nextCursor) break;
+        cursor = payload.nextCursor;
+        pageCount++;
+      }
+      return allWages;
+    } catch (err) {
+      console.warn('[PROST] fetchMarketWages error', err);
+      return null;
+    }
+  }
+
+  function computeWageStats(wages, userWage) {
+    if (!wages || wages.length === 0) return null;
+    const sorted = [...wages].sort((a, b) => a - b);
+    const n = sorted.length;
+    let median;
+    if (n % 2 === 0) {
+      median = (sorted[(n / 2) - 1] + sorted[n / 2]) / 2;
+    } else {
+      median = sorted[Math.floor(n / 2)];
+    }
+
+    const hasUserWage = typeof userWage === 'number' && userWage > 0 && !isNaN(userWage);
+    const belowOrEqualCount = hasUserWage ? sorted.filter(w => w <= userWage).length : 0;
+    const percentile = hasUserWage ? Math.floor((belowOrEqualCount / n) * 100) : -1;
+
+    const minWage = sorted[0];
+    const maxWage = sorted[n - 1];
+    
+    const buckets = new Array(10).fill(0);
+    let userBucket = -1;
+    
+    if (minWage === maxWage) {
+      buckets[0] = n;
+      if (hasUserWage) userBucket = 0;
+    } else {
+      for (const w of sorted) {
+        let b = Math.floor(((w - minWage) / (maxWage - minWage)) * 10);
+        if (b === 10) b = 9;
+        buckets[b]++;
+      }
+      if (hasUserWage) {
+        let ub = Math.floor(((userWage - minWage) / (maxWage - minWage)) * 10);
+        if (ub < 0) ub = 0;
+        if (ub > 9) ub = 9;
+        userBucket = ub;
+      }
+    }
+
+    return { median, percentile, buckets, userBucket };
+  }
+
+  function renderWageSparkline(stats, lang) {
+    if (!stats) return '';
+    const blocks = [' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+    let maxCount = Math.max(...stats.buckets);
+    if (maxCount === 0) maxCount = 1;
+
+    let sparklineHtml = '';
+    for (let i = 0; i < 10; i++) {
+      const bCount = stats.buckets[i];
+      const intensity = Math.floor((bCount / maxCount) * 8);
+      const char = blocks[intensity];
+      
+      let colorStyle = '';
+      if (i < stats.userBucket) {
+        colorStyle = 'color: #6b7280;'; // gray
+      } else if (i === stats.userBucket) {
+        colorStyle = stats.percentile >= 25 ? 'color: #22c55e;' : 'color: #ef4444;';
+      }
+      
+      if (colorStyle) {
+        sparklineHtml += `<span style="${colorStyle}">${char}</span>`;
+      } else {
+        sparklineHtml += char;
+      }
+    }
+
+    if (stats.userBucket !== -1) {
+      return t('wageMedianLine', { sparkline: sparklineHtml, pctl: stats.percentile, median: stats.median.toFixed(4) }, lang);
+    } else {
+      return `📊 ${sparklineHtml} (Median: ${stats.median.toFixed(4)})`;
+    }
+  }
+
   function extractTop3Minimum(modal) {
     // Clone modal and remove injected own-net value to prevent self-pollution
     const clone = modal.cloneNode(true);
@@ -9231,11 +9346,27 @@ function initScratchpad() {
     const wage = parseFloat(wageStr);
     const rate = netLine.dataset.taxRate ? parseFloat(netLine.dataset.taxRate) : null;
 
-    const top3Min = extractTop3Minimum(companyEcoModalNode);
-    renderNetLine(netLine, wage, rate, companyEcoTaxResolved, top3Min);
+    let marketData = null;
+    let isUncompetitive = false;
+
+    if (companyEcoMarketWages) {
+      const stats = computeWageStats(companyEcoMarketWages, wage);
+      if (stats) {
+        marketData = { type: 'median', stats };
+        isUncompetitive = stats.percentile !== -1 && stats.percentile < 25;
+      }
+    }
+    
+    if (!marketData) {
+      const top3Min = extractTop3Minimum(companyEcoModalNode);
+      marketData = { type: 'top3', top3Min };
+      isUncompetitive = top3Min !== null && !isNaN(wage) && wage > 0 && wage < top3Min;
+    }
+
+    renderNetLine(netLine, wage, rate, companyEcoTaxResolved, marketData);
 
     if (wageInput) {
-      if (top3Min !== null && !isNaN(wage) && wage > 0 && wage < top3Min) {
+      if (isUncompetitive) {
         wageInput.style.borderColor = '#f87171';
         wageInput.style.borderWidth = '2px';
       } else {
@@ -10435,6 +10566,16 @@ function initScratchpad() {
       companyEcoTaxRate = null;
       companyEcoTaxResolved = false;
       delete netLine.dataset.taxRate;
+      
+      companyEcoMarketWages = null;
+      fetchMarketWages((wagesSoFar) => {
+        companyEcoMarketWages = wagesSoFar;
+        handleWageInputUpdate();
+      }).catch(() => {
+        companyEcoMarketWages = null;
+        handleWageInputUpdate();
+      });
+
       handleWageInputUpdate();
 
       fetchCompanyTaxRate(companyId).then(rate => {
@@ -10490,6 +10631,7 @@ function initScratchpad() {
     editWorkerPpSection = null;
     if (companyEcoTeardownTimer) { clearTimeout(companyEcoTeardownTimer); companyEcoTeardownTimer = null; }
     companyEcoWorkerFetchPending = false;
+    companyEcoMarketWages = null;
     setHealth('companyEco', 'idle', 'modal closed or off-route');
     setHealth('companyEnergy', 'idle', 'off-route');
   }
