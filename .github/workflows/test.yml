@@ -11,6 +11,9 @@ on:
       - 'scripts/static-analysis.sh'
       - '.github/workflows/test.yml'
 
+permissions:
+  contents: read
+
 concurrency:
   group: test-${{ github.ref }}
   cancel-in-progress: true
