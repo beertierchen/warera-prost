@@ -1,5 +1,21 @@
 # CHANGELOG
 
+## 2026-08-08 | Feature: Lohn-Median Sparkline (v0.11.10)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`
+
+**Änderungen (Deutsch):**
+- **Feature**: Die Firmen-Ansicht zeigt nun eine visuelle Verteilungskurve (Sparkline) aller aktuellen Lohnangebote auf dem Markt anstelle des simplen "Top-3" Vergleichs.
+- **Feature**: Der eigene Lohn wird in der Verteilung farblich markiert (Grün bei guter Wettbewerbsfähigkeit, Rot wenn unter den schlechtesten 25%).
+- **Feature**: Exakte Median-Werte helfen bei der präzisen Preisfindung für Arbeiter.
+- **Fallback**: Bei API-Problemen wird weiterhin der traditionelle DOM-Vergleich der Top-3 Löhne genutzt.
+
+**Changes (English):**
+- **Feature**: The company economy modal now displays a visual distribution curve (sparkline) of all current wage offers on the market, replacing the simple "Top-3" comparison.
+- **Feature**: Your offered wage is color-coded within the distribution (Green for competitive, Red if in the bottom 25%).
+- **Feature**: Exact median values are now shown to help price labor more precisely.
+- **Fallback**: Automatically falls back to the traditional Top-3 DOM scraping if the API is unreachable.
+
 ## 2026-08-08 | Feature: Notizen / Scratchpad & UI Bugfixes (v0.11.9)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `CHANGELOG.md`
