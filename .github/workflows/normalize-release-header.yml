@@ -1,13 +1,12 @@
 name: Normalize release header
 
-# When something lands on main, make the userscript header GreasyFork-safe:
+# When something lands on main, check if the userscript header needs GreasyFork-safe fixes:
 #   - force @name to "PROST" (dev branches may carry "TEST PROST")
 #   - strip any prerelease suffix from @version (e.g. 0.7.8-unstable -> 0.7.8)
 # GreasyFork auto-imports main's raw and refuses syncs that change @name or carry
 # a prerelease version, so this guarantees released versions stay importable.
 #
-# Note: this can ONLY clean what reaches main — it cannot push for you. Release by
-# merging the PR on GitHub (server-side push to main) so this runs automatically.
+# Opens a PR instead of pushing directly, so the change goes through the test gate.
 
 on:
   push:
@@ -18,6 +17,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 concurrency:
   group: normalize-release-header
@@ -25,7 +25,7 @@ concurrency:
 
 jobs:
   normalize:
-    # Skip the bot's own normalization commit to avoid an infinite loop.
+    # Skip the bot's own merge commits to avoid infinite loops.
     if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
     runs-on: ubuntu-latest
     steps:
@@ -36,9 +36,7 @@ jobs:
         id: norm
         run: |
           f=warera-prost.user.js
-          # Force @name to PROST (the [[:space:]]+ after @name won't match @namespace).
           sed -i -E 's|^(// @name[[:space:]]+).*$|\1PROST|' "$f"
-          # Strip a prerelease suffix from a semver @version: 0.7.8-unstable -> 0.7.8
           sed -i -E 's|^(// @version[[:space:]]+[0-9]+\.[0-9]+\.[0-9]+)-[0-9A-Za-z.]+[[:space:]]*$|\1|' "$f"
           if git diff --quiet -- "$f"; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
@@ -47,10 +45,19 @@ jobs:
             echo "Normalized header:"; grep -E '^// @(name|version)' "$f"
           fi
 
-      - name: Commit normalized header
+      - name: Create PR for normalized header
         if: steps.norm.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          BRANCH="chore/normalize-header-$(date +%s)"
           git config user.name "beertierchen"
           git config user.email "271843730+beertierchen@users.noreply.github.com"
-          git commit -am "chore: normalize release header (PROST, strip prerelease) [skip ci]"
-          git push
+          git checkout -b "$BRANCH"
+          git commit -am "chore: normalize release header (PROST, strip prerelease)"
+          git push -u origin "$BRANCH"
+          gh pr create \
+            --title "chore: normalize release header" \
+            --body "Auto-generated: strips TEST prefix from @name and -unstable suffix from @version for GreasyFork compatibility." \
+            --base main \
+            --head "$BRANCH"

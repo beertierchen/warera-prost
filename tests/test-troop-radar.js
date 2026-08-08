@@ -769,5 +769,80 @@ const ecoRes = globalThis.computeDamagePotential(ecoMember);
 assert.strictEqual(ecoRes.degraded, true);
 assert.strictEqual(ecoRes.dailyDmg, 0);
 
-console.log('All Troop-Radar Phase 1, 2, and 3 tests passed successfully!');
-process.exit(0);
+// Test 20: fetchTroopMemberDataBatch extracts charLevel and uid from payload (regression for memberObj bug)
+// Uses real API fixture from tests/fixtures/user-getUserById.json to catch schema drift.
+// This test catches the v0.11.0 bug where `memberObj` was used instead of `payload`, causing
+// charLevel and uid to always be 0/null and classifyWarskiller to return wrong results.
+console.log('Test 20: Testing fetchTroopMemberDataBatch payload field extraction...');
+(async () => {
+  try {
+    globalThis.troopRadarMemberCache.clear();
+
+    const fixtureRaw = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'user-getUserById.json'), 'utf8'));
+    const fixtureUser = fixtureRaw.result.data;
+
+    const makePayload = (id, username) => ({ ...fixtureUser, _id: id, username, name: username });
+
+    // Mock GM_xmlhttpRequest to respond with tRPC-wrapped user data.
+    // Without an API key (test default), resolveApiBatch uses gateway bases which:
+    //   - batchArgs.length === 1: delegates to resolveApiBase (single tRPC response)
+    //   - batchArgs.length > 1: sends one batched HTTP request (array of tRPC results)
+    global.GM_xmlhttpRequest = (opts) => {
+      const decoded = decodeURIComponent(opts.url || '');
+      const inputMatch = decoded.match(/input=(.+?)$/);
+      if (!inputMatch) {
+        if (opts.onerror) opts.onerror();
+        return;
+      }
+      const inputRaw = JSON.parse(inputMatch[1]);
+
+      if (inputRaw.userId) {
+        const p = makePayload(inputRaw.userId, 'Name-' + inputRaw.userId);
+        const wrapped = JSON.stringify([{ result: { data: { json: p } } }]);
+        if (opts.onload) opts.onload({ status: 200, responseText: wrapped, responseHeaders: '' });
+      } else {
+        const batchResponse = Object.values(inputRaw).map(args => ({
+          result: { data: { json: makePayload(args.userId, 'Name-' + args.userId) } }
+        }));
+        if (opts.onload) opts.onload({ status: 200, responseText: JSON.stringify(batchResponse), responseHeaders: '' });
+      }
+    };
+
+    // Test 20a: Single-member batch (goes through resolveApiBase path)
+    const results = await globalThis.fetchTroopMemberDataBatch(['user-abc-123']);
+    assert.strictEqual(results.length, 1, 'batch should return one result');
+
+    const member = results[0];
+    assert.ok(member, 'member should not be null');
+    assert.strictEqual(member.isOptimistic, false, 'should be real data, not optimistic fallback');
+    assert.strictEqual(member.userId, 'user-abc-123');
+    assert.strictEqual(member.username, 'Name-user-abc-123');
+    // Fixture user: companies.level=5, attack.level=0 → eco build
+    assert.strictEqual(member.build, 'eco', 'fixture user with companies=5 attack=0 should yield eco build');
+    assert.strictEqual(member.isWarskiller, false);
+    assert.strictEqual(member.hpCurrent, fixtureUser.skills.health.currentBarValue);
+    assert.strictEqual(member.hpMax, fixtureUser.skills.health.total);
+    assert.strictEqual(member.combat.attackValue, fixtureUser.skills.attack.value);
+    assert.strictEqual(member.isActive, true);
+
+    // Test 20b: Multi-member batch (goes through gateway batch path)
+    globalThis.troopRadarMemberCache.clear();
+    const userIds = ['user-aaa', 'user-bbb', 'user-ccc'];
+
+    const batchResults = await globalThis.fetchTroopMemberDataBatch(userIds);
+    assert.strictEqual(batchResults.length, 3, 'batch should return three results');
+    for (let i = 0; i < batchResults.length; i++) {
+      assert.ok(batchResults[i], `member ${i} should not be null`);
+      assert.strictEqual(batchResults[i].isOptimistic, false, `member ${i} should be real data`);
+      assert.strictEqual(batchResults[i].userId, userIds[i], `member ${i} userId should match`);
+    }
+
+    delete global.GM_xmlhttpRequest;
+    console.log('All Troop-Radar Phase 1, 2, 3, and 4 tests passed successfully!');
+    process.exit(0);
+  } catch (e) {
+    console.error('Test 20 FAILED:', e.message);
+    console.error(e.stack);
+    process.exit(1);
+  }
+})();

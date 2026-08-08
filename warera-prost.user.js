@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.11.10
+// @version      0.11.11
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -12616,8 +12616,8 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
               const skills = payload?.skills || {};
               const health = skills.health || {};
               const hunger = skills.hunger || {};
-              const charLevel = memberObj?.leveling?.level || memberObj?.user?.leveling?.level || 0;
-              const uid = memberObj?._id || memberObj?.user?._id || null;
+              const charLevel = payload?.leveling?.level || payload?.user?.leveling?.level || 0;
+              const uid = payload?._id || payload?.user?._id || null;
               const warskillerInfo = classifyWarskiller(skills, charLevel, uid);
               const username = payload?.username || payload?.user?.username || payload?.name;
               const pillInfo = evaluatePillStatus(skills, health, hunger);
@@ -13716,6 +13716,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     globalThis.summarizeTroops = summarizeTroops;
     globalThis.fetchMuRoster = fetchMuRoster;
     globalThis.fetchTroopMemberData = fetchTroopMemberData;
+    globalThis.fetchTroopMemberDataBatch = fetchTroopMemberDataBatch;
     globalThis.fetchFullTroopRadar = fetchFullTroopRadar;
     globalThis.renderTroopRadarHeaderSummary = renderTroopRadarHeaderSummary;
     globalThis.renderTroopRadarMemberRows = renderTroopRadarMemberRows;
