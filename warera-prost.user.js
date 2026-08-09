@@ -336,12 +336,12 @@
 
     i18n: {
       en: {
-        equipSellCalcTitle: 'Target Price Calculator',
+        equipSellCalcTitle: 'Equipment Price Calculator',
         equipSellCalcTargetLabel: 'Target Price (Buyer Pays)',
         equipSellCalcTaxLabel: 'Market Tax (%)',
         equipSellCalcResultLabel: 'Enter Price (List for)',
         equipSellCalcCopyHint: 'Click to copy',
-        settingsNewBadge: 'NEW',
+        settingsNewBadge: 'New!',
 
         never: 'never',
         justNow: 'just now',
@@ -738,12 +738,12 @@
         customBaselineToastInvalid: 'Format invalid — reset to default'
       },
       de: {
-        equipSellCalcTitle: 'Zielpreis Rechner',
+        equipSellCalcTitle: 'Equipment Preisrechner',
         equipSellCalcTargetLabel: 'Zielpreis (Käufer zahlt)',
         equipSellCalcTaxLabel: 'Marktsteuer (%)',
         equipSellCalcResultLabel: 'Listenpreis (Eingeben)',
         equipSellCalcCopyHint: 'Klicken zum Kopieren',
-        settingsNewBadge: 'NEU',
+        settingsNewBadge: 'Neu!',
 
         never: 'nie',
         justNow: 'gerade eben',
@@ -1213,7 +1213,6 @@
     bountyPollLock: NS + 'bountyPollLock',
     bountySeen: NS + 'bountySeen',
     ownCountryCache: NS + 'ownCountryCache',
-    countryTaxCache: NS + 'countryTaxCache',
     featEquipSellCalc: NS + 'featEquipSellCalc',
     equipSellCalcLastPrice: NS + 'equipSellCalcLastPrice',
     seenFeatures: NS + 'seenFeatures',
@@ -5019,6 +5018,32 @@ async function scanInventory(force) {
   // ───────────────────────────────────────────────────────────────────────────
   function injectStyles() {
     GM_addStyle(`
+
+    /* ====== EQUIP SELL CALC ====== */
+    .wia-equip-sell-fab {
+      position:fixed; top:58px; left:16px; width:38px; height:38px; border-radius:50%;
+      background:#21262d; border:1px solid #30363d; z-index:9998; cursor:pointer;
+      display:flex; align-items:center; justify-content:center; box-shadow:0 2px 8px #00000066;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .wia-equip-sell-fab:hover { border-color: #7c3aed; background: #30363d; transform: scale(1.05); }
+    .wia-equip-sell-fab.wia-calc-no-sp { top:12px; }
+    
+    .wia-equip-sell-panel {
+      position:fixed; top:102px; left:16px; width:296px; background:#161b22;
+      border:1px solid #30363d; border-radius:10px; padding:14px; z-index:9997;
+      box-shadow:0 8px 32px #000000aa;
+      animation: wia-fade-scale 0.15s ease-out forwards;
+      transform-origin: top left;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    .wia-equip-sell-panel.wia-calc-no-sp { top: 56px; }
+    
+    @keyframes wia-fade-scale {
+      0% { opacity: 0; transform: scale(0.95) translateY(-5px); }
+      100% { opacity: 1; transform: scale(1) translateY(0); }
+    }
+
     /* ====== SCRATCHPAD ====== */
 
     .sp-trigger {
@@ -6487,7 +6512,7 @@ async function scanInventory(force) {
 
   function renderFeatLabel(featId, labelText) {
     if (isFeatNew(featId)) {
-      return `${labelText} <span class="wia-new-badge" style="background: #eab308; color: #422006; font-size: 9px; font-weight: bold; padding: 1px 4px; border-radius: 4px; margin-left: 6px;">${t('equipSellCalcNew') || 'NEW'}</span>`;
+      return `${labelText} <span class="wia-new-badge" style="background: #eab308; color: #422006; font-size: 9px; font-weight: bold; padding: 1px 4px; border-radius: 4px; margin-left: 6px;">${t('settingsNewBadge') || 'NEW'}</span>`;
     }
     return labelText;
   }
@@ -6727,8 +6752,10 @@ async function scanInventory(force) {
           <div class="wia-feat-row" style="margin-top: 6px;" data-feat-id="featEquipSellCalc">
             <div style="display: flex; align-items: center; gap: 8px;">
               <input type="checkbox" class="wia-feat-equip-sell-calc" style="width: auto;" ${prevFeatEquipSellCalc ? 'checked' : ''} />
-              <label style="margin: 0; font-weight: normal; cursor: pointer;">${renderFeatLabel('featEquipSellCalc', t('equipSellCalcTitle') || 'Equipment Sell Calculator')}</label>
+              <label style="margin: 0; font-weight: normal; cursor: pointer;">${renderFeatLabel('featEquipSellCalc', t('equipSellCalcTitle') || 'Equipment Price Calculator')}</label>
+              <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
             </div>
+            <div class="wia-hint" hidden>${t('settingsFeatEquipSellCalcHint')}</div>
           </div>
           <div class="wia-feat-row" data-feat-id="featMarketGraph" style="margin-top: 6px;">
             <div style="display: flex; align-items: center; gap: 8px;">
@@ -6868,6 +6895,14 @@ async function scanInventory(force) {
           <button class="wia-btn wia-close">${t('settingsClose')}</button>
         </div>
       </div>`;
+
+        const categories = bg.querySelectorAll('details');
+    categories.forEach(cat => {
+      const summary = cat.querySelector('summary');
+      if (summary && cat.querySelector('.wia-new-badge')) {
+        summary.innerHTML += ` <span class="wia-new-badge" style="background: #eab308; color: #422006; font-size: 9px; font-weight: bold; padding: 1px 4px; border-radius: 4px; margin-left: 6px;">${t('settingsNewBadge') || 'New!'}</span>`;
+      }
+    });
 
     const modal = bg.querySelector('.wia-modal');
     const tokenInput = bg.querySelector('.wia-token');
@@ -7970,7 +8005,7 @@ async function scanInventory(force) {
   }
 
   function isMarketPage() {
-    return /\/market\/equipments/.test(getPagePathname());
+    return /\/market\/equipment/.test(getPagePathname());
   }
 
   // ===================== Tour of Beers (issue #50) =====================

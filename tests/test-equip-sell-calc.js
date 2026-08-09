@@ -63,13 +63,13 @@ function itemAdvisorCalc(value, taxPct) {
 
 // 3. Route match test
 const routes = [
-  { path: '/market/equipments', match: true },
-  { path: '/market/equipments/123', match: true },
+  { path: '/market/equipment', match: true },
+  { path: '/market/equipment/123', match: true },
   { path: '/market/items', match: false },
   { path: '/market', match: false }
 ];
 function isMarketPage(path) {
-  return new RegExp('^/market/equipments').test(path);
+  return new RegExp('^/market/equipment').test(path);
 }
 
 function runTests() {
