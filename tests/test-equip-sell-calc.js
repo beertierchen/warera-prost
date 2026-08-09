@@ -15,7 +15,7 @@ function calcEquipSellPrice(targetBuyerPays, taxPct) {
 
   const ticks = rawTicks.map(figure => {
     // how game rounds buyer pays:
-    const roundedBp = Math.round(figure * mult * 100) / 100;
+    const roundedBp = Math.round(figure * mult * 1000) / 1000;
     return {
       figure: Number(figure.toFixed(3)),
       buyerPays: roundedBp,
@@ -75,9 +75,9 @@ function isMarketPage(path) {
 function runTests() {
   console.log('Running Equipment Sell Calc tests...');
 
-  // Math tests (156.55 target, 1% tax)
+  // Math tests (156.55 target, 1% tax) — game rounds buyer-pays to 3 decimals
   const res1 = calcEquipSellPrice(156.55, 1);
-  assert.strictEqual(res1.figure, 155.002);
+  assert.strictEqual(res1.figure, 155);
   assert.strictEqual(res1.buyerPays, 156.55);
   assert.strictEqual(res1.delta, 0);
 
@@ -85,11 +85,17 @@ function runTests() {
   assert.ok(Array.isArray(res1.ticks));
   assert.strictEqual(res1.ticks.length, 4);
   const t0 = res1.ticks.find(t => t.figure === 154.999);
-  assert.strictEqual(t0.buyerPays, 156.55);
+  assert.strictEqual(t0.buyerPays, 156.549);
+
+  // Math tests (3.914 target, 1% tax) — from user screenshot
+  const res3 = calcEquipSellPrice(3.914, 1);
+  assert.strictEqual(res3.figure, 3.875);
+  assert.strictEqual(res3.buyerPays, 3.914);
+  assert.strictEqual(res3.delta, 0);
 
   // Math tests (110.00 target, 10% tax)
   const res2 = calcEquipSellPrice(110, 10);
-  assert.strictEqual(res2.figure, 100.001);
+  assert.strictEqual(res2.figure, 100);
 
   // Route matching tests
   for (const route of routes) {

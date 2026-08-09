@@ -16510,7 +16510,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     ];
 
     const ticks = rawTicks.map(figure => {
-      const roundedBp = Math.round(figure * mult * 100) / 100;
+      const roundedBp = Math.round(figure * mult * 1000) / 1000;
       return {
         figure: Number(figure.toFixed(3)),
         buyerPays: roundedBp,
@@ -16594,6 +16594,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       <div style="margin-bottom: 12px; background: rgba(124, 58, 237, 0.1); border: 1px solid rgba(124, 58, 237, 0.2); padding: 8px; border-radius: 4px; text-align: center;">
         <div style="font-size: 11px; color: #a78bfa; margin-bottom: 2px;">${t('equipSellCalcResultLabel')}:</div>
         <div class="wia-calc-result" style="font-size: 18px; font-weight: bold; color: #f0f6fc; cursor: pointer;" title="${t('equipSellCalcCopyHint')}">0.000</div>
+        <div style="font-size: 9px; color: #8b949e; margin-top: 2px;">${t('equipSellCalcCopyHint')}</div>
       </div>
       <div class="wia-calc-ticks"></div>
       <div style="font-size: 9px; color: #8b949e; text-align: right; margin-top: 8px;">
@@ -16630,7 +16631,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
         const sign = t.delta > 0 ? '+' : '';
         ticksHtml += `<div class="wia-calc-tick-row" data-val="${t.figure.toFixed(3)}" style="display: flex; justify-content: space-between; color: ${color}; cursor: pointer; padding: 2px 4px; border-radius: 4px;" title="${t('equipSellCalcCopyHint')}" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='transparent'">
           <span>Enter: ${t.figure.toFixed(3)}</span>
-          <span>-> ${t.buyerPays.toFixed(2)} (diff ${sign}${t.delta.toFixed(2)})</span>
+          <span>-> ${t.buyerPays.toFixed(3)} (diff ${sign}${t.delta.toFixed(3)})</span>
         </div>`;
       });
       ticksHtml += '</div>';
