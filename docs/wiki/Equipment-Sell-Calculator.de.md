@@ -8,6 +8,7 @@ Der **Equipment Preisrechner** (Equipment Sell Calculator) ist ein schwebendes, 
 
 - **Präzise Rundung**: Simuliert die exakte 3-Nachkommastellen-Rundung des Spiels, um den absolut genauesten Listenpreis zu berechnen.
 - **Dynamische Steuern**: Erlaubt es dir, den Marktsteuersatz on-the-fly anzupassen, um zu sehen, wie er sich auf den vom Käufer zu zahlenden Endbetrag auswirkt.
+- **Auto-Undercut**: Bietet eine eingebaute "Unterbieten (-0.001)" Checkbox (standardmäßig aktiv). Du kannst den aktuell günstigsten Preis im Markt direkt in das Zielfeld eingeben, und der Rechner zieht automatisch 0.001 ab, bevor er den exakten Listenpreis berechnet.
 - **Klicken zum Kopieren**: Zeigt ein großes Endergebnis und Zwischenschritte (Ticks) an. Ein Klick auf eine Zahl kopiert diese sofort in die Zwischenablage, sodass du sie direkt in das Verkaufsfenster des Spiels einfügen kannst.
 - **Interaktive Ticks**: Zeigt Variationen um deinen Zielpreis herum (in `-0.002` bis `+0.001` Schritten), damit du deinen Verkaufspreis für psychologische Preissetzung oder exakte Gewinnmargen feineinstellen kannst.
 

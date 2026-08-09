@@ -8,6 +8,7 @@ The **Equipment Sell Calculator** provides a floating, interactive tool directly
 
 - **Precision Rounding**: Emulates the game's exact 3-decimal rounding logic to calculate the absolute most accurate listing prices.
 - **Dynamic Tax Calculation**: Allows you to adjust the market tax percentage on the fly to see how it affects the final required buyer-pays amount.
+- **Auto-Undercut**: Features a built-in "Undercut (-0.001)" checkbox (on by default). You can paste the current cheapest market listing directly into the target field, and the calculator automatically subtracts 0.001 before calculating the exact price needed to undercut it.
 - **Click to Copy**: Displays a large result and intermediate calculation ticks. Clicking on any number instantly copies it to your clipboard so you can paste it directly into the game's sell window.
 - **Interactive Ticks**: Shows variations around your target price (`-0.002` to `+0.001` increments) allowing you to fine-tune your listing price for psychological pricing or exact profit margins.
 
