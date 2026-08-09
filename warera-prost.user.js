@@ -296,6 +296,7 @@
     // --- Equipment Sell Calculator ---
     featEquipSellCalc: false,
     featEquipSellCalcIntroducedIn: '0.12.0',
+    equipSellCalcUndercut: true,
 
     featPillReminder: false,
     featPillNotifHnH: false,
@@ -1216,6 +1217,7 @@
     bountySeen: NS + 'bountySeen',
     ownCountryCache: NS + 'ownCountryCache',
     featEquipSellCalc: NS + 'featEquipSellCalc',
+    equipSellCalcUndercut: NS + 'equipSellCalcUndercut',
     equipSellCalcLastPrice: NS + 'equipSellCalcLastPrice',
     seenFeatures: NS + 'seenFeatures',
     baselineVersion: NS + 'baselineVer',
@@ -19834,6 +19836,7 @@ function checkInventoryDeltaWear() {
     CONFIG.featItemAdvisor = GM_getValue(KEYS.featItemAdvisor, true);
     CONFIG.featCraftingAdvisor = GM_getValue(KEYS.featCraftingAdvisor, true);
     CONFIG.featEquipSellCalc = GM_getValue(KEYS.featEquipSellCalc, false);
+    CONFIG.equipSellCalcUndercut = GM_getValue(KEYS.equipSellCalcUndercut, true);
     CONFIG.featCompanyEco = GM_getValue(KEYS.featCompanyEco, true);
     CONFIG.featAlertCompanyStorage = GM_getValue(KEYS.featAlertCompanyStorage, true);
     CONFIG.featAlertCompanyBonus = GM_getValue(KEYS.featAlertCompanyBonus, true);
