@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.11.11
+// @version      0.12.0
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -200,8 +200,8 @@
     // market-value icon (inline SVG, coin stack). Scrap uses the 🔨 emoji.
     marketIconSvg: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" style="filter:drop-shadow(1px 1px 0 #000)"><path d="M12 5C7.031 5 2 6.546 2 9.5S7.031 14 12 14c4.97 0 10-1.546 10-4.5S16.97 5 12 5zm-5 9.938v3c1.237.299 2.605.482 4 .541v-3a21.166 21.166 0 0 1-4-.541zm6 .54v3a20.994 20.994 0 0 0 4-.541v-3a20.994 20.994 0 0 1-4 .541zm6-1.181v3c1.801-.755 3-1.857 3-3.297v-3c0 1.44-1.199 2.542-3 3.297zm-14 3v-3C3.2 13.542 2 12.439 2 11v3c0 1.439 1.2 2.542 3 3.297z"/></svg>',
 
-    // Market tax rate when selling items
-    sellTaxRate: 0.01,
+    // Market tax rate when selling items (now dynamic via getCountryTax)
+    // removed static sellTaxRate: 0.01
 
     // "Good roll" = item stat in the top fraction of the user's own inventory items.
     // Ranks an item's stat against the user's OWN INVENTORY items only.
@@ -293,6 +293,10 @@
 
     DAILY_RESET_HOUR: 2, // local wall-clock; UNVERIFIED: confirm vs game server TZ
 
+    // --- Equipment Sell Calculator ---
+    featEquipSellCalc: false,
+    featEquipSellCalcIntroducedIn: '0.12.0',
+
     featPillReminder: false,
     featPillNotifHnH: false,
     featPillNotifWindow: false,
@@ -332,6 +336,14 @@
 
     i18n: {
       en: {
+        equipSellCalcTitle: 'Equipment Price Calculator',
+        equipSellCalcTargetLabel: 'Target Price (Buyer Pays)',
+        equipSellCalcTaxLabel: 'Market Tax (%)',
+        equipSellCalcResultLabel: 'Enter Price (List for)',
+        equipSellCalcCopyHint: 'Click to copy',
+        settingsFeatEquipSellCalcHint: 'Calculate the exact listing price so buyers see your target price after tax. Uses your country\'s market tax rate automatically.',
+        settingsNewBadge: 'New!',
+
         never: 'never',
         justNow: 'just now',
         minAgo: '{min} min ago',
@@ -727,6 +739,14 @@
         customBaselineToastInvalid: 'Format invalid — reset to default'
       },
       de: {
+        equipSellCalcTitle: 'Equipment Preisrechner',
+        equipSellCalcTargetLabel: 'Zielpreis (Käufer zahlt)',
+        equipSellCalcTaxLabel: 'Marktsteuer (%)',
+        equipSellCalcResultLabel: 'Listenpreis (Eingeben)',
+        equipSellCalcCopyHint: 'Klicken zum Kopieren',
+        settingsFeatEquipSellCalcHint: 'Berechnet den exakten Listenpreis, damit Käufer nach Steuer deinen Zielpreis sehen. Nutzt automatisch die Marktsteuer deines Landes.',
+        settingsNewBadge: 'Neu!',
+
         never: 'nie',
         justNow: 'gerade eben',
         minAgo: 'vor {min} Min.',
@@ -1194,6 +1214,11 @@
     bountyLastPollAt: NS + 'bountyLastPollAt',
     bountyPollLock: NS + 'bountyPollLock',
     bountySeen: NS + 'bountySeen',
+    ownCountryCache: NS + 'ownCountryCache',
+    featEquipSellCalc: NS + 'featEquipSellCalc',
+    equipSellCalcLastPrice: NS + 'equipSellCalcLastPrice',
+    seenFeatures: NS + 'seenFeatures',
+    baselineVersion: NS + 'baselineVer',
     bountyLocalSeen: NS + 'bountyLocalSeen',
     bountyMirrorSeen: NS + 'bountyMirrorSeen',
     bountyClientId: NS + 'bountyClientId',
@@ -1245,6 +1270,8 @@
     tourDismissed: NS + 'tourDismissed',   // user chose "don't show again" for the onboarding prompt
     tourCompleted: NS + 'tourCompleted',   // token successfully configured via the tour
   };
+
+  let _resolvedMarketTaxPct = null;
 
   const gatewayBases = CONFIG.apiBases.filter((b) => {
     try { return new URL(b).hostname === 'gateway.warerastats.io'; } catch (e) { return false; }
@@ -1432,7 +1459,7 @@
   function checkForUpdates(manual = false) {
     const nowMs = Date.now();
     const lastCheck = GM_getValue(KEYS.lastVersionCheckAt, 0);
-    if (!manual && nowMs - lastCheck < 24 * 60 * 60 * 1000) {
+    if (!manual && nowMs - lastCheck < 30 * 60 * 1000) {
       return Promise.resolve();
     }
     return gmRequest({
@@ -2830,6 +2857,48 @@
     throw lastErr || new Error('all API bases failed');
   }
 
+  // --- Shared API / Context Utils ---
+
+  async function resolveOwnCountry() {
+    const ov = (CONFIG.bountyOwnCountryOverride || '').trim();
+    if (ov) {
+      const match = ov.match(/[a-f0-9]{24}/i);
+      if (match) return match[0];
+    }
+    const ckey = KEYS.ownCountryCache;
+    const cached = GM_getValue(ckey, null);
+    const TTL_24H_MS = 24 * 60 * 60 * 1000;
+    if (cached && (now() - cached.at) < TTL_24H_MS) { 
+      return cached.country;
+    }
+    const uid = getCurrentUserId();
+    if (!uid) return null;
+    try {
+      const u = await resolveApiPost('user.getUserById', { userId: uid });
+      const country = u.payload?.country || null;
+      if (country) {
+        GM_setValue(ckey, { at: now(), country });
+      }
+      return country;
+    } catch (e) {
+      dbg('api', 'error', 'own country resolve failed', e.message);
+      return null;
+    }
+  }
+
+  async function initMarketTax() {
+    try {
+      const cid = await resolveOwnCountry();
+      if (cid) {
+        const taxes = await getCountryTax(cid);
+        _resolvedMarketTaxPct = taxes?.market ?? 1;
+        dbg('api', 'debug', 'Resolved market tax pct: ' + _resolvedMarketTaxPct);
+      }
+    } catch (e) {
+      dbg('api', 'warn', 'initMarketTax failed', e.message);
+    }
+  }
+
   // Returns a map { itemCode -> price } (best-effort; shape depends on the API).
   async function fetchPrices(force) {
     const cache = readCache(KEYS.priceCache);
@@ -4074,8 +4143,8 @@
       reasons.push(t('noPriceData') + ' (Fallback)');
       return decide(ACTION.SCRAP, reasons, value, scrapValue);
     }
-    const taxRate = CONFIG.sellTaxRate ?? 0.01;
-    const netMarketValue = value != null ? value * (1 - taxRate) : null;
+    const taxPct = _resolvedMarketTaxPct ?? 1;
+    const netMarketValue = value != null ? value / (1 + taxPct / 100) : null;
 
     if (scrapValue == null) { // no scrap basis -> sell on whatever market we have
       reasons.push(t('mktNoScrap', { val: fmt(value), net: fmt(netMarketValue) }));
@@ -4951,6 +5020,31 @@ async function scanInventory(force) {
   // ───────────────────────────────────────────────────────────────────────────
   function injectStyles() {
     GM_addStyle(`
+
+    /* ====== EQUIP SELL CALC ====== */
+    .wia-equip-sell-fab {
+      position:fixed; top:58px; left:16px; width:38px; height:38px; border-radius:50%;
+      background:#21262d; border:1px solid #30363d; z-index:9998; cursor:pointer;
+      display:flex; align-items:center; justify-content:center; box-shadow:0 2px 8px #00000066;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .wia-equip-sell-fab:hover { border-color: #7c3aed; background: #30363d; transform: scale(1.05); }
+    .wia-equip-sell-fab.wia-calc-no-sp { top:12px; }
+    
+    .wia-equip-sell-panel {
+      position:fixed; top:58px; left:50%; transform:translateX(-50%); width:296px; background:#161b22;
+      border:1px solid #30363d; border-radius:10px; padding:14px; z-index:9997;
+      box-shadow:0 8px 32px #000000aa;
+      animation: wia-fade-scale 0.15s ease-out forwards;
+      transform-origin: top center;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    
+    @keyframes wia-fade-scale {
+      0% { opacity: 0; transform: scale(0.95) translateY(-5px); }
+      100% { opacity: 1; transform: scale(1) translateY(0); }
+    }
+
     /* ====== SCRATCHPAD ====== */
 
     .sp-trigger {
@@ -6389,6 +6483,41 @@ async function scanInventory(force) {
     }
   }
 
+  function isFeatNew(featId) {
+    const introVer = CONFIG[featId + 'IntroducedIn'];
+    if (!introVer) return false;
+    let baseline = GM_getValue(KEYS.baselineVersion, null);
+    if (!baseline) {
+      baseline = SCRIPT_VERSION;
+      GM_setValue(KEYS.baselineVersion, baseline);
+    }
+    if (isNewer(introVer, baseline)) {
+      const seen = GM_getValue(KEYS.seenFeatures, []);
+      if (!seen.includes(featId)) return true;
+    }
+    return false;
+  }
+
+  function markFeatSeen(featId, element) {
+    if (!isFeatNew(featId)) return;
+    const seen = GM_getValue(KEYS.seenFeatures, []);
+    if (!seen.includes(featId)) {
+      seen.push(featId);
+      GM_setValue(KEYS.seenFeatures, seen);
+    }
+    if (element) {
+      const badge = element.closest('.wia-feat-row')?.querySelector('.wia-new-badge');
+      if (badge) badge.remove();
+    }
+  }
+
+  function renderFeatLabel(featId, labelText) {
+    if (isFeatNew(featId)) {
+      return `${labelText} <span class="wia-new-badge" style="background: #eab308; color: #422006; font-size: 9px; font-weight: bold; padding: 1px 4px; border-radius: 4px; margin-left: 6px;">${t('settingsNewBadge') || 'NEW'}</span>`;
+    }
+    return labelText;
+  }
+
   function renderSettingsModal(bg) {
     if (!bg) return;
     const currentLocale = getLocale();
@@ -6403,6 +6532,7 @@ async function scanInventory(force) {
     const prevFeatMarketGraph = bg.querySelector('.wia-feat-market-graph')?.checked ?? CONFIG.featMarketGraph;
     const prevFeatPnlTracker = bg.querySelector('.wia-feat-pnl-tracker')?.checked ?? CONFIG.featPnlTracker;
     const prevFeatItemAdvisor = bg.querySelector('.wia-feat-item-advisor')?.checked ?? CONFIG.featItemAdvisor;
+    const prevFeatEquipSellCalc = bg.querySelector('.wia-feat-equip-sell-calc')?.checked ?? CONFIG.featEquipSellCalc;
     const prevFeatCraftingAdvisor = bg.querySelector('.wia-feat-crafting-advisor')?.checked ?? CONFIG.featCraftingAdvisor;
     const prevFeatCompanyEco = bg.querySelector('.wia-feat-company-eco')?.checked ?? CONFIG.featCompanyEco;
     const prevFeatAlertCompanyStorage = bg.querySelector('.wia-feat-alert-company-storage')?.checked ?? CONFIG.featAlertCompanyStorage;
@@ -6467,7 +6597,7 @@ async function scanInventory(force) {
           <summary style="font-size: 12px; color: #c9d1d9; cursor: pointer; user-select: none; font-weight: bold; outline: none; margin-bottom: 6px;">
             ${t('settingsCategoryWar')}
           </summary>
-          <div class="wia-feat-row" style="margin-top: 6px;">
+          <div class="wia-feat-row" data-feat-id="featBattle" style="margin-top: 6px;">
             <div style="display: flex; align-items: center; gap: 8px;">
               <input type="checkbox" class="wia-feat-battle" style="width: auto;" ${prevFeatBattle ? 'checked' : ''} />
               <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatBattleCheckbox')}</label>
@@ -6492,7 +6622,7 @@ async function scanInventory(force) {
               <div class="wia-hint" hidden>${t('settingsFeatTroopRadarHint')}</div>
             </details>
           </div>
-          <div class="wia-feat-row" style="margin-top: 6px;">
+          <div class="wia-feat-row" data-feat-id="featProfileCharsheet" style="margin-top: 6px;">
             <div style="display: flex; align-items: center; gap: 8px;">
               <input type="checkbox" class="wia-feat-profile-charsheet" style="width: auto;" ${prevFeatProfileCharsheet ? 'checked' : ''} />
               <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatProfileCharsheetCheckbox')}</label>
@@ -6594,7 +6724,7 @@ async function scanInventory(force) {
           <summary style="font-size: 12px; color: #c9d1d9; cursor: pointer; user-select: none; font-weight: bold; outline: none; margin-bottom: 6px;">
             ${t('settingsCategoryEco')}
           </summary>
-          <div class="wia-feat-row" style="margin-top: 6px;">
+          <div class="wia-feat-row" data-feat-id="featItemAdvisor" style="margin-top: 6px;">
             <div style="display: flex; align-items: center; gap: 8px;">
               <input type="checkbox" class="wia-feat-item-advisor" style="width: auto;" ${prevFeatItemAdvisor ? 'checked' : ''} />
               <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatItemAdvisorCheckbox')}</label>
@@ -6612,7 +6742,7 @@ async function scanInventory(force) {
               </div>
             </details>
           </div>
-          <div class="wia-feat-row" style="margin-top: 6px;">
+          <div class="wia-feat-row" data-feat-id="featCraftingAdvisor" style="margin-top: 6px;">
             <div style="display: flex; align-items: center; gap: 8px;">
               <input type="checkbox" class="wia-feat-crafting-advisor" style="width: auto;" ${prevFeatCraftingAdvisor ? 'checked' : ''} />
               <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatCraftingAdvisorCheckbox')}</label>
@@ -6620,7 +6750,15 @@ async function scanInventory(force) {
             </div>
             <div class="wia-hint" hidden>${t('settingsFeatCraftingAdvisorHint')}</div>
           </div>
-          <div class="wia-feat-row" style="margin-top: 6px;">
+          <div class="wia-feat-row" style="margin-top: 6px;" data-feat-id="featEquipSellCalc">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <input type="checkbox" class="wia-feat-equip-sell-calc" style="width: auto;" ${prevFeatEquipSellCalc ? 'checked' : ''} />
+              <label style="margin: 0; font-weight: normal; cursor: pointer;">${renderFeatLabel('featEquipSellCalc', t('equipSellCalcTitle') || 'Equipment Price Calculator')}</label>
+              <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
+            </div>
+            <div class="wia-hint" hidden>${t('settingsFeatEquipSellCalcHint')}</div>
+          </div>
+          <div class="wia-feat-row" data-feat-id="featMarketGraph" style="margin-top: 6px;">
             <div style="display: flex; align-items: center; gap: 8px;">
               <input type="checkbox" class="wia-feat-market-graph" style="width: auto;" ${prevFeatMarketGraph ? 'checked' : ''} />
               <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatMarketGraphCheckbox')}</label>
@@ -6628,7 +6766,7 @@ async function scanInventory(force) {
             </div>
             <div class="wia-hint" hidden>${t('settingsFeatMarketGraphHint')}</div>
           </div>
-          <div class="wia-feat-row" style="margin-top: 6px;">
+          <div class="wia-feat-row" data-feat-id="featPnlTracker" style="margin-top: 6px;">
             <div style="display: flex; align-items: center; gap: 8px;">
               <input type="checkbox" class="wia-feat-pnl-tracker" style="width: auto;" ${prevFeatPnlTracker ? 'checked' : ''} />
               <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatPnlTrackerCheckbox')}</label>
@@ -6636,7 +6774,7 @@ async function scanInventory(force) {
             </div>
             <div class="wia-hint" hidden>${t('settingsFeatPnlTrackerHint')}</div>
           </div>
-          <div class="wia-feat-row" style="margin-top: 6px;">
+          <div class="wia-feat-row" data-feat-id="featCompanyEco" style="margin-top: 6px;">
             <div style="display: flex; align-items: center; gap: 8px;">
               <input type="checkbox" class="wia-feat-company-eco" style="width: auto;" ${prevFeatCompanyEco ? 'checked' : ''} />
               <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatCompanyEco')}</label>
@@ -6677,7 +6815,7 @@ async function scanInventory(force) {
           <summary style="font-size: 12px; color: #c9d1d9; cursor: pointer; user-select: none; font-weight: bold; outline: none; margin-bottom: 6px;">
             ${t('settingsCategoryMisc')}
           </summary>
-          <div class="wia-feat-row" style="margin-top: 6px;">
+          <div class="wia-feat-row" data-feat-id="featScratchpad" style="margin-top: 6px;">
             <div style="display: flex; align-items: center; gap: 8px;">
               <input type="checkbox" class="wia-feat-scratchpad" style="width: auto;" ${prevFeatScratchpad ? 'checked' : ''} />
               <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatScratchpadCheckbox')}</label>
@@ -6685,7 +6823,7 @@ async function scanInventory(force) {
             </div>
             <div class="wia-hint" hidden>${t('settingsFeatScratchpadHint')}</div>
           </div>
-          <div class="wia-feat-row" style="margin-top: 6px;">
+          <div class="wia-feat-row" data-feat-id="featNotes" style="margin-top: 6px;">
             <div style="display: flex; align-items: center; gap: 8px;">
               <input type="checkbox" class="wia-feat-notes" style="width: auto;" ${prevFeatNotes ? 'checked' : ''} />
               <label style="margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatNotesCheckbox')}</label>
@@ -6717,7 +6855,7 @@ async function scanInventory(force) {
               <label style="font-size: 11px; color: #8b949e; margin: 0; font-weight: normal; cursor: pointer;">${t('settingsFeatSystemAlerts')}</label>
             </div>
           </details>
-          <div class="wia-feat-row" style="margin-top: 10px; border-top: 1px solid rgba(148,163,184,.2); padding-top: 10px;">
+          <div class="wia-feat-row" data-feat-id="debug" style="margin-top: 10px; border-top: 1px solid rgba(148,163,184,.2); padding-top: 10px;">
             <div style="display: flex; align-items: center; gap: 8px;">
               <input type="checkbox" class="wia-debug" style="width: auto;" ${CONFIG.debug ? 'checked' : ''} />
               <label style="margin: 0; font-weight: normal; cursor: pointer;">🐞 Debug-Logging (Konsole + Diagnose)</label>
@@ -6758,6 +6896,14 @@ async function scanInventory(force) {
           <button class="wia-btn wia-close">${t('settingsClose')}</button>
         </div>
       </div>`;
+
+        const categories = bg.querySelectorAll('details');
+    categories.forEach(cat => {
+      const summary = cat.querySelector('summary');
+      if (summary && cat.querySelector('.wia-new-badge')) {
+        summary.innerHTML += ` <span class="wia-new-badge" style="background: #eab308; color: #422006; font-size: 9px; font-weight: bold; padding: 1px 4px; border-radius: 4px; margin-left: 6px;">${t('settingsNewBadge') || 'New!'}</span>`;
+      }
+    });
 
     const modal = bg.querySelector('.wia-modal');
     const tokenInput = bg.querySelector('.wia-token');
@@ -6801,6 +6947,12 @@ async function scanInventory(force) {
         localeMenu.classList.remove('is-open');
       }
     };
+
+    bg.querySelectorAll('.wia-feat-row[data-feat-id]').forEach(row => {
+      const featId = row.dataset.featId;
+      row.addEventListener('mouseover', () => markFeatSeen(featId, row), { once: true });
+      row.addEventListener('change', () => markFeatSeen(featId, row), { once: true });
+    });
 
     // alliedCodesRow removed as allied country codes are resolved automatically.
 
@@ -7186,6 +7338,11 @@ async function scanInventory(force) {
       GM_setValue(KEYS.featCraftingAdvisor, featCraftingAdvisor);
       CONFIG.featCraftingAdvisor = featCraftingAdvisor;
       if (!featCraftingAdvisor) { teardownCraftingAdvisor(); } else { guard('craftAdvisor', triggerCraftingAdvisorCheck); }
+
+      const featEquipSellCalc = bg.querySelector('.wia-feat-equip-sell-calc').checked;
+      GM_setValue(KEYS.featEquipSellCalc, featEquipSellCalc);
+      CONFIG.featEquipSellCalc = featEquipSellCalc;
+      if (featEquipSellCalc) { initEquipSellCalc(); } else { teardownEquipSellCalc(); }
 
       const featCompanyEco = bg.querySelector('.wia-feat-company-eco').checked;
       GM_setValue(KEYS.featCompanyEco, featCompanyEco);
@@ -7849,7 +8006,7 @@ async function scanInventory(force) {
   }
 
   function isMarketPage() {
-    return /\/market\/equipments/.test(getPagePathname());
+    return /\/market\/equipment/.test(getPagePathname());
   }
 
   // ===================== Tour of Beers (issue #50) =====================
@@ -10685,6 +10842,10 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
           lastMktState = null;
         }
       }
+      if (CONFIG.featEquipSellCalc) {
+        if (isMarketPage()) renderEquipSellCalc();
+        else teardownEquipSellCalcUI();
+      }
       if (CONFIG.featBattleAdvisor && isBattlePage()) {
         const defBtn = document.querySelector('#defender-hit-button');
         const atkBtn = document.querySelector('#attacker-hit-button');
@@ -12092,7 +12253,8 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
           1666352841,
           1150565605,
           2823877408,
-          2865049335
+          2865049335,
+          2358290053
         ];
         if (SUPPORTERS.includes(h)) {
           supporterAdjectiveIndex = parseInt(uid.slice(-4), 16) % 10;
@@ -16307,6 +16469,217 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
   }
 
   // ───────────────────────────────────────────────────────────────────────────
+
+  // ===================== Equipment Sell Price Calculator =====================
+  let equipSellCalcInterval = null;
+  let equipSellCalcFab = null;
+  let equipSellCalcPanel = null;
+
+  function initEquipSellCalc() {
+    if (!CONFIG.featEquipSellCalc) {
+      teardownEquipSellCalcUI();
+      return;
+    }
+    if (isMarketPage()) renderEquipSellCalc();
+  }
+
+
+
+  function teardownEquipSellCalcUI() {
+    if (equipSellCalcFab) {
+      equipSellCalcFab.remove();
+      equipSellCalcFab = null;
+    }
+    if (equipSellCalcPanel) {
+      if (equipSellCalcPanel._wiaKeydown) document.removeEventListener('keydown', equipSellCalcPanel._wiaKeydown);
+      if (equipSellCalcPanel._wiaClick) document.removeEventListener('click', equipSellCalcPanel._wiaClick);
+      equipSellCalcPanel.remove();
+      equipSellCalcPanel = null;
+    }
+  }
+
+  function calcEquipSellPrice(targetBuyerPays, taxPct) {
+    const mult = 1 + taxPct / 100;
+    const exactEntered = targetBuyerPays / mult;
+    const baseTick = Math.floor(exactEntered * 1000) / 1000;
+    const rawTicks = [
+      Math.max(0, baseTick - 0.001),
+      baseTick,
+      baseTick + 0.001,
+      baseTick + 0.002
+    ];
+
+    const ticks = rawTicks.map(figure => {
+      const roundedBp = Math.round(figure * mult * 100) / 100;
+      return {
+        figure: Number(figure.toFixed(3)),
+        buyerPays: roundedBp,
+        delta: Number((roundedBp - targetBuyerPays).toFixed(4)),
+        tax: Number((roundedBp - figure).toFixed(4))
+      };
+    });
+
+    const deduped = [];
+    const seen = new Set();
+    for (const t of ticks) {
+      if (!seen.has(t.figure)) {
+        seen.add(t.figure);
+        deduped.push(t);
+      }
+    }
+
+    let closest = deduped[0];
+    let minAbs = Math.abs(closest.delta);
+    for (const t of deduped) {
+      const a = Math.abs(t.delta);
+      if (a < minAbs) {
+        minAbs = a;
+        closest = t;
+      } else if (a === minAbs && t.delta <= 0) {
+        closest = t;
+      }
+    }
+
+    return {
+      figure: closest.figure,
+      buyerPays: closest.buyerPays,
+      delta: closest.delta,
+      tax: closest.tax,
+      ticks: deduped
+    };
+  }
+
+  function renderEquipSellCalc() {
+    if (equipSellCalcFab && document.body.contains(equipSellCalcFab)) return;
+    
+    equipSellCalcFab = document.createElement('div');
+    equipSellCalcFab.className = 'wia-equip-sell-fab' + (CONFIG.featScratchpad ? '' : ' wia-calc-no-sp');
+    equipSellCalcFab.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#e6edf3" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><circle cx="9" cy="11" r="0.5" fill="#e6edf3"/><circle cx="15" cy="11" r="0.5" fill="#e6edf3"/><circle cx="9" cy="15" r="0.5" fill="#e6edf3"/><circle cx="15" cy="15" r="0.5" fill="#e6edf3"/><line x1="9" y1="19" x2="15" y2="19"/></svg>`;
+    
+    equipSellCalcFab.onclick = (e) => {
+      e.stopPropagation();
+      if (equipSellCalcPanel) {
+        teardownEquipSellCalcUI();
+      } else {
+        showEquipSellCalcPanel();
+      }
+    };
+    
+    document.body.appendChild(equipSellCalcFab);
+  }
+
+  function showEquipSellCalcPanel() {
+    const taxPct = typeof _resolvedMarketTaxPct === 'number' ? _resolvedMarketTaxPct : 1;
+    const lastPrice = GM_getValue(KEYS.equipSellCalcLastPrice, 100);
+
+    equipSellCalcPanel = document.createElement('div');
+    equipSellCalcPanel.className = 'wia-equip-sell-panel' + (CONFIG.featScratchpad ? '' : ' wia-calc-no-sp');
+
+    const calcHtml = `
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid rgba(148,163,184,0.15); padding-bottom: 8px;">
+        <div style="font-weight: bold; font-size: 14px; color: #f0f6fc;">
+          ${t('equipSellCalcTitle')}
+          <span style="border: 1px solid #7c3aed; color: #a78bfa; padding: 2px 4px; font-size: 8px; font-weight: 700; border-radius: 4px; letter-spacing: 0.5px; vertical-align: middle; margin-left: 4px;">PROST</span>
+        </div>
+        <button class="wia-calc-close" style="background: transparent; border: none; color: #8b949e; cursor: pointer; font-size: 16px;">&times;</button>
+      </div>
+      <div style="margin-bottom: 12px;">
+        <label style="font-size: 11px; color: #8b949e; display: block; margin-bottom: 4px;">${t('equipSellCalcTargetLabel')}:</label>
+        <input type="number" class="wia-calc-target" min="0" step="0.01" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 6px 8px; font-size: 14px;" value="${lastPrice}" />
+      </div>
+      <div style="margin-bottom: 12px;">
+        <label style="font-size: 11px; color: #8b949e; display: block; margin-bottom: 4px;">${t('equipSellCalcTaxLabel')}:</label>
+        <input type="number" class="wia-calc-tax" min="0" step="0.1" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;" value="${taxPct}" />
+      </div>
+      <div style="margin-bottom: 12px; background: rgba(124, 58, 237, 0.1); border: 1px solid rgba(124, 58, 237, 0.2); padding: 8px; border-radius: 4px; text-align: center;">
+        <div style="font-size: 11px; color: #a78bfa; margin-bottom: 2px;">${t('equipSellCalcResultLabel')}:</div>
+        <div class="wia-calc-result" style="font-size: 18px; font-weight: bold; color: #f0f6fc; cursor: pointer;" title="${t('equipSellCalcCopyHint')}">0.000</div>
+      </div>
+      <div class="wia-calc-ticks"></div>
+      <div style="font-size: 9px; color: #8b949e; text-align: right; margin-top: 8px;">
+        Inspired by Lebly
+      </div>
+    `;
+
+    equipSellCalcPanel.innerHTML = calcHtml;
+    document.body.appendChild(equipSellCalcPanel);
+
+    const targetInput = equipSellCalcPanel.querySelector('.wia-calc-target');
+    const taxInput = equipSellCalcPanel.querySelector('.wia-calc-tax');
+    const resultDiv = equipSellCalcPanel.querySelector('.wia-calc-result');
+    const closeBtn = equipSellCalcPanel.querySelector('.wia-calc-close');
+    const ticksContainer = equipSellCalcPanel.querySelector('.wia-calc-ticks');
+
+    closeBtn.onclick = () => {
+      if (equipSellCalcPanel) equipSellCalcPanel.remove();
+      equipSellCalcPanel = null;
+    };
+
+    const updateCalc = () => {
+      const target = parseFloat(targetInput.value) || 0;
+      const tax = parseFloat(taxInput.value) || 0;
+      GM_setValue(KEYS.equipSellCalcLastPrice, target);
+      
+      const res = calcEquipSellPrice(target, tax);
+      resultDiv.textContent = res.figure.toFixed(3);
+      
+      let ticksHtml = '<div style="font-size: 10px; color: #8b949e; margin-top: 8px; text-align: left;">';
+      res.ticks.forEach(t => {
+        const isClosest = t.figure === res.figure;
+        const color = isClosest ? '#7c3aed' : '#8b949e';
+        const sign = t.delta > 0 ? '+' : '';
+        ticksHtml += `<div class="wia-calc-tick-row" data-val="${t.figure.toFixed(3)}" style="display: flex; justify-content: space-between; color: ${color}; cursor: pointer; padding: 2px 4px; border-radius: 4px;" title="${t('equipSellCalcCopyHint')}" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='transparent'">
+          <span>Enter: ${t.figure.toFixed(3)}</span>
+          <span>-> ${t.buyerPays.toFixed(2)} (diff ${sign}${t.delta.toFixed(2)})</span>
+        </div>`;
+      });
+      ticksHtml += '</div>';
+      ticksContainer.innerHTML = ticksHtml;
+      Array.from(ticksContainer.querySelectorAll('.wia-calc-tick-row')).forEach(row => {
+        row.onclick = () => {
+          navigator.clipboard.writeText(row.getAttribute('data-val')).then(() => {
+            const orig = row.children[0].textContent;
+            row.children[0].textContent = 'Copied!';
+            row.style.color = '#3fb950';
+            setTimeout(() => {
+              row.children[0].textContent = orig;
+              row.style.color = '';
+            }, 1000);
+          });
+        };
+      });
+    };
+
+    targetInput.addEventListener('input', updateCalc);
+    taxInput.addEventListener('input', updateCalc);
+    
+    resultDiv.onclick = () => {
+      const text = resultDiv.textContent;
+      navigator.clipboard.writeText(text).then(() => {
+        const orig = resultDiv.textContent;
+        resultDiv.textContent = 'Copied!';
+        resultDiv.style.color = '#3fb950';
+        setTimeout(() => {
+          resultDiv.textContent = orig;
+          resultDiv.style.color = '#f0f6fc';
+        }, 1000);
+      });
+    };
+
+    updateCalc();
+    
+    const onKeydown = (e) => { if (e.key === 'Escape') { teardownEquipSellCalcUI(); } };
+    const onClick = (e) => {
+      if (equipSellCalcPanel && !equipSellCalcPanel.contains(e.target) && e.target !== equipSellCalcFab && !equipSellCalcFab.contains(e.target)) {
+        teardownEquipSellCalcUI();
+      }
+    };
+    document.addEventListener('keydown', onKeydown);
+    document.addEventListener('click', onClick);
+    equipSellCalcPanel._wiaKeydown = onKeydown;
+    equipSellCalcPanel._wiaClick = onClick;
+  }
+
   // Daily P&L Tracker module
   // ───────────────────────────────────────────────────────────────────────────
   let pnlInterval = null;
@@ -18297,31 +18670,6 @@ function checkInventoryDeltaWear() {
     return ids;
   }
 
-  async function resolveOwnCountry() {
-    const ov = (CONFIG.bountyOwnCountryOverride || '').trim();
-    if (ov) {
-      const match = ov.match(/[a-f0-9]{24}/i);
-      if (match) return match[0];
-    }
-    const ckey = KEYS.bountyAllyCache + '_own';
-    const cached = GM_getValue(ckey, null);
-    if (cached && (now() - cached.at) < BOUNTY_ALLY_TTL_MS) {
-      return cached.country;
-    }
-    const uid = getCurrentUserId();
-    if (!uid) return null;
-    try {
-      const u = await resolveApiPost('user.getUserById', { userId: uid });
-      const country = u.payload?.country || null;
-      if (country) {
-        GM_setValue(ckey, { at: now(), country });
-      }
-      return country;
-    } catch (e) {
-      dbg('bountyNotify', 'error', 'own country resolve failed', e.message);
-      return null;
-    }
-  }
 
   globalThis.bountyAllies = () => resolveAllyCountryIds(CONFIG.bountyScope === 'cascade').then((s) => [...s]);
   // Clears the cached ally set + country map so the next resolve re-fetches (TTL 24h).
@@ -19443,6 +19791,7 @@ function checkInventoryDeltaWear() {
     regFeature('wageMedian', 'Wage Median Sparkline');
     regFeature('troopRadar', 'Troop Radar');
     regFeature('profileCharsheet', 'Profile Charsheet');
+    regFeature('equipSellCalc', 'Equip. Sell Calc.');
     // one-shot onboarding prompt, once the game shell (avatar) is present
     (function scheduleTourPrompt() {
       let tries = 0;
@@ -19483,6 +19832,7 @@ function checkInventoryDeltaWear() {
     CONFIG.featPnlTracker = GM_getValue(KEYS.featPnlTracker, false);
     CONFIG.featItemAdvisor = GM_getValue(KEYS.featItemAdvisor, true);
     CONFIG.featCraftingAdvisor = GM_getValue(KEYS.featCraftingAdvisor, true);
+    CONFIG.featEquipSellCalc = GM_getValue(KEYS.featEquipSellCalc, false);
     CONFIG.featCompanyEco = GM_getValue(KEYS.featCompanyEco, true);
     CONFIG.featAlertCompanyStorage = GM_getValue(KEYS.featAlertCompanyStorage, true);
     CONFIG.featAlertCompanyBonus = GM_getValue(KEYS.featAlertCompanyBonus, true);
@@ -19529,12 +19879,14 @@ function checkInventoryDeltaWear() {
     if (CONFIG.featMuHealDim) applyMuHealDimSoon(); else setHealth('muHealDim', 'idle', 'disabled in settings');
     if (CONFIG.featMarketGraph) guard('marketGraph', initMarketGraph); else setHealth('marketGraph', 'idle', 'disabled in settings');
     if (CONFIG.featPnlTracker) guard('pnl', initPnlTracker); else setHealth('pnl', 'idle', 'disabled in settings');
+    if (CONFIG.featEquipSellCalc) guard('equipSellCalc', initEquipSellCalc); else setHealth('equipSellCalc', 'idle', 'disabled in settings');
     if (CONFIG.featBountyNotify) guard('bountyNotify', initBountyNotify); else setHealth('bountyNotify', 'idle', 'disabled in settings');
     if (CONFIG.featAlertCompanyStorage || CONFIG.featAlertCompanyBonus || CONFIG.featAlertCompanyTax || CONFIG.featAlertCompanyDeposit || CONFIG.featBetterRegion) guard('companyTracking', initCompanyTracking); else setHealth('companyTracking', 'idle', 'disabled in settings');
     if (CONFIG.featSystemAlerts) initSystemAlerts();
     injectGear();
     refreshMenuCommands();
     checkForUpdates(false);
+    initMarketTax();
     if (CONFIG.debug) { setTimeout(() => { runProbes(); updateDebugHud(); }, 1500); }
 
     observer = new MutationObserver(() => triggerScan(false));
