@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## 2026-08-09 | Fix: Equipment Sell Calc Precision (v0.12.1)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `tests/test-equip-sell-calc.js`
+
+**Änderungen (Deutsch):**
+- **Bug Fix**: Korrektur der Rundenlogik auf exakt 3 Nachkommastellen beim 'Buyer-Pays' Betrag, passend zur Spielmechanik.
+- **UI/UX**: Sichtbarer 'Click to copy' Text für bessere UX im Preisrechner.
+- **UI/UX**: Ticks-Anzeige auf 3 Nachkommastellen standardisiert.
+
+**Changes (English):**
+- **Bug Fix**: Fixed buyer-pays rounding logic to exactly 3 decimals, matching game mechanics.
+- **UI/UX**: Added visible 'Click to copy' hint text for better UX in the price calculator.
+- **UI/UX**: Standardized tick displays to 3 decimals.
+
 ## 2026-08-09 | Feature: Equipment Sell Calculator (v0.12.0)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `tests/test-equip-sell-calc.js`
