@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         TEST PROST
+// @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.11.11-unstable
+// @version      0.12.0
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -341,6 +341,7 @@
         equipSellCalcTaxLabel: 'Market Tax (%)',
         equipSellCalcResultLabel: 'Enter Price (List for)',
         equipSellCalcCopyHint: 'Click to copy',
+        settingsFeatEquipSellCalcHint: 'Calculate the exact listing price so buyers see your target price after tax. Uses your country\'s market tax rate automatically.',
         settingsNewBadge: 'New!',
 
         never: 'never',
@@ -743,6 +744,7 @@
         equipSellCalcTaxLabel: 'Marktsteuer (%)',
         equipSellCalcResultLabel: 'Listenpreis (Eingeben)',
         equipSellCalcCopyHint: 'Klicken zum Kopieren',
+        settingsFeatEquipSellCalcHint: 'Berechnet den exakten Listenpreis, damit Käufer nach Steuer deinen Zielpreis sehen. Nutzt automatisch die Marktsteuer deines Landes.',
         settingsNewBadge: 'Neu!',
 
         never: 'nie',
@@ -5030,14 +5032,13 @@ async function scanInventory(force) {
     .wia-equip-sell-fab.wia-calc-no-sp { top:12px; }
     
     .wia-equip-sell-panel {
-      position:fixed; top:102px; left:16px; width:296px; background:#161b22;
+      position:fixed; top:58px; left:50%; transform:translateX(-50%); width:296px; background:#161b22;
       border:1px solid #30363d; border-radius:10px; padding:14px; z-index:9997;
       box-shadow:0 8px 32px #000000aa;
       animation: wia-fade-scale 0.15s ease-out forwards;
-      transform-origin: top left;
+      transform-origin: top center;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
-    .wia-equip-sell-panel.wia-calc-no-sp { top: 56px; }
     
     @keyframes wia-fade-scale {
       0% { opacity: 0; transform: scale(0.95) translateY(-5px); }
@@ -16553,7 +16554,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     
     equipSellCalcFab = document.createElement('div');
     equipSellCalcFab.className = 'wia-equip-sell-fab' + (CONFIG.featScratchpad ? '' : ' wia-calc-no-sp');
-    equipSellCalcFab.innerHTML = `<div>🧮</div>`;
+    equipSellCalcFab.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#e6edf3" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><circle cx="9" cy="11" r="0.5" fill="#e6edf3"/><circle cx="15" cy="11" r="0.5" fill="#e6edf3"/><circle cx="9" cy="15" r="0.5" fill="#e6edf3"/><circle cx="15" cy="15" r="0.5" fill="#e6edf3"/><line x1="9" y1="19" x2="15" y2="19"/></svg>`;
     
     equipSellCalcFab.onclick = (e) => {
       e.stopPropagation();
