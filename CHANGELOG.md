@@ -1,5 +1,21 @@
 # CHANGELOG
 
+## 2026-08-09 | Feature: Equipment Sell Calculator (v0.12.0)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `tests/test-equip-sell-calc.js`
+
+**Änderungen (Deutsch):**
+- **Feature**: Neuer "Equipment Preisrechner" im Equipment-Markt, inspiriert von Lebly.
+- **UI/UX**: Schwebender Calculator (🧮) hilft beim genauen Berechnen von Verkaufspreisen (mit 3-Nachkommastellen Präzision).
+- **Quality of Life**: Ergebnisse und Zwischenschritte lassen sich per Klick direkt in die Zwischenablage kopieren.
+- **System**: Nahtlose Integration in das Route-Observer-System und vollumfängliche deutsche & englische Übersetzungen in den Einstellungen.
+
+**Changes (English):**
+- **Feature**: New "Equipment Price Calculator" in the Equipment Market, inspired by Lebly.
+- **UI/UX**: Floating calculator (🧮) helps calculate listing prices accurately (with 3-decimal precision).
+- **Quality of Life**: Results and intermediate ticks can be copied directly to the clipboard with one click.
+- **System**: Seamlessly integrated into the route observer system with full German & English translations in the settings menu.
+
 ## 2026-08-08 | Fix: MU Troop Radar & CI Pipeline (v0.11.11)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `tests/test-troop-radar.js`, `.github/workflows/test.yml`, `.github/workflows/normalize-release-header.yml`, `scripts/static-analysis.sh`
