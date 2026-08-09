@@ -340,6 +340,7 @@
         equipSellCalcTitle: 'Equipment Price Calculator',
         equipSellCalcTargetLabel: 'Target Price (Buyer Pays)',
         equipSellCalcTaxLabel: 'Market Tax (%)',
+        equipSellCalcUndercutLabel: 'Undercut (-0.001)',
         equipSellCalcResultLabel: 'Enter Price (List for)',
         equipSellCalcCopyHint: 'Click to copy',
         settingsFeatEquipSellCalcHint: 'Calculate the exact listing price so buyers see your target price after tax. Uses your country\'s market tax rate automatically.',
@@ -743,6 +744,7 @@
         equipSellCalcTitle: 'Equipment Preisrechner',
         equipSellCalcTargetLabel: 'Zielpreis (Käufer zahlt)',
         equipSellCalcTaxLabel: 'Marktsteuer (%)',
+        equipSellCalcUndercutLabel: 'Unterbieten (-0.001)',
         equipSellCalcResultLabel: 'Listenpreis (Eingeben)',
         equipSellCalcCopyHint: 'Klicken zum Kopieren',
         settingsFeatEquipSellCalcHint: 'Berechnet den exakten Listenpreis, damit Käufer nach Steuer deinen Zielpreis sehen. Nutzt automatisch die Marktsteuer deines Landes.',
@@ -16587,11 +16589,15 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       </div>
       <div style="margin-bottom: 12px;">
         <label style="font-size: 11px; color: #8b949e; display: block; margin-bottom: 4px;">${t('equipSellCalcTargetLabel')}:</label>
-        <input type="number" class="wia-calc-target" min="0" step="0.01" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 6px 8px; font-size: 14px;" value="${lastPrice}" />
+        <input type="number" class="wia-calc-target" min="0" step="0.001" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 6px 8px; font-size: 14px;" value="${lastPrice}" />
       </div>
       <div style="margin-bottom: 12px;">
         <label style="font-size: 11px; color: #8b949e; display: block; margin-bottom: 4px;">${t('equipSellCalcTaxLabel')}:</label>
         <input type="number" class="wia-calc-tax" min="0" step="0.1" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid rgba(148,163,184,.42); border-radius: 4px; color: #f9fafb; padding: 4px 8px; font-size: 12px;" value="${taxPct}" />
+      </div>
+      <div style="margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+        <input type="checkbox" class="wia-calc-undercut" style="width: auto; margin: 0; cursor: pointer;" ${CONFIG.equipSellCalcUndercut ? 'checked' : ''} />
+        <label style="font-size: 11px; color: #8b949e; cursor: pointer; user-select: none;">${t('equipSellCalcUndercutLabel')}</label>
       </div>
       <div style="margin-bottom: 12px; background: rgba(124, 58, 237, 0.1); border: 1px solid rgba(124, 58, 237, 0.2); padding: 8px; border-radius: 4px; text-align: center;">
         <div style="font-size: 11px; color: #a78bfa; margin-bottom: 2px;">${t('equipSellCalcResultLabel')}:</div>
@@ -16609,6 +16615,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
 
     const targetInput = equipSellCalcPanel.querySelector('.wia-calc-target');
     const taxInput = equipSellCalcPanel.querySelector('.wia-calc-tax');
+    const undercutCheck = equipSellCalcPanel.querySelector('.wia-calc-undercut');
     const resultDiv = equipSellCalcPanel.querySelector('.wia-calc-result');
     const closeBtn = equipSellCalcPanel.querySelector('.wia-calc-close');
     const ticksContainer = equipSellCalcPanel.querySelector('.wia-calc-ticks');
@@ -16619,9 +16626,13 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     };
 
     const updateCalc = () => {
-      const target = parseFloat(targetInput.value) || 0;
+      let target = parseFloat(targetInput.value) || 0;
       const tax = parseFloat(taxInput.value) || 0;
       GM_setValue(KEYS.equipSellCalcLastPrice, target);
+      
+      if (!isNaN(target) && target > 0 && undercutCheck && undercutCheck.checked) {
+        target = target - 0.001;
+      }
       
       const res = calcEquipSellPrice(target, tax);
       resultDiv.textContent = res.figure.toFixed(3);
@@ -16654,7 +16665,24 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     };
 
     targetInput.addEventListener('input', updateCalc);
-    taxInput.addEventListener('input', updateCalc);
+    taxInput.addEventListener('input', () => {
+      GM_setValue(KEYS.lastEquipSellTax, parseFloat(taxInput.value) || 1.0);
+      updateCalc();
+    });
+    if (undercutCheck) {
+      undercutCheck.addEventListener('change', () => {
+        CONFIG.equipSellCalcUndercut = undercutCheck.checked;
+        GM_setValue(KEYS.equipSellCalcUndercut, undercutCheck.checked);
+        updateCalc();
+      });
+      const undercutLabel = undercutCheck.nextElementSibling;
+      if (undercutLabel) {
+        undercutLabel.addEventListener('click', () => {
+          undercutCheck.checked = !undercutCheck.checked;
+          undercutCheck.dispatchEvent(new Event('change'));
+        });
+      }
+    }
     
     resultDiv.onclick = () => {
       const text = resultDiv.textContent;
