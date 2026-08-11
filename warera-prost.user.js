@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.12.1
+// @version      0.12.2
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -379,6 +379,12 @@
         scrapOverMktHeld: 'scrap {scrap} > market net {net} (gross {val}), but held for Critical Condition',
         mktOverScrapHeld: 'market net {net} (gross {val}) >= scrap {scrap}, but held for Critical Condition',
         mktOverScrap: 'market net {net} (gross {val}) >= scrap {scrap}',
+        regionBetterRegion: 'Better Region: {name} ({flag})',
+        regionProdBonus: 'Production bonus: {bonus}% (+{delta}%)',
+        regionIncomeTax: 'Income tax: {tax}% (current: {currentTax}%)',
+        regionNetWage: 'Ø Net wage: {sign}{delta}g/day per worker {color}',
+        regionAlly: '💚 Allied alliance',
+        regionEnemy: '⚔️ Enemy alliance',
         statLabel_helmet: 'Crit Damage',
         statLabel_gloves: 'Precision',
         statLabel_chest: 'Armor',
@@ -783,6 +789,12 @@
         scrapOverMktHeld: 'Schrott {scrap} > Markt Netto {net} (Brutto {val}), aber behalten wegen kritischem Zustand',
         mktOverScrapHeld: 'Markt Netto {net} (Brutto {val}) >= Schrott {scrap}, aber behalten wegen kritischem Zustand',
         mktOverScrap: 'Markt Netto {net} (Brutto {val}) >= Schrott {scrap}',
+        regionBetterRegion: 'Bessere Region: {name} ({flag})',
+        regionProdBonus: 'Produktionsbonus: {bonus}% (+{delta}%)',
+        regionIncomeTax: 'Lohnsteuer: {tax}% (aktuell: {currentTax}%)',
+        regionNetWage: 'Ø Netto-Lohn: {sign}{delta}g/Tag pro Worker {color}',
+        regionAlly: '💚 Verbündete Allianz',
+        regionEnemy: '⚔️ Feindliche Allianz',
         statLabel_helmet: 'Kritischer Schaden',
         statLabel_gloves: 'Präzision',
         statLabel_chest: 'Rüstung',
@@ -1187,6 +1199,7 @@
     featAlertCompanyDeposit: NS + 'featAlertCompanyDeposit',
     featBetterRegion: NS + 'featBetterRegion',
     ecoBetterRegionAlerts: NS + 'ecoBetterRegionAlerts',
+    ecoBetterRegionRec: NS + 'ecoBetterRegionRec',
     ecoTrackingState: NS + 'ecoTrackingState',
     ecoCountryTax: NS + 'ecoCountryTax',
     ecoRegionData: NS + 'ecoRegionData',
@@ -5024,6 +5037,23 @@ async function scanInventory(force) {
   // ───────────────────────────────────────────────────────────────────────────
   function injectStyles() {
     GM_addStyle(`
+
+    /* ====== ECO PILLS ====== */
+    .wia-eco-region-pill {
+      margin-left: 6px;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-weight: 600;
+      font-size: 0.82em;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      cursor: help;
+      background: rgba(0, 0, 0, 0.35);
+      color: #fbbf24;
+      line-height: 1.2;
+    }
+    .wia-eco-region-pill svg { flex-shrink: 0; }
 
     /* ====== EQUIP SELL CALC ====== */
     .wia-equip-sell-fab {
@@ -9123,22 +9153,78 @@ function initScratchpad() {
             const { payload: recommended } = await resolveApiBase('company.getRecommendedRegionIdsByItemCode', { itemCode, count: 1 });
             if (recommended && recommended.length > 0) {
               const topRec = recommended[0];
-              if (topRec.bonus > currentTotalBonus) {
+              if (topRec.bonus >= currentTotalBonus + 1) { // >= 1% threshold
                 const alerts = readCache(KEYS.ecoBetterRegionAlerts) || {};
                 const prevAlert = alerts[comp._id];
                 const topRecRegionId = topRec.regionId;
                 
-                const recRegionCache = (readCache(KEYS.ecoRegionData) || {})[topRecRegionId];
-                const topRecCountry = recRegionCache ? recRegionCache.country : 'unknown';
+                const { payload: topRecRegionPayload } = await resolveApiBase('region.getById', { regionId: topRecRegionId });
+                const topRecCountryId = topRecRegionPayload?.country;
+                
+                let recIncomeTax = 0;
+                let topRecCountryCode = '';
+                let topRecCountryName = '';
+                if (topRecCountryId) {
+                  const { payload: recCountryPayload } = await resolveApiBase('country.getCountryById', { countryId: topRecCountryId });
+                  if (recCountryPayload) {
+                    recIncomeTax = recCountryPayload.taxes?.income || 0;
+                    topRecCountryCode = recCountryPayload.code || '';
+                    topRecCountryName = recCountryPayload.name || '';
+                  }
+                }
+                
+                const allianceStatus = topRecCountryId ? await resolveAllianceStatus(topRecCountryId) : 'neutral';
+                
+                let currentTax = st.tax;
+                if (currentTax === undefined && regionPayload && regionPayload.country) {
+                  try {
+                    const { payload: ctry } = await resolveApiBase('country.getCountryById', { countryId: regionPayload.country });
+                    currentTax = ctry?.taxes?.income || 0;
+                  } catch(e) { currentTax = 0; }
+                }
+                currentTax = currentTax || 0;
+
+                let avgGrossWage = 0;
+                let netDeltaPerWorker = null;
+                if (comp.workerCount > 0) {
+                  const workersRes = await resolveApiBase('worker.getWorkers', { companyId: comp._id });
+                  if (!workersRes || !workersRes.payload) continue; // Throttled or error
+                  const workers = workersRes.payload.workers || [];
+                  if (workers.length > 0) {
+                    const totalWage = workers.reduce((sum, w) => sum + (w.wage || 0), 0);
+                    avgGrossWage = totalWage / workers.length;
+                    
+                    const netCurrent = avgGrossWage * (1 - currentTax / 100);
+                    const netRec = avgGrossWage * (1 - recIncomeTax / 100);
+                    netDeltaPerWorker = netRec - netCurrent;
+                  }
+                }
 
                 if (prevAlert && prevAlert.companyRegionAtTimeOfAlert !== comp.region) {
                   delete alerts[comp._id];
-                } else if (!prevAlert || topRec.bonus > prevAlert.alertedBonus || (topRecCountry !== prevAlert.alertedCountry && topRec.bonus > currentTotalBonus)) {
-                   sendPersonalNtfy('Better Region', 'WareEra - Better Region Available', `Company ${compName} could get ${topRec.bonus}% bonus in a better region!`, 'gem,warning', 3);
+                } else if (!prevAlert || topRec.bonus > prevAlert.alertedBonus || (topRecCountryId !== prevAlert.alertedCountry && topRec.bonus >= currentTotalBonus + 1)) {
+                   let ntfyBody = `${compName}: ${topRec.bonus}% bonus available (current: ${currentTotalBonus}%, +${(topRec.bonus - currentTotalBonus).toFixed(0)}%)`;
+                   if (netDeltaPerWorker !== null) {
+                     const sign = netDeltaPerWorker >= 0 ? '+' : '';
+                     ntfyBody += `\nNet wage impact: ${sign}${netDeltaPerWorker.toFixed(1)}g/day per worker`;
+                   }
+                   
+                   sendPersonalNtfy('Better Region', 'WareEra - Better Region Available', ntfyBody, 'gem,warning', 3, `https://app.warera.io/company/${comp._id}`);
+                   
                    alerts[comp._id] = {
-                     alertedCountry: topRecCountry,
+                     alertedCountry: topRecCountryId,
                      alertedBonus: topRec.bonus,
-                     companyRegionAtTimeOfAlert: comp.region
+                     companyRegionAtTimeOfAlert: comp.region,
+                     recommendedRegionId: topRecRegionId,
+                     countryCode: topRecCountryCode,
+                     countryName: topRecCountryName,
+                     currentBonus: currentTotalBonus,
+                     incomeTax: recIncomeTax,
+                     currentIncomeTax: currentTax,
+                     allianceStatus,
+                     avgGrossWage,
+                     netDeltaPerWorker,
+                     checkedAt: Date.now()
                    };
                    writeCache(KEYS.ecoBetterRegionAlerts, alerts);
                 }
@@ -9280,6 +9366,13 @@ function initScratchpad() {
   }
 
   function numF(n, d) { return Number(n).toFixed(d); }
+
+  
+  // Heart icon — ally/friendly alliance (16x16, stroke only, currentColor)
+  const ECO_ALLY_HEART_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 14s-5.5-3.5-5.5-7A3.5 3.5 0 0 1 8 4.5 3.5 3.5 0 0 1 13.5 7C13.5 10.5 8 14 8 14z"/></svg>';
+
+  // Crossed swords icon — enemy/hostile alliance (16x16, stroke only, currentColor)
+  const ECO_ENEMY_SWORDS_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 2l5 5M14 2L9 7"/><path d="M2 2l2-.5L4.5 4M14 2l-2-.5L11.5 4"/><path d="M7 9l-4 4M9 7l4 4"/><circle cx="4" cy="12" r="1"/><circle cx="12" cy="12" r="1"/></svg>';
 
   const ECO_COIN_SVG = '<svg viewBox="0 0 24 24" fill="currentColor" ' +
     'style="width:1em;height:1em;display:inline-block;vertical-align:-0.15em;margin-right:2px;' +
@@ -9851,6 +9944,7 @@ function initScratchpad() {
   const ecoRecipesCache = { at: 0, recipes: null };
   let ecoProfitLoading = false;
   let ecoTaxReinjectPending = false;
+  let ecoBetterRegionLoopRunning = false;
 
   async function fetchGameConfig() {
     if (ecoRecipesCache.recipes && (now() - ecoRecipesCache.at < CONFIG.ecoRecipeTtlMs)) return ecoRecipesCache.recipes;
@@ -10100,7 +10194,7 @@ function initScratchpad() {
       getCountryTax(countryId);
     }
 
-    if (sellPrice <= 0) return { priced: false, depositEndsAt: endsAt, depositType: depType, isStrategicResource: isStrategic };
+    if (sellPrice <= 0) return { priced: false, companyId: id, depositEndsAt: endsAt, depositType: depType, isStrategicResource: isStrategic };
 
     let matCost = 0;
     for (const inp of recipe.inputs) matCost += inp.qty * (prices[normalizeItemCode(inp.code)] || 0);
@@ -10109,7 +10203,7 @@ function initScratchpad() {
     const lvl = details.activeUpgradeLevels?.automatedEngine || 0;
     const engineDaily = engineLevels?.[lvl]?.stats?.dailyProd || 0;
 
-    if (engineDaily === 0) return { priced: false, depositEndsAt, depositType };
+    if (engineDaily === 0) return { priced: false, companyId: id, depositEndsAt, depositType };
 
     const perItemNet = sellPrice * (1 - marketTax / 100) - matCost;
     let workerPointsPerDay = 0;
@@ -10140,7 +10234,7 @@ function initScratchpad() {
     const hoursToFull = ecoStorageHoursToFull(id, pointsPerDay);
 
     return { 
-      priced: true, net, sellPrice, marketTax, matCost, perItemNet, engineDaily, bonus, pointsPerDay, 
+      priced: true, companyId: id, net, sellPrice, marketTax, matCost, perItemNet, engineDaily, bonus, pointsPerDay, 
       engineDailyPoints, workerPointsPerDay, workerWagesPerDay,
       dayItems, taxKnown, hoursToFull, itemCode: details.itemCode, inputs: recipe.inputs,
       depositEndsAt: endsAt, depositType: depType, isStrategicResource: isStrategic
@@ -10192,6 +10286,85 @@ function initScratchpad() {
       profitBadge.className = 'wia-eco-profit-badge';
       profitBadge.style.cssText = 'margin-left:6px; padding:0 5px; border-radius:4px; font-weight:700; font-size:0.82em; display:inline-flex; align-items:center; gap:2px; cursor:help; background:rgba(0,0,0,0.35);';
       chipEl.appendChild(profitBadge);
+    }
+
+    // --- Better Region Pill ---
+    let regionPill = chipEl.querySelector(':scope > .wia-eco-region-pill');
+    const alerts = readCache(KEYS.ecoBetterRegionAlerts) || {};
+    const compId = d && d.companyId;
+    const regionAlert = compId && alerts[compId];
+
+    if (!regionAlert || !regionAlert.alertedBonus) {
+      if (regionPill) regionPill.remove();
+    } else {
+      if (!regionPill) {
+        regionPill = document.createElement('span');
+        regionPill.className = 'wia-eco-region-pill';
+        chipEl.appendChild(regionPill);
+      }
+
+      const bonusDelta = regionAlert.alertedBonus - (regionAlert.currentBonus || 0);
+      const flag = codeToFlag(regionAlert.countryCode);
+      const name = regionAlert.countryName || '?';
+      const status = regionAlert.allianceStatus || 'neutral';
+
+      // Alliance indicator
+      let allianceIcon = '';
+      let dotColor = '#9ca3af'; // neutral gray
+      if (status === 'ally') {
+        allianceIcon = ECO_ALLY_HEART_SVG;
+        dotColor = '#4ade80'; // green
+      } else if (status === 'enemy') {
+        allianceIcon = ECO_ENEMY_SWORDS_SVG;
+        dotColor = '#f87171'; // red
+      }
+
+      const sig = `${regionAlert.alertedBonus}|${status}|${regionAlert.netDeltaPerWorker}`;
+      if (regionPill.dataset.sig !== sig) {
+        regionPill.dataset.sig = sig;
+        regionPill.innerHTML =
+          (allianceIcon ? `<span style="color:${dotColor}; display:inline-flex; align-items:center;">${allianceIcon}</span>` : '') +
+          `${flag} ${name} +${bonusDelta.toFixed(0)}%`;
+
+        let tip = t('regionBetterRegion', { name, flag }) + '\n' +
+                  t('regionProdBonus', { bonus: regionAlert.alertedBonus, delta: bonusDelta.toFixed(0) }) + '\n' +
+                  t('regionIncomeTax', { tax: regionAlert.incomeTax, currentTax: regionAlert.currentIncomeTax });
+
+        if (regionAlert.netDeltaPerWorker !== null && regionAlert.netDeltaPerWorker !== undefined) {
+          const sign = regionAlert.netDeltaPerWorker >= 0 ? '+' : '';
+          const netColor = regionAlert.netDeltaPerWorker >= 0 ? '🟢' : '🔴';
+          tip += '\n' + t('regionNetWage', { sign, delta: regionAlert.netDeltaPerWorker.toFixed(1), color: netColor });
+        }
+        if (status === 'ally') tip += '\n' + t('regionAlly');
+        else if (status === 'enemy') tip += '\n' + t('regionEnemy');
+        
+        regionPill.title = tip;
+      }
+    }
+
+    // After the region pill, add net wage pill if applicable (only when meaningful delta exists)
+    let netPill = chipEl.querySelector(':scope > .wia-eco-net-pill');
+    const hasNetDelta = regionAlert && regionAlert.alertedBonus &&
+      typeof regionAlert.netDeltaPerWorker === 'number' &&
+      Math.abs(regionAlert.netDeltaPerWorker) >= 0.02;
+    if (!hasNetDelta) {
+      if (netPill) netPill.remove();
+    } else {
+      if (!netPill) {
+        netPill = document.createElement('span');
+        netPill.className = 'wia-eco-net-pill';
+        chipEl.appendChild(netPill);
+      }
+      const delta = regionAlert.netDeltaPerWorker;
+      const nSig = `net|${delta.toFixed(1)}`;
+      if (netPill.dataset.sig !== nSig) {
+        netPill.dataset.sig = nSig;
+        const sign = delta >= 0 ? '+' : '';
+        const color = delta >= 0 ? '#4ade80' : '#f87171';
+        netPill.style.cssText = `margin-left:4px; padding:1px 6px; border-radius:4px; font-weight:600; font-size:0.82em; display:inline-flex; align-items:center; cursor:help; background:rgba(0,0,0,0.35); color:${color}; line-height:1.2;`;
+        netPill.textContent = `Ø ${sign}${delta.toFixed(1)}g/d`;
+        netPill.title = t('regionNetWage', { sign, delta: delta.toFixed(1), color: delta >= 0 ? '🟢' : '🔴' });
+      }
     }
 
     if (profitBadge.dataset.sig !== sigProfit) {
@@ -10535,6 +10708,8 @@ function initScratchpad() {
   }
 
   function injectCompanyProfits() {
+    const match = location.pathname.match(/\/company\/([a-f0-9]{24})/i);
+    if (match) ensureBetterRegionCheck(match[1]);
     const mainWin = document.getElementById('main-window');
     if (!mainWin) return;
 
@@ -10546,6 +10721,7 @@ function initScratchpad() {
 
     let total = 0, earning = 0, losing = 0, shown = 0, deactivated = 0, taxPending = false;
     const balances = {};
+    const visibleBonuses = {};
 
     for (const id of ecoIdsOnPage(mainWin)) {
       const links = Array.from(mainWin.querySelectorAll('a[href="/company/' + id + '"]'));
@@ -10555,6 +10731,7 @@ function initScratchpad() {
 
       const d = ecoComputeNet(id, chipEl, prices, recipes, engineLevels, regionCache, taxCache);
       ecoRenderBadge(chipEl, d);
+      if (d && typeof d.bonus === 'number') visibleBonuses[id] = d.bonus;
       if (d && d.skip) {
         continue;
       } else if (d && d.disabled) {
@@ -10586,6 +10763,138 @@ function initScratchpad() {
         const mw = document.getElementById('main-window');
         if (mw) guard('netWages', () => injectNetWagesLoop(mw));
       }, 1600);
+    }
+
+    if (CONFIG.featBetterRegion && !ecoBetterRegionLoopRunning) {
+      ecoBetterRegionLoopRunning = true;
+      const visibleIds = [...ecoIdsOnPage(mainWin)];
+      (async () => {
+        try {
+          for (const id of visibleIds) {
+            await ensureBetterRegionCheck(id, visibleBonuses[id]);
+            await new Promise(r => setTimeout(r, 800));
+          }
+        } finally {
+          ecoBetterRegionLoopRunning = false;
+        }
+      })();
+    }
+  }
+
+
+  async function ensureBetterRegionCheck(companyId, knownBonus) {
+    if (!CONFIG.featBetterRegion) return;
+    try {
+      const alerts = readCache(KEYS.ecoBetterRegionAlerts) || {};
+
+      // Always fetch fresh company data (region may have changed)
+      const res = await resolveApiBase('company.getById', { companyId });
+      const comp = res?.payload;
+      if (!comp || !comp.itemCode) return;
+
+      // Invalidate alert if company moved to a different region
+      const prev = alerts[companyId];
+      if (prev && prev.companyRegionAtTimeOfAlert !== comp.region) {
+        delete alerts[companyId];
+        writeCache(KEYS.ecoBetterRegionAlerts, alerts);
+      } else if (alerts[companyId]?.checkedAt && Date.now() - alerts[companyId].checkedAt < 5 * 60 * 1000) {
+        return;
+      }
+
+      let currentTotalBonus = typeof knownBonus === 'number' ? knownBonus : null;
+      if (currentTotalBonus === null) {
+        const bc = ecoBonusCache.get(companyId);
+        if (bc && Date.now() - bc.at < 300000) {
+          currentTotalBonus = bc.bonus;
+        } else {
+          const res = await resolveApiBase('company.getProductionBonus', { companyId });
+          if (!res?.payload || typeof res.payload.total !== 'number') return;
+          currentTotalBonus = res.payload.total;
+        }
+      }
+
+      // Check recommended region (cached 30min per itemCode)
+      let topRec = null;
+      const recsCache = readCache(KEYS.ecoBetterRegionRec) || {};
+      const rcEntry = recsCache[comp.itemCode];
+      if (rcEntry && Date.now() - rcEntry.at < 30 * 60 * 1000) {
+        topRec = rcEntry.rec;
+      } else {
+        const res = await resolveApiBase('company.getRecommendedRegionIdsByItemCode', { itemCode: comp.itemCode, count: 1 });
+        if (res?.payload?.length > 0) {
+          topRec = res.payload[0];
+          recsCache[comp.itemCode] = { at: Date.now(), rec: topRec };
+          writeCache(KEYS.ecoBetterRegionRec, recsCache);
+        }
+      }
+
+      if (!topRec || topRec.bonus < currentTotalBonus + 1) {
+        if (alerts[companyId]) { delete alerts[companyId]; writeCache(KEYS.ecoBetterRegionAlerts, alerts); }
+        return;
+      }
+
+      // Resolve recommended region's country + tax (uses existing caches)
+      const regionCache = readCache(KEYS.ecoRegionData) || {};
+      let topRecCountryId = regionCache[topRec.regionId]?.country;
+      if (!topRecCountryId) {
+        const rr = await resolveApiBase('region.getById', { regionId: topRec.regionId });
+        topRecCountryId = rr?.payload?.country;
+      }
+      if (!topRecCountryId) return;
+
+      const recTax = await getCountryTax(topRecCountryId);
+      const recIncomeTax = recTax?.income || 0;
+
+      // Country name/code from countryMap (cached 24h) or country API
+      const map = await loadCountryMap();
+      const recCountryEntry = map?.[topRecCountryId];
+      const topRecCountryCode = recCountryEntry?.code || '';
+      const topRecCountryName = recCountryEntry?.name || '';
+
+      // Current company's income tax (from existing cache)
+      let currentIncomeTax = 0;
+      const compRegionEntry = regionCache[comp.region];
+      const compCountryId = compRegionEntry?.country;
+      if (compCountryId) {
+        const curTax = await getCountryTax(compCountryId);
+        currentIncomeTax = curTax?.income || 0;
+      }
+
+      const allianceStatus = await resolveAllianceStatus(topRecCountryId);
+
+      // Net wage delta (only if company has workers)
+      let netDeltaPerWorker = null;
+      if (comp.workerCount > 0) {
+        let workers = ecoWorkersCache.get(companyId)?.workers;
+        if (!workers) {
+          const wr = await resolveApiBase('worker.getWorkers', { companyId });
+          workers = wr?.payload?.workers;
+        }
+        if (workers?.length > 0) {
+          const avgGross = workers.reduce((s, w) => s + (w.wage || 0), 0) / workers.length;
+          if (avgGross > 0) {
+            netDeltaPerWorker = avgGross * (1 - recIncomeTax / 100) - avgGross * (1 - currentIncomeTax / 100);
+          }
+        }
+      }
+
+      alerts[companyId] = {
+        alertedCountry: topRecCountryId,
+        alertedBonus: topRec.bonus,
+        companyRegionAtTimeOfAlert: comp.region,
+        recommendedRegionId: topRec.regionId,
+        countryCode: topRecCountryCode,
+        countryName: topRecCountryName,
+        currentBonus: currentTotalBonus,
+        incomeTax: recIncomeTax,
+        currentIncomeTax,
+        allianceStatus,
+        netDeltaPerWorker,
+        checkedAt: Date.now()
+      };
+      writeCache(KEYS.ecoBetterRegionAlerts, alerts);
+    } catch (e) {
+      dbg('companyProfit', 'error', 'betterRegionCheck failed', companyId, e.message);
     }
   }
 
@@ -10693,7 +11002,10 @@ function initScratchpad() {
           if (grandparent) grandparent.appendChild(netLine);
         }
       } else {
-        const labelSpan = Array.from(modal.querySelectorAll('span')).find(s => s.textContent.toLowerCase().includes('estimated benefit'));
+        const labelSpan = Array.from(modal.querySelectorAll('span')).find(s => {
+          const txt = s.textContent.toLowerCase();
+          return txt.includes('estimated benefit') || txt.includes('geschätzter gewinn');
+        });
         if (!labelSpan || !labelSpan.parentElement) {
           setHealth('companyEco', 'warn', 'no benefit anchor');
           return;
@@ -14067,7 +14379,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     }
   }
 
-  async function sendPersonalNtfy(type, title, body, tags, priority = 'default') {
+  async function sendPersonalNtfy(type, title, body, tags, priority = 'default', clickUrl = null) {
     let icon = '🔔';
     if (tags.includes('poultry_leg')) icon = '🍗';
     else if (tags.includes('alarm_clock')) icon = '⏰';
@@ -14097,6 +14409,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       Tags: `${tags},v${SCRIPT_VERSION},cid_${bountyClientId()}`,
       'Content-Type': 'text/plain; charset=utf-8'
     };
+    if (clickUrl) headers.Click = clickUrl;
 
     try {
       const res = await ntfyRequest('pillReminder', {
@@ -18640,6 +18953,30 @@ function checkInventoryDeltaWear() {
     return arr.map((x) => (typeof x === 'string' ? x : (x && (x.country || x._id)))).filter(Boolean);
   }
 
+  
+  async function resolveAllianceStatus(targetCountryId) {
+    const allySet = await resolveAllyCountryIds(true);
+    if (allySet.has(targetCountryId)) return 'ally';
+
+    const map = await loadCountryMap();
+    const ownCountry = await resolveOwnCountry();
+    if (!ownCountry || !map[ownCountry]) return 'neutral';
+
+    const ownEntry = map[ownCountry];
+    if ((ownEntry.warsWith || []).includes(targetCountryId)) return 'enemy';
+
+    const ownAllianceId = ownEntry.allianceId;
+    const targetEntry = map[targetCountryId];
+    if (targetEntry && ownAllianceId && targetEntry.allianceId && targetEntry.allianceId !== ownAllianceId) {
+      for (const cid of Object.keys(map)) {
+        if (map[cid].allianceId === targetEntry.allianceId) {
+          if ((ownEntry.warsWith || []).includes(cid)) return 'enemy';
+        }
+      }
+    }
+    return 'neutral';
+  }
+
   async function resolveAllyCountryIds(cascade = true) {
     const ckey = KEYS.bountyAllyCache + (cascade ? '_casc' : '_allies');
     const cached = GM_getValue(ckey, null);
@@ -19790,6 +20127,19 @@ function checkInventoryDeltaWear() {
     }
 
     migrateTransactionsCache();
+
+    try {
+      const alerts = readCache(KEYS.ecoBetterRegionAlerts) || {};
+      let cleaned = false;
+      for (const [k, v] of Object.entries(alerts)) {
+        if (!v.checkedAt || (v.currentBonus === 0 && v.alertedBonus > 0)) {
+          delete alerts[k];
+          cleaned = true;
+        }
+      }
+      if (cleaned) writeCache(KEYS.ecoBetterRegionAlerts, alerts);
+    } catch(e) {}
+
     // One-time migration to clear stale gated procedures from keyless bug
     if (!GM_getValue(KEYS.gatedResetV090, false)) {
       GM_setValue(KEYS.gatedProcedures, []);

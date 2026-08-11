@@ -1,5 +1,25 @@
 # CHANGELOG
 
+## 2026-08-10 | Feature: Better Region Pills (v0.12.2)
+
+**Geänderte Dateien:** `warera-prost.user.js`
+
+**Änderungen (Deutsch):**
+- **Feature**: Neue "Bessere Region" Pills in der Unternehmensübersicht und -detailansicht. Zeigt an, wenn eine bessere Produktionsregion verfügbar ist — inklusive Länderflagge, Bonus-Delta und Allianz-Status (Herz/Schwerter).
+- **Feature**: Separate Netto-Lohn-Pill zeigt den Lohnsteuer-Vorteil/-Nachteil pro Arbeiter bei einem Regionswechsel.
+- **Feature**: Allianz-Erkennung: Verbündete (grün/Herz) und feindliche (rot/Schwerter) Regionen werden visuell markiert.
+- **Feature**: Ntfy-Benachrichtigungen für bessere Regionen enthalten jetzt Netto-Lohn-Infos und einen Klick-Link zur Firma.
+- **Bug Fix**: Job-Angebot-Modal zeigt jetzt Netto-Lohn und Median-Sparkline auch bei deutscher Spielsprache.
+- **Bug Fix**: Region-Pills aktualisieren sich automatisch nach Firmenverlagerung.
+
+**Changes (English):**
+- **Feature**: New "Better Region" pills on company overview and detail pages. Shows when a better production region is available — with country flag, bonus delta, and alliance status (heart/swords).
+- **Feature**: Separate net wage pill shows income tax advantage/disadvantage per worker for a potential region switch.
+- **Feature**: Alliance detection: allied (green/heart) and hostile (red/swords) regions are visually marked.
+- **Feature**: Ntfy notifications for better regions now include net wage info and a click-through link to the company.
+- **Bug Fix**: Job offer modal now shows net wage and median sparkline with German game language.
+- **Bug Fix**: Region pills auto-update after company relocation.
+
 ## 2026-08-09 | Fix: Equipment Sell Calc Precision (v0.12.1)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `tests/test-equip-sell-calc.js`
