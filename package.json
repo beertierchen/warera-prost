@@ -1,6 +1,6 @@
 {
   "name": "warera-prost",
-  "version": "0.12.2",
+  "version": "0.12.3",
   "description": "PROST — Personal Recommendation Overlay & Support Tool. A suite of client-side userscripts for WareEra: session-less design, optional API key, local notes, and overlay helpers. No automation.",
   "author": "beertierchen",
   "license": "MIT",
@@ -21,7 +21,7 @@
     "game-helper"
   ],
   "scripts": {
-    "test": "node tests/test-advisor-load.js && node tests/test-troop-radar.js && node tests/test-profile-charsheet.js && node tests/tour-prompt.test.js && node tests/tour-layout.test.js"
+    "test": "node tests/test-advisor-load.js && node tests/test-troop-radar.js && node tests/test-profile-charsheet.js && node tests/tour-prompt.test.js && node tests/tour-layout.test.js && node tests/test-hotfix-regressions.js"
   },
   "private": false,
   "devDependencies": {

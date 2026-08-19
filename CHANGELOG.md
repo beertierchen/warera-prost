@@ -1,5 +1,25 @@
 # CHANGELOG
 
+## 2026-08-19 | Fix: Game Update Hotfix (v0.12.3)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `tests/test-hotfix-regressions.js`, `package.json`
+
+**Änderungen (Deutsch):**
+- **Bug Fix**: Better Region API-Aufruf auf POST umgestellt (Game-Update hat den Endpunkt von GET auf POST-Mutation geändert).
+- **Bug Fix**: Fehlerhafte Better Region Checks werden jetzt mit Zeitstempel gecacht — verhindert Retry-Sturm und 429 Rate-Limit-Kaskade.
+- **Bug Fix**: Better Region Toggle wurde nicht in den Einstellungen gespeichert — deaktivieren hatte keine Wirkung.
+- **Bug Fix**: MU Troop Radar Header-Erkennung verwendet jetzt Header-Bild statt gehashter CSS-Klassen (nach Game-Update entfernt).
+- **Bug Fix**: Pillen-Icon nutzt jetzt Emoji statt gebrochenem Bildpfad.
+- **Tests**: 9 Regressionstests für alle behobenen Fehler hinzugefügt.
+
+**Changes (English):**
+- **Bug Fix**: Better Region API call switched from GET to POST (game update changed endpoint to POST mutation).
+- **Bug Fix**: Failed better region checks now cached with timestamp — prevents retry storm and 429 rate-limit cascade.
+- **Bug Fix**: Better Region toggle was not persisted in settings — disabling had no effect.
+- **Bug Fix**: MU Troop Radar header detection now uses header image instead of hashed CSS classes (removed in game update).
+- **Bug Fix**: Pill icon uses emoji instead of broken image path.
+- **Tests**: 9 regression tests added covering all fixed bugs.
+
 ## 2026-08-10 | Feature: Better Region Pills (v0.12.2)
 
 **Geänderte Dateien:** `warera-prost.user.js`
