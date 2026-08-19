@@ -7399,10 +7399,14 @@ async function scanInventory(force) {
       GM_setValue(KEYS.featAlertCompanyDeposit, featAlertCompanyDeposit);
       CONFIG.featAlertCompanyDeposit = featAlertCompanyDeposit;
 
-      if (!featAlertCompanyStorage && !featAlertCompanyBonus && !featAlertCompanyTax && !featAlertCompanyDeposit) { 
-        teardownCompanyTracking(); 
-      } else { 
-        guard('companyTracking', initCompanyTracking); 
+      const featBetterRegion = bg.querySelector('.wia-feat-better-region').checked;
+      GM_setValue(KEYS.featBetterRegion, featBetterRegion);
+      CONFIG.featBetterRegion = featBetterRegion;
+
+      if (!featAlertCompanyStorage && !featAlertCompanyBonus && !featAlertCompanyTax && !featAlertCompanyDeposit && !featBetterRegion) {
+        teardownCompanyTracking();
+      } else {
+        guard('companyTracking', initCompanyTracking);
       }
 
       const featBounty = bg.querySelector('.wia-feat-bounty').checked;
@@ -9150,7 +9154,7 @@ function initScratchpad() {
           const itemCode = comp.itemCode;
           try {
             await new Promise(r => setTimeout(r, 600));
-            const { payload: recommended } = await resolveApiBase('company.getRecommendedRegionIdsByItemCode', { itemCode, count: 1 });
+            const { payload: recommended } = await resolveApiPost('company.getRecommendedRegionIdsByItemCode', { itemCode, count: 1 });
             if (recommended && recommended.length > 0) {
               const topRec = recommended[0];
               if (topRec.bonus >= currentTotalBonus + 1) { // >= 1% threshold
@@ -10820,7 +10824,7 @@ function initScratchpad() {
       if (rcEntry && Date.now() - rcEntry.at < 30 * 60 * 1000) {
         topRec = rcEntry.rec;
       } else {
-        const res = await resolveApiBase('company.getRecommendedRegionIdsByItemCode', { itemCode: comp.itemCode, count: 1 });
+        const res = await resolveApiPost('company.getRecommendedRegionIdsByItemCode', { itemCode: comp.itemCode, count: 1 });
         if (res?.payload?.length > 0) {
           topRec = res.payload[0];
           recsCache[comp.itemCode] = { at: Date.now(), rec: topRec };
@@ -10895,6 +10899,12 @@ function initScratchpad() {
       writeCache(KEYS.ecoBetterRegionAlerts, alerts);
     } catch (e) {
       dbg('companyProfit', 'error', 'betterRegionCheck failed', companyId, e.message);
+      try {
+        const alerts = readCache(KEYS.ecoBetterRegionAlerts) || {};
+        if (!alerts[companyId]) alerts[companyId] = {};
+        alerts[companyId].checkedAt = Date.now();
+        writeCache(KEYS.ecoBetterRegionAlerts, alerts);
+      } catch (_) { /* ignore */ }
     }
   }
 
@@ -13205,13 +13215,13 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
   function findTroopRadarHeaderAnchor() {
     if (typeof document === 'undefined') return null;
     const mainWin = document.getElementById('main-window') || document.body;
-    const spans = mainWin.querySelectorAll('span');
-    for (const span of spans) {
-      const txt = (span.textContent || '').trim();
-      if (txt === 'Members' || txt === 'Mitglieder') {
-        const box = span.closest('._1dnmndyaov') || span.closest('._1dnmndy8m') || span.parentElement?.parentElement;
-        if (box) return box;
-      }
+    const headerImg = mainWin.querySelector('img[src*="/header/"], img[src*="/headerv"]');
+    if (!headerImg) return null;
+    let el = headerImg;
+    while (el && el !== mainWin) {
+      const pp = el.parentElement?.parentElement;
+      if (pp === mainWin || pp?.id === 'main-window') return el;
+      el = el.parentElement;
     }
     return null;
   }
@@ -13318,7 +13328,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       el = document.createElement('div');
       el.id = 'wia-troop-radar-summary';
       el.className = 'wia-troop-radar-container';
-      anchor.parentNode.insertBefore(el, anchor);
+      anchor.parentNode.insertBefore(el, anchor.nextSibling);
     }
     el.setAttribute('data-wia-mu', muId);
 
@@ -15387,7 +15397,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     badge.innerHTML = `
       <div class="wia-pill-badge-content">
         <div class="wia-pill-row">
-          <img src="/images/items/cocain.png?v=33" alt="💊" style="width: 14px; height: 14px; border-radius: 2px; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.5));" />
+          <span style="font-size: 13px; line-height: 1; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.5));">💊</span>
           <span class="wia-pill-status-dot"></span>
           <div class="wia-pill-text-col">
             <span class="wia-pill-phase-lbl">${info.phaseLabel}</span>
