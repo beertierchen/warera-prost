@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.12.3
+// @version      0.12.4
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -3084,7 +3084,7 @@
 
     transactionsInFlight[code] = (async () => {
       try {
-        const { payload } = await resolveApiBase('transaction.getPaginatedTransactions', {
+        const { payload } = await resolveApiPost('transaction.getPaginatedTransactions', {
           limit: 100,
           itemCode: code
         });
@@ -9029,6 +9029,10 @@ function initScratchpad() {
       const materialConsumption = {};
 
       for (const item of itemsList) {
+        if (isRateLimited()) {
+          setHealth('companyEco', 'warn', 'rate limit hit — skipping remaining companies');
+          break;
+        }
         if (!item) continue;
         const compId = typeof item === 'object' ? item._id : item;
         if (!compId) continue;
@@ -9156,7 +9160,7 @@ function initScratchpad() {
           const itemCode = comp.itemCode;
           try {
             await new Promise(r => setTimeout(r, 600));
-            const { payload: recommended } = await resolveApiPost('company.getRecommendedRegionIdsByItemCode', { itemCode, count: 1 });
+            const { payload: recommended } = await resolveApiPost('company.getRecommendedRegionIdsByItemCode', { itemCode });
             if (recommended && recommended.length > 0) {
               const topRec = recommended[0];
               if (topRec.bonus >= currentTotalBonus + 1) { // >= 1% threshold
@@ -10826,7 +10830,7 @@ function initScratchpad() {
       if (rcEntry && Date.now() - rcEntry.at < 30 * 60 * 1000) {
         topRec = rcEntry.rec;
       } else {
-        const res = await resolveApiPost('company.getRecommendedRegionIdsByItemCode', { itemCode: comp.itemCode, count: 1 });
+        const res = await resolveApiPost('company.getRecommendedRegionIdsByItemCode', { itemCode: comp.itemCode });
         if (res?.payload?.length > 0) {
           topRec = res.payload[0];
           recsCache[comp.itemCode] = { at: Date.now(), rec: topRec };
@@ -15605,7 +15609,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
 
     resourceTxsInFlight[cacheKey] = (async () => {
       try {
-        const { payload } = await resolveApiBase('transaction.getPaginatedTransactions', {
+        const { payload } = await resolveApiPost('transaction.getPaginatedTransactions', {
           limit: 100,
           itemCode: code,
           transactionType: 'trading',
@@ -17525,7 +17529,7 @@ function processTransactionsList(items, userId) {
         const all = [];
         for (let page = 0; page < MAX_PAGES; page++) {
           const args = cursor ? { limit: 100, userId, cursor } : { limit: 100, userId };
-          const { payload } = await resolveApiBase('transaction.getPaginatedTransactions', args);
+          const { payload } = await resolveApiPost('transaction.getPaginatedTransactions', args);
           const items = payload?.items || [];
           if (!items.length) break;
           const firstId = normalizeDbId(items[0]._id || items[0].id);
