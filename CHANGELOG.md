@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## 2026-08-29 | Fix: Game Update API Compatibility (v0.12.4)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `package.json`
+
+**Änderungen (Deutsch):**
+- **Bug Fix**: Regionsempfehlung (`getRecommendedRegionIdsByItemCode`) schlug mit HTTP 400 fehl — entfernten `count`-Parameter bereinigt.
+- **Bug Fix**: Transaktionsabfragen (Market Graph, PnL Tracker, Preisreferenz) schlugen mit 401 fehl — GET→POST-Migration nachgezogen.
+- **Bug Fix**: Unternehmens-Tracking drainierte API-Budget bei Rate Limit — Loop bricht jetzt sofort ab und setzt Health auf Warnung.
+
+**Changes (English):**
+- **Bug Fix**: Region recommendation (`getRecommendedRegionIdsByItemCode`) returned HTTP 400 — removed obsolete `count` parameter.
+- **Bug Fix**: Transaction queries (Market Graph, PnL Tracker, price reference) returned 401 — migrated from GET to POST.
+- **Bug Fix**: Company tracking drained API budget on rate limit — loop now breaks immediately and sets health to warning.
+
 ## 2026-08-19 | Fix: Game Update Hotfix (v0.12.3)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `tests/test-hotfix-regressions.js`, `package.json`
