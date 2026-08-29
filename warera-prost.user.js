@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.12.5
+// @version      0.12.6
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -9653,7 +9653,17 @@ function initScratchpad() {
           const itemCode = compDetails.itemCode;
           const normCode = normalizeItemCode(itemCode);
           const sellPrice = priceMap[normCode] || 0;
-          const grossDay = totalProd * sellPrice;
+          const recipes = ecoRecipesCache.recipes || {};
+          const ppPerItem = recipes[itemCode]?.productionPoints || 1;
+          if (!ecoRecipesCache.recipes) fetchGameConfig();
+          const itemsPerDay = ppPerItem > 0 ? totalProd / ppPerItem : 0;
+          const grossDay = itemsPerDay * sellPrice;
+
+          const ppPerItemRow = ppPerItem > 1 ? `
+            <div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #a78bfa;">
+              <span>PP per Item:</span>
+              <span>${ppPerItem}</span>
+            </div>` : '';
 
           breakdownHtml = `
             <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
@@ -9663,10 +9673,10 @@ function initScratchpad() {
             <div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #a78bfa;">
               <span>Bonus (+${bonus}%) &times; Fidelity (+${w.fidelity}%):</span>
               <span>&times;${numF((1 + bonus / 100) * (1 + w.fidelity / 100), 2)}</span>
-            </div>
+            </div>${ppPerItemRow}
             <div style="display: flex; justify-content: space-between; margin-bottom: 4px; font-weight: bold;">
               <span>Total Prod (Items/day):</span>
-              <span>${numF(totalProd, 1)}</span>
+              <span>${numF(itemsPerDay, 1)}</span>
             </div>
             <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
               <span>Gross Revenue (sell @ ${numF(sellPrice, 2)}):</span>
