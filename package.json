@@ -1,6 +1,6 @@
 {
   "name": "warera-prost",
-  "version": "0.12.4",
+  "version": "0.12.5",
   "description": "PROST — Personal Recommendation Overlay & Support Tool. A suite of client-side userscripts for WareEra: session-less design, optional API key, local notes, and overlay helpers. No automation.",
   "author": "beertierchen",
   "license": "MIT",
