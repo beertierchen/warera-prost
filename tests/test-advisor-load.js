@@ -64,6 +64,14 @@ class MockElement {
     return this.children;
   }
 
+  get isConnected() {
+    let node = this;
+    while (node.parentElement) {
+      node = node.parentElement;
+    }
+    return node.tagName === 'BODY' || node.tagName === 'HTML' || node === global.document;
+  }
+
   get className() {
     return this._className;
   }
@@ -359,6 +367,8 @@ global.window = {
   addEventListener: () => {},
   getComputedStyle: (el) => {
     return {
+      position: el.style?.position || 'static',
+      borderStyle: el._mockBorderStyle || 'none',
       color: el.style.color || 'rgb(59, 219, 139)',
       borderColor: el.style.borderColor || '',
       borderTopColor: el.style.borderTopColor || '',
@@ -1319,23 +1329,21 @@ try {
   const modalDiv = new MockElement('div');
   modalDiv.id = 'headlessui-dialog-panel-_r_45g9_';
 
-  // Mock Common Tier card selected
-  const commonCard = new MockElement('div', 'ahvacn2');
+  // Mock Common Tier card selected (dashed border = selected)
+  const commonCard = new MockElement('div', 'rarity-card');
+  commonCard._mockBorderStyle = 'dashed';
   const commonSpan = new MockElement('span');
   commonSpan.textContent = 'Common';
   commonCard.appendChild(commonSpan);
-  const highlightOverlay = new MockElement('div', '_1dnmndy85w');
-  commonCard.appendChild(highlightOverlay);
   modalDiv.appendChild(commonCard);
 
-  // Mock specific item selected (Helmet)
-  const itemGrid = new MockElement('div', '_1dnmndyjlu');
-  const helmetCell = new MockElement('div', 'ahvacn2');
+  // Mock specific item selected (Helmet) — dashed border
+  const itemGrid = new MockElement('div', 'item-grid');
+  const helmetCell = new MockElement('div', 'item-card');
+  helmetCell._mockBorderStyle = 'dashed';
   const helmetImg = new MockElement('img');
   helmetImg.setAttribute('alt', 'helmet1');
   helmetCell.appendChild(helmetImg);
-  const itemHighlightOverlay = new MockElement('div', '_1dnmndy85w');
-  helmetCell.appendChild(itemHighlightOverlay);
   itemGrid.appendChild(helmetCell);
   modalDiv.appendChild(itemGrid);
 
@@ -1376,13 +1384,12 @@ try {
   assert.strictEqual(parsedCraft.steelRequired, 1, 'Parsed steel required should be 1');
 
   // Test Random mode parsing
-  itemHighlightOverlay.remove();
-  const randomCell = new MockElement('div', 'ahvacn2');
+  helmetCell._mockBorderStyle = 'none'; // deselect helmet
+  const randomCell = new MockElement('div', 'item-card');
+  randomCell._mockBorderStyle = 'dashed'; // select random
   const qMarkSpan = new MockElement('span');
   qMarkSpan.textContent = '?';
   randomCell.appendChild(qMarkSpan);
-  const randomHighlight = new MockElement('div', '_1dnmndy85w');
-  randomCell.appendChild(randomHighlight);
   itemGrid.appendChild(randomCell);
 
   const parsedRandom = globalThis.parseCraftingState(modalDiv);
