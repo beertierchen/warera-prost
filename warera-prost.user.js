@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.12.5
+// @version      0.12.6
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -63,9 +63,6 @@
   // CONFIG-edit here when the game's markup changes
   // ───────────────────────────────────────────────────────────────────────────
   const CONFIG = {
-    // --- UI ---
-    pillBadgeRightOffset: 280, // px from right edge for the floating pill badge
-
     // --- API ---
     // tRPC base. The script probes both until one answers; first success wins
     // and is cached for the session.
@@ -3546,6 +3543,7 @@
     globalThis.parseHealthAndHunger = parseHealthAndHunger;
     globalThis.updatePillState = updatePillState;
     globalThis.injectPillBadge = injectPillBadge;
+    globalThis.shouldPillFloat = shouldPillFloat;
     globalThis.highlightCocaineItems = highlightCocaineItems;
     globalThis.teardownPillReminder = teardownPillReminder;
     globalThis.tickPillReminder = tickPillReminder;
@@ -5643,9 +5641,7 @@ async function scanInventory(force) {
          badge reads as "another game indicator", not a foreign widget. */
       #wia-pill-badge {
         display: inline-flex; align-items: center; justify-content: center;
-        position: fixed;
-        top: 12px;
-        right: ${CONFIG.pillBadgeRightOffset}px;
+        position: relative; margin: 0 8px;
         font: 600 11px/1 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         border-radius: 999px; padding: 2px 8px; cursor: pointer; user-select: none;
         z-index: 10000; min-height: 26px; box-sizing: border-box;
@@ -5702,6 +5698,26 @@ async function scanInventory(force) {
       }
       #wia-pill-badge:hover .wia-pill-hover-details {
         display: block;
+      }
+      /* Narrow-panel mode: pull the badge OUT of the inline flex flow so it
+         stops widening #layoutUserMenu (which squeezes the native stat
+         bubbles). Pinned bottom-right like the other floating bubbles;
+         mirrors how #wia-pnl-tracker rides a positioned wrapper. Toggled by
+         applyPillFloatState() via a ResizeObserver on the panel width. */
+      #wia-pill-badge.wia-pill-badge--float {
+        position: absolute;
+        right: 8px;
+        bottom: -12px;
+        margin: 0;
+        z-index: 10002;
+      }
+      /* Hover panel would otherwise open downward off the bottom edge when
+         floating — flip it above the badge. */
+      #wia-pill-badge.wia-pill-badge--float .wia-pill-hover-details {
+        top: auto;
+        bottom: 100%;
+        margin-top: 0;
+        margin-bottom: 8px;
       }
       .wia-pill-detail-item { margin-bottom: 6px; }
       .wia-pill-detail-item strong { color: #58a6ff; }
@@ -14220,11 +14236,12 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
   const PILL_OBS_OPTS = { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['style'] };
   let noneReadCount = 0;
   let pillColdStartDone = false;
-  // Panel width (px) below which the pill badge floats out of the inline
-  // flow. Measured against #layoutUserMenu's own box (ResizeObserver), NOT
-  // the viewport — the game panel is user-resizable independent of the window.
-  // Panel width (px) below which the "... frei" labels are hidden to avoid overlap
+  const PILL_FLOAT_BREAKPOINT = 570;
   const PILL_LABEL_HIDE_BREAKPOINT = 400;
+  let pillFloatObserver = null;
+  let pillFloatObservedNode = null;
+  let pillIsFloating = false;
+  let pillResizeRaf = 0;
 
   function initPillReminder() {
     if (pillInterval) clearInterval(pillInterval);
@@ -14236,6 +14253,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       pillObserved = true;
     }
     observePillBars();
+    attachPillFloatObserver();
   }
 
   // Live-update the badge + budget when H&H changes (eat/attack), instead of
@@ -14273,6 +14291,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     document.removeEventListener('click', handlePillDocumentClick);
     pillObserved = false;
     if (pillBarObserver) { pillBarObserver.disconnect(); }
+    detachPillFloatObserver();
     if (pillUpdateTimer) { clearTimeout(pillUpdateTimer); pillUpdateTimer = null; }
     noneReadCount = 0;
     pillColdStartDone = false;
@@ -15289,16 +15308,20 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
                    document.querySelector('header');
     if (!anchor) return;
 
+    if (anchor.id === 'layoutUserMenu' && getComputedStyle(anchor).position === 'static') {
+      anchor.style.position = 'relative';
+    }
+
     let badge = document.getElementById('wia-pill-badge');
     if (!badge) {
       badge = document.createElement('div');
       badge.id = 'wia-pill-badge';
-    }
-    if (badge.parentElement !== document.body) {
-      document.body.appendChild(badge);
+      anchor.appendChild(badge);
     }
 
     renderPillBadge(badge);
+    applyPillFloatState(badge);
+    attachPillFloatObserver();
   }
 
   function renderPillBadge(badge) {
@@ -15306,7 +15329,12 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     const status = parseHealthAndHunger();
     const now = Date.now();
 
-    badge.className = info.badgeClass;
+    const isFloating = badge.classList.contains('wia-pill-badge--float');
+    badge.className = '';
+    badge.classList.add(info.badgeClass);
+    if (isFloating) {
+      badge.classList.add('wia-pill-badge--float');
+    }
 
     const lowestPct = Math.round(Math.min(status.hpPercent, status.hungerPercent));
     const hpNeeded = status.hpMax - status.hpCurrent;
@@ -15392,6 +15420,68 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
   function removePillBadge() {
     const badge = document.getElementById('wia-pill-badge');
     if (badge) badge.remove();
+  }
+
+  function shouldPillFloat(width) {
+    return Number.isFinite(width) && width > 0 && width < PILL_FLOAT_BREAKPOINT;
+  }
+
+  function applyPillFloatState(badge) {
+    if (!badge) return;
+    const menu = document.getElementById('layoutUserMenu');
+    const width = menu
+      ? (typeof menu.getBoundingClientRect === 'function' ? menu.getBoundingClientRect().width : (menu.offsetWidth || 0))
+      : 0;
+    const wantFloat = shouldPillFloat(width);
+    if (wantFloat === pillIsFloating && badge.classList.contains('wia-pill-badge--float') === wantFloat) {
+      return;
+    }
+    pillIsFloating = wantFloat;
+    if (wantFloat) {
+      badge.classList.add('wia-pill-badge--float');
+    } else {
+      badge.classList.remove('wia-pill-badge--float');
+    }
+    dbg('pillReminder', 'debug', 'float', wantFloat, 'panelWidth', Math.round(width));
+  }
+
+  function attachPillFloatObserver() {
+    if (typeof ResizeObserver === 'undefined') {
+      dbg('pillReminder', 'debug', 'ResizeObserver unavailable — float disabled');
+      return;
+    }
+    const menu = document.getElementById('layoutUserMenu');
+    if (!menu) {
+      pillFloatObservedNode = null;
+      return;
+    }
+    if (menu === pillFloatObservedNode) {
+      return;
+    }
+    if (!pillFloatObserver) {
+      pillFloatObserver = new ResizeObserver(() => {
+        if (pillResizeRaf) return;
+        pillResizeRaf = requestAnimationFrame(() => {
+          pillResizeRaf = 0;
+          const badge = document.getElementById('wia-pill-badge');
+          if (badge) applyPillFloatState(badge);
+          renderHnHBudget();
+        });
+      });
+    }
+    pillFloatObserver.disconnect();
+    pillFloatObserver.observe(menu);
+    pillFloatObservedNode = menu;
+  }
+
+  function detachPillFloatObserver() {
+    if (pillFloatObserver) pillFloatObserver.disconnect();
+    if (pillResizeRaf) {
+      cancelAnimationFrame(pillResizeRaf);
+      pillResizeRaf = 0;
+    }
+    pillFloatObservedNode = null;
+    pillIsFloating = false;
   }
 
   function highlightCocaineItems() {
@@ -17981,6 +18071,7 @@ function checkInventoryDeltaWear() {
           pillBarObserver.observe(m, PILL_OBS_OPTS);
         }
       }
+      attachPillFloatObserver();
     }
   }
 

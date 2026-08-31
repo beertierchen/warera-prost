@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## 2026-08-31 | Fix: Pill Badge zurück zu Inline-Layout (v0.12.6)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `tests/pill-float.test.js`, `package.json`
+
+**Änderungen (Deutsch):**
+- **Revert**: Pillen-Badge wieder inline im Spielmenü statt als schwebendes Icon — das Spiel hat das neue Menülayout zurückgefahren.
+
+**Changes (English):**
+- **Revert**: Pill badge back to inline in the game menu instead of floating icon — the game reverted the new menu layout.
+
 ## 2026-08-30 | Fix: UI Layout & Crafting Advisor (v0.12.5)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `package.json`
