@@ -90,10 +90,16 @@
     featAlertCompanyTax: true,
     featAlertCompanyDeposit: true,
     featBetterRegion: true,
+    featBattleMilestoneHelper: false,
+    featBattleMilestoneHelperIntroducedIn: '0.13.0',
+    battlePartCacheTtlMs: 2 * 24 * 60 * 60 * 1000,
     ecoTaxTtlMs: 1800000,
     ecoRecipeTtlMs: 6 * 3600 * 1000,
     ecoDetailTtlMs: 300000,
     stockKeepCount: 3,
+    featNotifHistory: false,
+    featNotifHistoryIntroducedIn: '0.13.0',
+    notifHistoryMax: 30,
 
     // --- caching / rate-limit ---
     priceCacheTtlMs: 20 * 60 * 1000,    // 20 min (spec: 15-30 min)
@@ -303,12 +309,6 @@
     featPillNotifWindow: false,
     featPillNotifDebuff: false,
     featMuHealDim: false,
-    featBattleMilestoneHelper: false,
-    featBattleMilestoneHelperIntroducedIn: '0.13.0',
-    battlePartCacheTtlMs: 2 * 24 * 60 * 60 * 1000,
-    featNotifHistory: false,
-    featNotifHistoryIntroducedIn: '0.13.0',
-    notifHistoryMax: 30,
     featBountyNotify: false,
     featBountyNotif: false,
     bountyMuteDebuff: false,
@@ -414,6 +414,15 @@
         noteUserLabel: 'User',
         settingsFeatScratchpadCheckbox: 'In-game Scratchpad / Notepad (floating panel)',
         settingsFeatScratchpadHint: 'Provides a draggable, persistent notepad for quick notes in-game.',
+        settingsFeatNotifHistory: 'Notification History',
+        settingsFeatNotifHistoryHint: 'Shows a beer bell icon with a history of the last 30 PROST notifications. Click to view past alerts.',
+        notifHistoryTitle: 'Notifications',
+        notifHistoryClearAll: 'Clear All',
+        notifHistoryEmpty: 'Prost, nothing to report!',
+        notifHistoryJustNow: 'just now',
+        notifHistoryMinAgo: '{n}m ago',
+        notifHistoryHourAgo: '{n}h ago',
+        notifHistoryDayAgo: '{n}d ago',
         settingsFeatNotesCheckbox: 'User notes on player links 📒 (experimental)',
         settingsFeatNotesHint: 'Adds a note icon next to player links. Disable if the standalone Warera User Notes script is also active.',
         settingsFeatItemAdvisorCheckbox: 'Item Advisor (KEEP/SELL/SCRAP badges)',
@@ -686,6 +695,8 @@
         supporterAdj7: 'Fearless',
         supporterAdj8: 'Masterful',
         supporterAdj9: 'Invincible',
+        settingsFeatBattlePartMarker: 'Battle Participation Marker (milestone helper)',
+        settingsFeatBattlePartMarkerHint: 'Shows a checkmark on battles you already participated in. Helps track the "Participate in X battles" milestone.',
         settingsFeatProfileCharsheetCheckbox: 'Character Sheet Strip (Player Profiles)',
         settingsFeatProfileCharsheetHint: 'Shows a DnD-style RPG character sheet (HP, Hunger, build orientation) on player profile pages.',
         profileClassWar: 'Warrior',
@@ -825,6 +836,15 @@
         noteUserLabel: 'Benutzer',
         settingsFeatScratchpadCheckbox: 'In-Game Scratchpad / Notizen-Tool (schwebendes Panel)',
         settingsFeatScratchpadHint: 'Bietet einen verschiebbaren, persistenten Notizblock für schnelle Notizen im Spiel.',
+        settingsFeatNotifHistory: 'Benachrichtigungs-Verlauf',
+        settingsFeatNotifHistoryHint: 'Zeigt ein Bier-Glocken-Icon mit dem Verlauf der letzten 30 PROST-Benachrichtigungen.',
+        notifHistoryTitle: 'Benachrichtigungen',
+        notifHistoryClearAll: 'Alle löschen',
+        notifHistoryEmpty: 'Prost, nichts zu melden!',
+        notifHistoryJustNow: 'gerade eben',
+        notifHistoryMinAgo: 'vor {n}m',
+        notifHistoryHourAgo: 'vor {n}h',
+        notifHistoryDayAgo: 'vor {n}d',
         settingsFeatNotesCheckbox: 'Spieler-Notizen bei Spieler-Links 📒 (experimentell)',
         settingsFeatNotesHint: 'Fügt ein Notiz-Icon neben Spieler-Links hinzu. Deaktivieren, wenn das separate Warera User Notes-Script ebenfalls aktiv ist.',
         settingsFeatItemAdvisorCheckbox: 'Item Advisor (KEEP/SELL/SCRAP Badges)',
@@ -1097,6 +1117,8 @@
         supporterAdj7: 'Furchtloser',
         supporterAdj8: 'Meisterhafter',
         supporterAdj9: 'Unbezwingbarer',
+        settingsFeatBattlePartMarker: 'Schlacht-Teilnahme-Marker (Meilenstein-Helfer)',
+        settingsFeatBattlePartMarkerHint: 'Zeigt ein Häkchen bei Schlachten, an denen du bereits teilgenommen hast. Hilft beim Tracking des "Nimm an X Schlachten teil"-Meilensteins.',
         settingsFeatProfileCharsheetCheckbox: 'Charakterbogen-Strip (Spieler-Profile)',
         settingsFeatProfileCharsheetHint: 'Zeigt einen DnD-artigen Charakterbogen (Leben, Hunger, Skill-Klasse) auf Spieler-Profilseiten.',
         profileClassWar: 'Krieger',
@@ -1292,7 +1314,7 @@
     systemAlertSeenSeq: NS + 'systemAlertSeenSeq',
     tourDismissed: NS + 'tourDismissed',   // user chose "don't show again" for the onboarding prompt
     tourCompleted: NS + 'tourCompleted',   // token successfully configured via the tour
-    featBattleMilestoneHelper: NS + 'featBattleMilestoneHelper',
+    featBattleMilestoneHelper: NS + 'featBattlePartMarker',
     battlePartCache: NS + 'battlePartCache',
     featNotifHistory: NS + 'featNotifHistory',
     notifHistory: NS + 'notifHistory',
@@ -2014,6 +2036,14 @@
       const modal = document.querySelector('div[id^="headlessui-dialog-panel-"]');
       if (!modal) return ['idle', 'crafting modal not open'];
       return modal.querySelector('.wia-craft-advisor-panel') ? ['ok', ''] : ['warn', 'panel not rendered yet'];
+    },
+    battlePartMarker() {
+      if (!CONFIG.featBattleMilestoneHelper) return ['idle', 'disabled in settings'];
+      if (!getPagePathname().startsWith('/battles')) return ['idle', 'not on battles list'];
+      const links = document.querySelectorAll('a[href*="/battle/"]');
+      if (!links.length) return ['warn', 'no battle links found'];
+      const checks = document.querySelectorAll('.wia-battle-part-check').length;
+      return checks > 0 ? ['ok', `${checks} markers placed`] : ['warn', 'markers not placed yet'];
     },
     notes() {
       if (!CONFIG.featNotes) return ['idle', 'disabled in settings'];
@@ -5068,15 +5098,25 @@ async function scanInventory(force) {
     }
     .wia-eco-region-pill svg { flex-shrink: 0; }
 
+    /* ====== FLOATING ICON DOCK ====== */
+    .wia-dock {
+      position: fixed;
+      top: 12px;
+      left: 16px;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
     /* ====== EQUIP SELL CALC ====== */
     .wia-equip-sell-fab {
-      position:fixed; top:58px; left:16px; width:38px; height:38px; border-radius:50%;
+      width:38px; height:38px; border-radius:50%;
       background:#21262d; border:1px solid #30363d; z-index:9998; cursor:pointer;
       display:flex; align-items:center; justify-content:center; box-shadow:0 2px 8px #00000066;
       transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     }
     .wia-equip-sell-fab:hover { border-color: #7c3aed; background: #30363d; transform: scale(1.05); }
-    .wia-equip-sell-fab.wia-calc-no-sp { top:12px; }
     
     .wia-equip-sell-panel {
       position:fixed; top:58px; left:50%; transform:translateX(-50%); width:296px; background:#161b22;
@@ -5095,9 +5135,7 @@ async function scanInventory(force) {
     /* ====== SCRATCHPAD ====== */
 
     .sp-trigger {
-      position: fixed;
-      top: 12px;
-      left: 16px;
+      position: relative;
       width: 38px;
       height: 38px;
       background: #161b22;
@@ -5874,6 +5912,18 @@ async function scanInventory(force) {
         flex-shrink: 0;
       }
 
+      /* ── Battle Participation Marker ── */
+      .wia-battle-part-check {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: #4ade80;
+        font-size: 14px;
+        font-weight: bold;
+        margin-left: 6px;
+        text-shadow: 0 0 4px rgba(74, 222, 128, 0.4);
+      }
+
       /* ── Resource Market Intraday Graph ── */
       .wia-mkt-toggle-row {
         display: flex;
@@ -6448,6 +6498,127 @@ async function scanInventory(force) {
       .wia-charsheet .wia-cs-bar.hu .fill { background: #c1842b; }
       .wia-charsheet .wia-cs-bar.hu .lbl, .wia-charsheet .wia-cs-bar.hu .val { color: #fbeeda; }
       @media (max-width: 480px) { .wia-charsheet .wia-cs-bars { grid-template-columns: 1fr; } }
+
+      /* ====== NOTIFICATION HISTORY ====== */
+      .wia-notif-bell {
+        position: fixed;
+        top: 58px;
+        left: 16px;
+        width: 38px;
+        height: 38px;
+        background: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 50%;
+        box-shadow: 0 4px 14px rgba(0,0,0,.5);
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.1s;
+      }
+      .wia-notif-bell:hover {
+        background: #21262d;
+        border-color: #f59e0b;
+      }
+      .wia-notif-bell svg { color: #e6edf3; }
+      .wia-notif-badge {
+        position: absolute;
+        top: -4px;
+        right: -4px;
+        min-width: 16px;
+        height: 16px;
+        background: #ef4444;
+        color: #fff;
+        font-size: 9px;
+        font-weight: bold;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 3px;
+      }
+      .wia-notif-panel {
+        position: fixed;
+        top: 58px;
+        left: 64px;
+        width: 320px;
+        max-height: 420px;
+        background: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 10px;
+        z-index: 9997;
+        box-shadow: 0 8px 32px #000000aa;
+        display: flex;
+        flex-direction: column;
+        animation: wia-fade-scale 0.15s ease-out forwards;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      }
+      .wia-notif-panel-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 14px;
+        border-bottom: 1px solid rgba(148,163,184,0.15);
+        cursor: grab;
+      }
+      .wia-notif-panel-header:active { cursor: grabbing; }
+      .wia-notif-panel-header span {
+        font-weight: bold;
+        font-size: 14px;
+        color: #f0f6fc;
+      }
+      .wia-notif-clear-btn {
+        background: transparent;
+        border: 1px solid rgba(148,163,184,0.2);
+        color: #8b949e;
+        font-size: 10px;
+        padding: 2px 8px;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      .wia-notif-clear-btn:hover { color: #f85149; border-color: rgba(248,81,73,0.4); }
+      .wia-notif-panel-body {
+        overflow-y: auto;
+        padding: 8px;
+        flex: 1;
+      }
+      .wia-notif-entry {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        padding: 8px;
+        border-bottom: 1px solid rgba(148,163,184,0.08);
+      }
+      .wia-notif-entry:last-child { border-bottom: none; }
+      .wia-notif-entry-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .wia-notif-src {
+        font-size: 9px;
+        font-weight: bold;
+        padding: 1px 5px;
+        border-radius: 3px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      .wia-notif-time {
+        font-size: 10px;
+        color: #8b949e;
+      }
+      .wia-notif-msg {
+        font-size: 12px;
+        color: #c9d1d9;
+        line-height: 1.4;
+      }
+      .wia-notif-empty {
+        text-align: center;
+        padding: 32px 16px;
+        color: #8b949e;
+        font-size: 13px;
+      }
     `);
   }
 
@@ -6573,6 +6744,7 @@ async function scanInventory(force) {
     const hasKey = !!prevToken.trim();
     const prevFeatNotes = bg.querySelector('.wia-feat-notes')?.checked ?? CONFIG.featNotes;
     const prevFeatScratchpad = bg.querySelector('.wia-feat-scratchpad')?.checked ?? CONFIG.featScratchpad;
+    const prevFeatNotifHistory = bg.querySelector('.wia-feat-notif-history')?.checked ?? CONFIG.featNotifHistory;
     const prevFeatBattle = bg.querySelector('.wia-feat-battle')?.checked ?? CONFIG.featBattleAdvisor;
     const prevFeatPill = bg.querySelector('.wia-feat-pill')?.checked ?? CONFIG.featPillReminder;
     const prevFeatMuHealDim = bg.querySelector('.wia-feat-mu-heal-dim')?.checked ?? CONFIG.featMuHealDim;
@@ -6590,6 +6762,7 @@ async function scanInventory(force) {
     const prevFeatOrderRadar = bg.querySelector('.wia-feat-order-radar')?.checked ?? CONFIG.featOrderRadar;
     const prevFeatTroopRadar = bg.querySelector('.wia-feat-troop-radar')?.checked ?? CONFIG.featTroopRadar;
     const prevFeatProfileCharsheet = bg.querySelector('.wia-feat-profile-charsheet')?.checked ?? CONFIG.featProfileCharsheet;
+    const prevFeatBattlePartMarker = bg.querySelector('.wia-feat-battle-part-marker')?.checked ?? CONFIG.featBattleMilestoneHelper;
     const prevPillBuff = bg.querySelector('.wia-pill-buff')?.value ?? CONFIG.pillBuffH;
     const prevPillKnife = bg.querySelector('.wia-pill-knife')?.value ?? CONFIG.pillKnifeH;
     const prevPillDebuff = bg.querySelector('.wia-pill-debuff')?.value ?? CONFIG.pillDebuffH;
@@ -6676,6 +6849,14 @@ async function scanInventory(force) {
               <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
             </div>
             <div class="wia-hint" hidden>${t('settingsFeatProfileCharsheetHint')}</div>
+          </div>
+          <div class="wia-feat-row" data-feat-id="featBattleMilestoneHelper" style="margin-top: 6px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <input type="checkbox" class="wia-feat-battle-part-marker" style="width: auto;" ${prevFeatBattlePartMarker ? 'checked' : ''} />
+              <label style="margin: 0; font-weight: normal; cursor: pointer;">${renderFeatLabel('featBattleMilestoneHelper', t('settingsFeatBattlePartMarker'))}</label>
+              <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
+            </div>
+            <div class="wia-hint" hidden>${t('settingsFeatBattlePartMarkerHint')}</div>
           </div>
           <div class="wia-feat-row" style="margin-top: 6px;">
             <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%;">
@@ -6869,6 +7050,14 @@ async function scanInventory(force) {
               <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
             </div>
             <div class="wia-hint" hidden>${t('settingsFeatScratchpadHint')}</div>
+          </div>
+          <div class="wia-feat-row" data-feat-id="featNotifHistory" style="margin-top: 6px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <input type="checkbox" class="wia-feat-notif-history" style="width: auto;" ${prevFeatNotifHistory ? 'checked' : ''} />
+              <label style="margin: 0; font-weight: normal; cursor: pointer;">${renderFeatLabel('featNotifHistory', t('settingsFeatNotifHistory'))}</label>
+              <button type="button" class="wia-hint-toggle" aria-expanded="false" aria-label="${t('hintToggleLabel')}" title="${t('hintToggleLabel')}">ℹ</button>
+            </div>
+            <div class="wia-hint" hidden>${t('settingsFeatNotifHistoryHint')}</div>
           </div>
           <div class="wia-feat-row" data-feat-id="featNotes" style="margin-top: 6px;">
             <div style="display: flex; align-items: center; gap: 8px;">
@@ -7307,6 +7496,11 @@ async function scanInventory(force) {
       CONFIG.featScratchpad = featScratchpad;
       if (featScratchpad) { guard('scratchpad', initScratchpad); } else { teardownScratchpad(); }
 
+      const featNotifHistory = bg.querySelector('.wia-feat-notif-history').checked;
+      GM_setValue(KEYS.featNotifHistory, featNotifHistory);
+      CONFIG.featNotifHistory = featNotifHistory;
+      if (featNotifHistory) { guard('notifHistory', initNotifHistory); } else { teardownNotifHistory(); }
+
       const featBattle = bg.querySelector('.wia-feat-battle').checked;
       GM_setValue(KEYS.featBattleAdvisor, featBattle);
       CONFIG.featBattleAdvisor = featBattle;
@@ -7326,6 +7520,11 @@ async function scanInventory(force) {
       GM_setValue(KEYS.featProfileCharsheet, featProfileCharsheet);
       CONFIG.featProfileCharsheet = featProfileCharsheet;
       if (featProfileCharsheet && isUserProfilePage()) { applyProfileCharsheet(); } else { removeProfileCharsheet(); }
+
+      const featBattlePartMarker = bg.querySelector('.wia-feat-battle-part-marker').checked;
+      GM_setValue(KEYS.featBattleMilestoneHelper, featBattlePartMarker);
+      CONFIG.featBattleMilestoneHelper = featBattlePartMarker;
+      if (featBattlePartMarker) { guard('battlePartMarker', initBattlePartMarker); } else { teardownBattlePartMarker(); }
 
       const featPill = bg.querySelector('.wia-feat-pill').checked;
       GM_setValue(KEYS.featPillReminder, featPill);
@@ -8286,6 +8485,12 @@ function updateObserverTarget() {
       } else {
         teardownSharedBodyObserver();
       }
+    } else if (pagePath.startsWith('/battles')) {
+      observer.disconnect();
+      if (CONFIG.featBattleMilestoneHelper) {
+        guard('battlePartMarker', initBattlePartMarker);
+        initSharedBodyObserver();
+      }
     } else if (isBattlePage()) {
       observer.disconnect();
       if (CONFIG.featBattleAdvisor) {
@@ -8324,6 +8529,7 @@ function updateObserverTarget() {
       }
     } else {
       teardownBattleAdvisory();
+      teardownBattlePartMarker();
       if (CONFIG.featCompanyEco) guard('companyEco', teardownCompanyEco);
       const orderRadarEl = document.getElementById('wia-order-radar');
       if (orderRadarEl) orderRadarEl.remove();
@@ -8496,6 +8702,34 @@ function updateObserverTarget() {
     setHealth('battleAdvisor', 'idle', 'disabled in settings');
     setHealth('orderRadar', 'idle', 'disabled in settings');
     setHealth('troopRadar', 'idle', 'disabled in settings');
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Floating Icon Dock
+  // ───────────────────────────────────────────────────────────────────────────
+
+  let _wiaDock = null;
+
+  function dockRegister(slotId, element) {
+    element.setAttribute('data-dock-slot', String(slotId));
+    if (!_wiaDock) {
+      _wiaDock = document.createElement('div');
+      _wiaDock.className = 'wia-dock';
+      document.body.appendChild(_wiaDock);
+    }
+    _wiaDock.appendChild(element);
+    const children = Array.from(_wiaDock.children);
+    children.sort((a, b) => Number(a.getAttribute('data-dock-slot')) - Number(b.getAttribute('data-dock-slot')));
+    children.forEach(c => _wiaDock.appendChild(c));
+  }
+
+  function dockUnregister(element) {
+    if (!element || !_wiaDock) return;
+    if (_wiaDock.contains(element)) _wiaDock.removeChild(element);
+    if (_wiaDock.children.length === 0) {
+      _wiaDock.remove();
+      _wiaDock = null;
+    }
   }
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -8818,7 +9052,7 @@ function handleSpBeforeUnload() {
 let handleRouteChangeRef = null;
 
 function teardownScratchpad() {
-  if (spTrigger) { spTrigger.remove(); spTrigger = null; }
+  if (spTrigger) { dockUnregister(spTrigger); spTrigger.remove(); spTrigger = null; }
   if (spQuickCreate) { spQuickCreate.remove(); spQuickCreate = null; }
   if (spPanel) { spPanel.remove(); spPanel = null; }
   window.removeEventListener('keydown', handleSpGlobalEsc);
@@ -8869,7 +9103,7 @@ function initScratchpad() {
     createNewNote();
   };
 
-  document.body.appendChild(spTrigger);
+  dockRegister(1, spTrigger);
   document.body.appendChild(spQuickCreate);
 
   spPanel = document.createElement('div');
@@ -14343,6 +14577,15 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     return s ? `${t}-${s}` : t;
   }
 
+  function logNotification(src, msg) {
+    if (!CONFIG.featNotifHistory) return;
+    const history = GM_getValue(KEYS.notifHistory, []);
+    history.unshift({ ts: Date.now(), src, msg });
+    if (history.length > CONFIG.notifHistoryMax) history.length = CONFIG.notifHistoryMax;
+    GM_setValue(KEYS.notifHistory, history);
+    updateNotifBellBadge();
+  }
+
   function showLocalPersonalPopup(type, title, body, icon = '🔔', sticky = false) {
     try {
       ensureBountyPopupStyle();
@@ -14407,6 +14650,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
   }
 
   async function sendPersonalNtfy(type, title, body, tags, priority = 'default', clickUrl = null) {
+    logNotification(type, title + ': ' + body);
     let icon = '🔔';
     if (tags.includes('poultry_leg')) icon = '🍗';
     else if (tags.includes('alarm_clock')) icon = '⏰';
@@ -16831,6 +17075,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
 
   function teardownEquipSellCalcUI() {
     if (equipSellCalcFab) {
+      dockUnregister(equipSellCalcFab);
       equipSellCalcFab.remove();
       equipSellCalcFab = null;
     }
@@ -16897,7 +17142,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     if (equipSellCalcFab && document.body.contains(equipSellCalcFab)) return;
     
     equipSellCalcFab = document.createElement('div');
-    equipSellCalcFab.className = 'wia-equip-sell-fab' + (CONFIG.featScratchpad ? '' : ' wia-calc-no-sp');
+    equipSellCalcFab.className = 'wia-equip-sell-fab';
     equipSellCalcFab.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#e6edf3" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><circle cx="9" cy="11" r="0.5" fill="#e6edf3"/><circle cx="15" cy="11" r="0.5" fill="#e6edf3"/><circle cx="9" cy="15" r="0.5" fill="#e6edf3"/><circle cx="15" cy="15" r="0.5" fill="#e6edf3"/><line x1="9" y1="19" x2="15" y2="19"/></svg>`;
     
     equipSellCalcFab.onclick = (e) => {
@@ -16909,7 +17154,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       }
     };
     
-    document.body.appendChild(equipSellCalcFab);
+    dockRegister(3, equipSellCalcFab);
   }
 
   function showEquipSellCalcPanel() {
@@ -16917,7 +17162,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     const lastPrice = GM_getValue(KEYS.equipSellCalcLastPrice, 100);
 
     equipSellCalcPanel = document.createElement('div');
-    equipSellCalcPanel.className = 'wia-equip-sell-panel' + (CONFIG.featScratchpad ? '' : ' wia-calc-no-sp');
+    equipSellCalcPanel.className = 'wia-equip-sell-panel';
 
     const calcHtml = `
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid rgba(148,163,184,0.15); padding-bottom: 8px;">
@@ -19285,6 +19530,7 @@ function checkInventoryDeltaWear() {
   }
 
   async function showBountyPopup(bounty) {
+    logNotification('Bounty', (bounty.country || 'Unknown') + ' (' + (bounty.side || '?') + ') ' + (bounty.moneyPool || 0));
     try {
       ensureBountyPopupStyle();
       const doc = document;
@@ -20090,6 +20336,7 @@ function checkInventoryDeltaWear() {
           const env = JSON.parse(msg.message);
           const valid = await verifySystemAlertMsg(env);
           if (valid) {
+            logNotification('System', env.payload);
             showLocalPersonalPopup('system', 'SYSTEM ALERT', env.payload, '⚠️', true);
             if (CONFIG.featBountyNotify && CONFIG.featBountyNotif) {
               const personalTopic = getEffectivePersonalTopic();
@@ -20126,6 +20373,270 @@ function checkInventoryDeltaWear() {
   }
   function teardownSystemAlerts() {
     if (systemAlertsInterval) { clearInterval(systemAlertsInterval); systemAlertsInterval = null; }
+  }
+
+  // ═══════════════════════════════════════════════════
+  // BATTLE PARTICIPATION MARKER
+  // ═══════════════════════════════════════════════════
+
+  let battlePartMarkerActive = false;
+
+  function loadBattlePartCache() {
+    const raw = GM_getValue(KEYS.battlePartCache, {});
+    const cutoff = Date.now() - CONFIG.battlePartCacheTtlMs;
+    const cleaned = {};
+    for (const [id, entry] of Object.entries(raw)) {
+      if (entry && entry.ts >= cutoff) cleaned[id] = entry;
+    }
+    return cleaned;
+  }
+
+  function saveBattlePartCache(cache) {
+    GM_setValue(KEYS.battlePartCache, cache);
+  }
+
+  async function checkBattleParticipation(battleId, userId, cache) {
+    if (cache[battleId] && cache[battleId].ts >= Date.now() - CONFIG.battlePartCacheTtlMs) {
+      return cache[battleId].participated;
+    }
+    try {
+      const res = await resolveApiBase('battleLootSummary.getByBattleAndUser', { battleId, userId });
+      const participated = !!(res && res.hits > 0);
+      cache[battleId] = { participated, ts: Date.now() };
+      saveBattlePartCache(cache);
+      return participated;
+    } catch (e) {
+      dbg('battlePartMarker', 'error', 'API check failed for battle', battleId, e.message);
+      return null;
+    }
+  }
+
+  async function initBattlePartMarker() {
+    regFeature('battlePartMarker', 'Battle Participation Marker');
+
+    if (!CONFIG.featBattleMilestoneHelper) {
+      setHealth('battlePartMarker', 'idle', 'disabled in settings');
+      return;
+    }
+    if (!getPagePathname().startsWith('/battles')) {
+      setHealth('battlePartMarker', 'idle', 'not on battles page');
+      return;
+    }
+
+    const userId = getCurrentUserId();
+    if (!userId) {
+      setHealth('battlePartMarker', 'fail', 'could not determine user id');
+      return;
+    }
+
+    const links = pick('battlePartMarker', 'a[href*="/battle/"]');
+    if (!links.length) {
+      return;
+    }
+
+    const cache = loadBattlePartCache();
+    let placed = 0;
+    let errors = 0;
+    battlePartMarkerActive = true;
+
+    for (const link of links) {
+      if (!battlePartMarkerActive) return;
+
+      const href = link.getAttribute('href') || '';
+      const match = href.match(/\/battle\/([0-9a-zA-Z]+)/);
+      if (!match) continue;
+      const battleId = match[1];
+
+      // Walk up to find the card container
+      const card = link.closest('[class]')?.parentElement?.closest('[class]') || link.parentElement?.parentElement;
+      if (!card) continue;
+
+      if (card.querySelector('.wia-battle-part-check')) continue;
+
+      const participated = await checkBattleParticipation(battleId, userId, cache);
+      if (participated === null) { errors++; continue; }
+      if (!participated) continue;
+
+      const badge = document.createElement('span');
+      badge.className = 'wia-battle-part-check';
+      badge.textContent = '✓';
+      badge.title = 'Participated';
+
+      // Append the marker near the link
+      link.parentElement.appendChild(badge);
+      placed++;
+    }
+
+    if (errors > 0 && placed === 0) {
+      setHealth('battlePartMarker', 'fail', `all ${errors} API checks failed`);
+    } else if (placed > 0) {
+      setHealth('battlePartMarker', 'ok', `${placed} markers placed`);
+    } else {
+      setHealth('battlePartMarker', 'ok', 'no participations found');
+    }
+  }
+
+  function teardownBattlePartMarker() {
+    battlePartMarkerActive = false;
+    document.querySelectorAll('.wia-battle-part-check').forEach(el => el.remove());
+  }
+
+  const NOTIF_BELL_SVG = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M8 2v2M16 2v2"/>
+    <path d="M5 8c0-2 1.5-4 4-4h6c2.5 0 4 2 4 4v6c0 1-0.5 2-1 2.5L17 18H7l-1-1.5C5.5 16 5 15 5 14V8z"/>
+    <path d="M17 18c0 2-2 4-5 4s-5-2-5-4"/>
+    <path d="M9 11h3"/>
+  </svg>`;
+
+  let notifBellEl = null;
+  let notifPanelEl = null;
+
+  function formatRelativeTime(ts) {
+    const diff = Date.now() - ts;
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return t('notifHistoryJustNow');
+    if (mins < 60) return t('notifHistoryMinAgo', { n: mins });
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return t('notifHistoryHourAgo', { n: hours });
+    const days = Math.floor(hours / 24);
+    return t('notifHistoryDayAgo', { n: days });
+  }
+
+  function getNotifSrcStyle(src) {
+    const s = (src || '').toLowerCase();
+    if (s === 'hnh' || s === 'pill') return 'background:rgba(16,185,129,0.15);color:#10b981';
+    if (s === 'window') return 'background:rgba(251,191,36,0.15);color:#fbbf24';
+    if (s === 'debuff') return 'background:rgba(139,92,246,0.15);color:#8b5cf6';
+    if (s === 'storage' || s === 'company') return 'background:rgba(59,130,246,0.15);color:#3b82f6';
+    if (s === 'bounty') return 'background:rgba(239,68,68,0.15);color:#ef4444';
+    if (s === 'system') return 'background:rgba(239,68,68,0.2);color:#f87171';
+    return 'background:rgba(148,163,184,0.15);color:#94a3b8';
+  }
+
+  function updateNotifBellBadge() {
+    if (!notifBellEl) return;
+    const badge = notifBellEl.querySelector('.wia-notif-badge');
+    if (!badge) return;
+    const history = GM_getValue(KEYS.notifHistory, []);
+    const readTs = GM_getValue(KEYS.notifReadTs, 0);
+    const count = history.filter(e => e.ts > readTs).length;
+    if (count > 0) {
+      badge.textContent = count > 9 ? '9+' : String(count);
+      badge.style.display = 'flex';
+    } else {
+      badge.style.display = 'none';
+    }
+  }
+
+  function renderNotifPanel() {
+    if (!notifPanelEl) return;
+    const body = notifPanelEl.querySelector('.wia-notif-panel-body');
+    if (!body) return;
+    const history = GM_getValue(KEYS.notifHistory, []);
+    if (!history.length) {
+      body.innerHTML = `<div class="wia-notif-empty">${t('notifHistoryEmpty')}</div>`;
+      return;
+    }
+    let html = '';
+    for (const entry of history) {
+      const srcStyle = getNotifSrcStyle(entry.src);
+      const time = formatRelativeTime(entry.ts);
+      const safeMsg = (entry.msg || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const safeSrc = (entry.src || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      html += `<div class="wia-notif-entry">` +
+        `<div class="wia-notif-entry-header">` +
+          `<span class="wia-notif-src" style="${srcStyle}">${safeSrc}</span>` +
+          `<span class="wia-notif-time">${time}</span>` +
+        `</div>` +
+        `<div class="wia-notif-msg">${safeMsg}</div>` +
+      `</div>`;
+    }
+    body.innerHTML = html;
+  }
+
+  function initNotifHistory() {
+    regFeature('notifHistory', 'Notification History');
+
+    if (notifBellEl) notifBellEl.remove();
+    if (notifPanelEl) notifPanelEl.remove();
+
+    const bell = document.createElement('div');
+    bell.className = 'wia-notif-bell';
+    bell.innerHTML = NOTIF_BELL_SVG + '<span class="wia-notif-badge" style="display:none"></span>';
+    document.body.appendChild(bell);
+    notifBellEl = bell;
+
+    const panel = document.createElement('div');
+    panel.className = 'wia-notif-panel';
+    panel.style.display = 'none';
+    panel.innerHTML =
+      `<div class="wia-notif-panel-header">` +
+        `<span>${t('notifHistoryTitle')}</span>` +
+        `<button class="wia-notif-clear-btn">${t('notifHistoryClearAll')}</button>` +
+      `</div>` +
+      `<div class="wia-notif-panel-body"></div>`;
+    document.body.appendChild(panel);
+    notifPanelEl = panel;
+
+    bell.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const visible = panel.style.display !== 'none';
+      if (visible) {
+        panel.style.display = 'none';
+      } else {
+        GM_setValue(KEYS.notifReadTs, Date.now());
+        updateNotifBellBadge();
+        renderNotifPanel();
+        panel.style.display = 'flex';
+      }
+    });
+
+    panel.querySelector('.wia-notif-clear-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      GM_setValue(KEYS.notifHistory, []);
+      GM_setValue(KEYS.notifReadTs, Date.now());
+      updateNotifBellBadge();
+      renderNotifPanel();
+    });
+
+    document.addEventListener('click', (e) => {
+      if (notifPanelEl && notifPanelEl.style.display !== 'none' &&
+          !notifPanelEl.contains(e.target) && !notifBellEl.contains(e.target)) {
+        notifPanelEl.style.display = 'none';
+      }
+    });
+
+    let dragState = null;
+    const header = panel.querySelector('.wia-notif-panel-header');
+    header.addEventListener('mousedown', (e) => {
+      if (e.target.closest('.wia-notif-clear-btn')) return;
+      e.preventDefault();
+      const rect = panel.getBoundingClientRect();
+      dragState = { startX: e.clientX, startY: e.clientY, origLeft: rect.left, origTop: rect.top };
+      panel.style.transition = 'none';
+    });
+    document.addEventListener('mousemove', (e) => {
+      if (!dragState) return;
+      const dx = e.clientX - dragState.startX;
+      const dy = e.clientY - dragState.startY;
+      panel.style.left = (dragState.origLeft + dx) + 'px';
+      panel.style.top = (dragState.origTop + dy) + 'px';
+    });
+    document.addEventListener('mouseup', () => {
+      if (dragState) {
+        dragState = null;
+        panel.style.transition = '';
+      }
+    });
+
+    updateNotifBellBadge();
+    setHealth('notifHistory', 'ok');
+  }
+
+  function teardownNotifHistory() {
+    if (notifBellEl) { notifBellEl.remove(); notifBellEl = null; }
+    if (notifPanelEl) { notifPanelEl.remove(); notifPanelEl = null; }
+    setHealth('notifHistory', 'idle', 'disabled');
   }
 
   function start() {
@@ -20189,6 +20700,7 @@ function checkInventoryDeltaWear() {
     regFeature('pillReminder', 'Pill Reminder');
     regFeature('muHealDim', 'MU Heal Dim');
     regFeature('notes', 'User Notes');
+    regFeature('notifHistory', 'Notification History');
     regFeature('api', 'API Layer');
     // bountyNotify is registered earlier in init
     regFeature('tour', 'Tour of Beers');
@@ -20199,6 +20711,7 @@ function checkInventoryDeltaWear() {
     regFeature('wageMedian', 'Wage Median Sparkline');
     regFeature('troopRadar', 'Troop Radar');
     regFeature('profileCharsheet', 'Profile Charsheet');
+    regFeature('battlePartMarker', 'Battle Participation Marker');
     regFeature('equipSellCalc', 'Equip. Sell Calc.');
     // one-shot onboarding prompt, once the game shell (avatar) is present
     (function scheduleTourPrompt() {
@@ -20216,6 +20729,7 @@ function checkInventoryDeltaWear() {
     CONFIG.stockKeepCount = Number.parseInt(GM_getValue(KEYS.stockKeepCount, 3), 10) || 3;
     CONFIG.featPnlTracker = GM_getValue(KEYS.featPnlTracker, false);
     CONFIG.featScratchpad = GM_getValue(KEYS.featScratchpad, false);
+    CONFIG.featNotifHistory = GM_getValue(KEYS.featNotifHistory, false);
     CONFIG.featNotes = GM_getValue(KEYS.featNotes, false);
     CONFIG.featBattleAdvisor = GM_getValue(KEYS.featBattleAdvisor, false);
     CONFIG.featOrderRadar = GM_getValue(KEYS.featOrderRadar, true);
@@ -20249,6 +20763,7 @@ function checkInventoryDeltaWear() {
     CONFIG.featAlertCompanyDeposit = GM_getValue(KEYS.featAlertCompanyDeposit, true);
     CONFIG.featBetterRegion = GM_getValue(KEYS.featBetterRegion, true);
     CONFIG.featSystemAlerts = GM_getValue(KEYS.featSystemAlerts, true);
+    CONFIG.featBattleMilestoneHelper = GM_getValue(KEYS.featBattleMilestoneHelper, false);
     CONFIG.pillBuffH = GM_getValue(KEYS.pillBuffH, CONFIG.pillBuffH);
     CONFIG.pillKnifeH = GM_getValue(KEYS.pillKnifeH, CONFIG.pillKnifeH);
     CONFIG.pillDebuffH = GM_getValue(KEYS.pillDebuffH, CONFIG.pillDebuffH);
@@ -20257,6 +20772,7 @@ function checkInventoryDeltaWear() {
     injectStyles();
     // Each entrypoint guarded → a crash in one feature can't abort the rest of start().
     if (CONFIG.featScratchpad) guard('scratchpad', initScratchpad); else setHealth('scratchpad', 'idle', 'disabled in settings');
+    if (CONFIG.featNotifHistory) guard('notifHistory', initNotifHistory); else setHealth('notifHistory', 'idle', 'disabled in settings');
     if (CONFIG.featNotes) guard('notes', initNotes); else setHealth('notes', 'idle', 'disabled in settings');
     if (CONFIG.featBattleAdvisor) {
       guard('battleAdvisor', refreshAlliedCodes);
@@ -20292,6 +20808,12 @@ function checkInventoryDeltaWear() {
     if (CONFIG.featBountyNotify) guard('bountyNotify', initBountyNotify); else setHealth('bountyNotify', 'idle', 'disabled in settings');
     if (CONFIG.featAlertCompanyStorage || CONFIG.featAlertCompanyBonus || CONFIG.featAlertCompanyTax || CONFIG.featAlertCompanyDeposit || CONFIG.featBetterRegion) guard('companyTracking', initCompanyTracking); else setHealth('companyTracking', 'idle', 'disabled in settings');
     if (CONFIG.featSystemAlerts) initSystemAlerts();
+    if (CONFIG.featBattleMilestoneHelper) {
+      if (getPagePathname().startsWith('/battles')) {
+        guard('battlePartMarker', initBattlePartMarker);
+        initSharedBodyObserver();
+      } else setHealth('battlePartMarker', 'idle', 'not on battles page');
+    } else setHealth('battlePartMarker', 'idle', 'disabled in settings');
     injectGear();
     refreshMenuCommands();
     checkForUpdates(false);

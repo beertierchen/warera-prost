@@ -701,7 +701,7 @@ try {
   assert.ok(modalEl, 'Settings modal should be rendered');
 
   const hintToggles = bg.querySelectorAll('.wia-hint-toggle');
-  assert.strictEqual(hintToggles.length, 13, 'Should have exactly 13 hint toggle buttons');
+  assert.strictEqual(hintToggles.length, 15, 'Should have exactly 15 hint toggle buttons');
 
   const featPillCheckbox = bg.querySelector('.wia-feat-pill');
   const featMarketGraphCheckbox = bg.querySelector('.wia-feat-market-graph');
