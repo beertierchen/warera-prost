@@ -8449,8 +8449,8 @@ function updateObserverTarget() {
     });
     lastPath = pagePath;
     cachedCards = null;
-    lastInventoryCards = null; // Reset fingerprint on route change
-    lastInventoryCardTexts.clear();
+    
+    
     lastMktState = null;
     bypassNextScanDebounce = true;
 
@@ -8486,6 +8486,7 @@ function updateObserverTarget() {
         teardownSharedBodyObserver();
       }
     } else if (pagePath.startsWith('/battles')) {
+      dbg('battlePartMarker', 'debug', 'Entered /battles route handler block');
       if (typeof resetBattleCheckThrottle === 'function') resetBattleCheckThrottle();
       observer.disconnect();
       if (CONFIG.featBattleMilestoneHelper) {
@@ -20426,10 +20427,16 @@ function checkInventoryDeltaWear() {
     if (battlePartMarkerProcessing) return;
 
     const userId = getCurrentUserId();
-    if (!userId) return;
+    if (!userId) {
+      dbg('battlePartMarker', 'warn', 'userId is null in ensureBattlePartMarkerInjected');
+      return;
+    }
 
     const links = document.querySelectorAll('a[href*="/battle/"]');
-    if (!links.length) return;
+    if (!links.length) {
+      dbg('battlePartMarker', 'warn', 'no battle links in ensureBattlePartMarkerInjected');
+      return;
+    }
 
     battlePartMarkerProcessing = true;
     try {
@@ -20438,7 +20445,6 @@ function checkInventoryDeltaWear() {
       let totalFound = 0;
       const now = Date.now();
 
-      // 1. Gather all battle IDs that need checking
       const toCheck = [];
       const linkMap = new Map();
 
@@ -20459,13 +20465,10 @@ function checkInventoryDeltaWear() {
         if (!linkMap.has(battleId)) linkMap.set(battleId, []);
         linkMap.get(battleId).push({ link, card });
 
-        // If permanently cached as true, we don't need to check
         if (cache[battleId] && cache[battleId].participated) {
           continue;
         }
 
-        // Throttle checks for the same battle ID to once every 10 seconds in memory
-        // This prevents API spam while sitting on the battles page (timers ticking etc.)
         const lastChecked = battleCheckThrottle.get(battleId) || 0;
         if (now - lastChecked < 3600000) {
           continue;
@@ -20476,20 +20479,22 @@ function checkInventoryDeltaWear() {
         }
       }
 
-      // 2. Batch API request for unknown battles
+      dbg('battlePartMarker', 'debug', 'ensureBattlePartMarkerInjected state:', { totalFound, toCheckLength: toCheck.length, mapSize: linkMap.size });
+
       if (toCheck.length > 0 && battlePartMarkerActive) {
         const batchArgs = toCheck.map(id => ({ battleId: id, userId }));
         try {
+          dbg('battlePartMarker', 'debug', 'Sending batch API request for battles:', toCheck);
           const results = await resolveApiBatch('battleLootSummary.getByBattleAndUser', batchArgs);
+          dbg('battlePartMarker', 'debug', 'Batch results:', results);
           
           for (let i = 0; i < toCheck.length; i++) {
             const battleId = toCheck[i];
             const res = results[i];
             
-            battleCheckThrottle.set(battleId, Date.now()); // Mark as checked
+            battleCheckThrottle.set(battleId, Date.now()); 
 
             if (res && res.payload && res.payload.hits > 0) {
-              // Participated! Cache it persistently.
               cache[battleId] = { participated: true, ts: Date.now() };
             }
           }
@@ -20499,7 +20504,6 @@ function checkInventoryDeltaWear() {
         }
       }
 
-      // 3. Draw markers for all battles that are participated (from updated cache)
       for (const [battleId, elements] of linkMap.entries()) {
         if (cache[battleId] && cache[battleId].participated) {
           for (const { link, card } of elements) {
@@ -20515,6 +20519,8 @@ function checkInventoryDeltaWear() {
           }
         }
       }
+
+      dbg('battlePartMarker', 'debug', 'placed markers:', placed);
 
       if (totalFound > 0) {
         const totalPlaced = document.querySelectorAll('.wia-battle-part-check').length;
