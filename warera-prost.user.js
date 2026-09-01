@@ -20428,21 +20428,42 @@ function checkInventoryDeltaWear() {
       return;
     }
 
-    const userId = getCurrentUserId();
+    battlePartMarkerActive = true;
+
+    let userId = getCurrentUserId();
+    let links = document.querySelectorAll('a[href*="/battle/"]');
+    if (!userId || !links.length) {
+      dbg('battlePartMarker', 'debug', 'waiting for DOM', { hasUserId: !!userId, linkCount: links.length });
+      const deadline = Date.now() + 5000;
+      await new Promise(resolve => {
+        const iv = setInterval(() => {
+          if (!battlePartMarkerActive) { clearInterval(iv); resolve(); return; }
+          userId = getCurrentUserId();
+          links = document.querySelectorAll('a[href*="/battle/"]');
+          if ((userId && links.length) || Date.now() > deadline) {
+            clearInterval(iv);
+            resolve();
+          }
+        }, 250);
+      });
+      if (!battlePartMarkerActive) return;
+    }
+
     if (!userId) {
       setHealth('battlePartMarker', 'fail', 'could not determine user id');
       return;
     }
 
-    const links = pick('battlePartMarker', 'a[href*="/battle/"]');
     if (!links.length) {
+      setHealth('battlePartMarker', 'warn', 'no battle links found');
       return;
     }
+
+    dbg('battlePartMarker', 'debug', 'starting', { userId, linkCount: links.length });
 
     const cache = loadBattlePartCache();
     let placed = 0;
     let errors = 0;
-    battlePartMarkerActive = true;
 
     for (const link of links) {
       if (!battlePartMarkerActive) return;
