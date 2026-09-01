@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         PROST
+// @name         TEST PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.12.4
+// @version      0.13.0-unstable
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -303,6 +303,12 @@
     featPillNotifWindow: false,
     featPillNotifDebuff: false,
     featMuHealDim: false,
+    featBattleMilestoneHelper: false,
+    featBattleMilestoneHelperIntroducedIn: '0.13.0',
+    battlePartCacheTtlMs: 2 * 24 * 60 * 60 * 1000,
+    featNotifHistory: false,
+    featNotifHistoryIntroducedIn: '0.13.0',
+    notifHistoryMax: 30,
     featBountyNotify: false,
     featBountyNotif: false,
     bountyMuteDebuff: false,
@@ -1286,6 +1292,11 @@
     systemAlertSeenSeq: NS + 'systemAlertSeenSeq',
     tourDismissed: NS + 'tourDismissed',   // user chose "don't show again" for the onboarding prompt
     tourCompleted: NS + 'tourCompleted',   // token successfully configured via the tour
+    featBattleMilestoneHelper: NS + 'featBattleMilestoneHelper',
+    battlePartCache: NS + 'battlePartCache',
+    featNotifHistory: NS + 'featNotifHistory',
+    notifHistory: NS + 'notifHistory',
+    notifReadTs: NS + 'notifReadTs',
   };
 
   let _resolvedMarketTaxPct = null;
