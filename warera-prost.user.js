@@ -11437,6 +11437,9 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       if (CONFIG.featOrderRadar && (isCountryPage() || isMuPage())) {
         ensureOrderRadarInjected();
       }
+      if (CONFIG.featBattleMilestoneHelper && getPagePathname().startsWith('/battles')) {
+        ensureBattlePartMarkerInjected();
+      }
       if (CONFIG.featTroopRadar && isMuPage()) {
         ensureTroopRadarInjected();
       }
@@ -20429,76 +20432,77 @@ function checkInventoryDeltaWear() {
     }
 
     battlePartMarkerActive = true;
+    ensureBattlePartMarkerInjected();
+  }
 
-    let userId = getCurrentUserId();
-    let links = document.querySelectorAll('a[href*="/battle/"]');
-    if (!userId || !links.length) {
-      dbg('battlePartMarker', 'debug', 'waiting for DOM', { hasUserId: !!userId, linkCount: links.length });
-      const deadline = Date.now() + 5000;
-      await new Promise(resolve => {
-        const iv = setInterval(() => {
-          if (!battlePartMarkerActive) { clearInterval(iv); resolve(); return; }
-          userId = getCurrentUserId();
-          links = document.querySelectorAll('a[href*="/battle/"]');
-          if ((userId && links.length) || Date.now() > deadline) {
-            clearInterval(iv);
-            resolve();
-          }
-        }, 250);
-      });
-      if (!battlePartMarkerActive) return;
-    }
+  let battlePartMarkerProcessing = false;
 
+  async function ensureBattlePartMarkerInjected() {
+    if (!battlePartMarkerActive) return;
+    if (battlePartMarkerProcessing) return;
+
+    const userId = getCurrentUserId();
     if (!userId) {
-      setHealth('battlePartMarker', 'fail', 'could not determine user id');
+      // Still waiting for DOM to render user menu
       return;
     }
 
-    if (!links.length) {
-      setHealth('battlePartMarker', 'warn', 'no battle links found');
-      return;
-    }
+    const links = document.querySelectorAll('a[href*="/battle/"]');
+    if (!links.length) return;
 
-    dbg('battlePartMarker', 'debug', 'starting', { userId, linkCount: links.length });
+    battlePartMarkerProcessing = true;
+    try {
+      const cache = loadBattlePartCache();
+      let placed = 0;
+      let errors = 0;
+      let totalFound = 0;
 
-    const cache = loadBattlePartCache();
-    let placed = 0;
-    let errors = 0;
+      for (const link of links) {
+        if (!battlePartMarkerActive) break;
 
-    for (const link of links) {
-      if (!battlePartMarkerActive) return;
+        const href = link.getAttribute('href') || '';
+        const match = href.match(/\/battle\/([0-9a-zA-Z]+)/);
+        if (!match) continue;
+        const battleId = match[1];
 
-      const href = link.getAttribute('href') || '';
-      const match = href.match(/\/battle\/([0-9a-zA-Z]+)/);
-      if (!match) continue;
-      const battleId = match[1];
+        // Walk up to find the card container
+        const card = link.closest('[class]')?.parentElement?.closest('[class]') || link.parentElement?.parentElement;
+        if (!card) continue;
+        totalFound++;
 
-      // Walk up to find the card container
-      const card = link.closest('[class]')?.parentElement?.closest('[class]') || link.parentElement?.parentElement;
-      if (!card) continue;
+        if (card.querySelector('.wia-battle-part-check') || card.dataset.wiaProcessingBattle) continue;
 
-      if (card.querySelector('.wia-battle-part-check')) continue;
+        card.dataset.wiaProcessingBattle = '1';
 
-      const participated = await checkBattleParticipation(battleId, userId, cache);
-      if (participated === null) { errors++; continue; }
-      if (!participated) continue;
+        const participated = await checkBattleParticipation(battleId, userId, cache);
+        if (participated === null) { errors++; continue; }
+        if (!participated) continue;
 
-      const badge = document.createElement('span');
-      badge.className = 'wia-battle-part-check';
-      badge.textContent = '✓';
-      badge.title = 'Participated';
+        if (!battlePartMarkerActive) break;
 
-      // Append the marker near the link
-      link.parentElement.appendChild(badge);
-      placed++;
-    }
+        const badge = document.createElement('span');
+        badge.className = 'wia-battle-part-check';
+        badge.textContent = '✓';
+        badge.title = 'Participated';
 
-    if (errors > 0 && placed === 0) {
-      setHealth('battlePartMarker', 'fail', `all ${errors} API checks failed`);
-    } else if (placed > 0) {
-      setHealth('battlePartMarker', 'ok', `${placed} markers placed`);
-    } else {
-      setHealth('battlePartMarker', 'ok', 'no participations found');
+        link.parentElement.appendChild(badge);
+        placed++;
+      }
+
+      // Only update health if we actually found battle cards
+      if (totalFound > 0) {
+        // Find existing badges across the whole page to give an accurate count
+        const totalPlaced = document.querySelectorAll('.wia-battle-part-check').length;
+        if (errors > 0 && totalPlaced === 0) {
+          setHealth('battlePartMarker', 'fail', `all API checks failed`);
+        } else if (totalPlaced > 0) {
+          setHealth('battlePartMarker', 'ok', `${totalPlaced} markers placed`);
+        } else {
+          setHealth('battlePartMarker', 'ok', 'no participations found');
+        }
+      }
+    } finally {
+      battlePartMarkerProcessing = false;
     }
   }
 
