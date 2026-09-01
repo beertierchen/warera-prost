@@ -8486,6 +8486,7 @@ function updateObserverTarget() {
         teardownSharedBodyObserver();
       }
     } else if (pagePath.startsWith('/battles')) {
+      if (typeof resetBattleCheckThrottle === 'function') resetBattleCheckThrottle();
       observer.disconnect();
       if (CONFIG.featBattleMilestoneHelper) {
         guard('battlePartMarker', initBattlePartMarker);
@@ -20398,27 +20399,6 @@ function checkInventoryDeltaWear() {
     GM_setValue(KEYS.battlePartCache, cache);
   }
 
-  async function checkBattleParticipation(battleId, userId, cache) {
-    if (cache[battleId] && cache[battleId].ts >= Date.now() - CONFIG.battlePartCacheTtlMs) {
-      return cache[battleId].participated;
-    }
-    try {
-      const res = await resolveApiBase('battleLootSummary.getByBattleAndUser', { battleId, userId });
-      const participated = !!(res && res.hits > 0);
-      cache[battleId] = { participated, ts: Date.now() };
-      saveBattlePartCache(cache);
-      return participated;
-    } catch (e) {
-      if (/HTTP (400|404)/.test(e.message)) {
-        cache[battleId] = { participated: false, ts: Date.now() };
-        saveBattlePartCache(cache);
-        return false;
-      }
-      dbg('battlePartMarker', 'error', 'API check failed for battle', battleId, e.message);
-      return null;
-    }
-  }
-
   async function initBattlePartMarker() {
     regFeature('battlePartMarker', 'Battle Participation Marker');
 
@@ -20436,16 +20416,17 @@ function checkInventoryDeltaWear() {
   }
 
   let battlePartMarkerProcessing = false;
+  const battleCheckThrottle = new Map();
+  function resetBattleCheckThrottle() {
+    battleCheckThrottle.clear();
+  }
 
   async function ensureBattlePartMarkerInjected() {
     if (!battlePartMarkerActive) return;
     if (battlePartMarkerProcessing) return;
 
     const userId = getCurrentUserId();
-    if (!userId) {
-      // Still waiting for DOM to render user menu
-      return;
-    }
+    if (!userId) return;
 
     const links = document.querySelectorAll('a[href*="/battle/"]');
     if (!links.length) return;
@@ -20454,8 +20435,12 @@ function checkInventoryDeltaWear() {
     try {
       const cache = loadBattlePartCache();
       let placed = 0;
-      let errors = 0;
       let totalFound = 0;
+      const now = Date.now();
+
+      // 1. Gather all battle IDs that need checking
+      const toCheck = [];
+      const linkMap = new Map();
 
       for (const link of links) {
         if (!battlePartMarkerActive) break;
@@ -20465,42 +20450,81 @@ function checkInventoryDeltaWear() {
         if (!match) continue;
         const battleId = match[1];
 
-        // Walk up to find the card container
         const card = link.closest('[class]')?.parentElement?.closest('[class]') || link.parentElement?.parentElement;
         if (!card) continue;
         totalFound++;
 
         if (card.querySelector('.wia-battle-part-check') || card.dataset.wiaProcessingBattle) continue;
 
-        card.dataset.wiaProcessingBattle = '1';
+        if (!linkMap.has(battleId)) linkMap.set(battleId, []);
+        linkMap.get(battleId).push({ link, card });
 
-        const participated = await checkBattleParticipation(battleId, userId, cache);
-        if (participated === null) { errors++; continue; }
-        if (!participated) continue;
+        // If permanently cached as true, we don't need to check
+        if (cache[battleId] && cache[battleId].participated) {
+          continue;
+        }
 
-        if (!battlePartMarkerActive) break;
+        // Throttle checks for the same battle ID to once every 10 seconds in memory
+        // This prevents API spam while sitting on the battles page (timers ticking etc.)
+        const lastChecked = battleCheckThrottle.get(battleId) || 0;
+        if (now - lastChecked < 3600000) {
+          continue;
+        }
 
-        const badge = document.createElement('span');
-        badge.className = 'wia-battle-part-check';
-        badge.textContent = '✓';
-        badge.title = 'Participated';
-
-        link.parentElement.appendChild(badge);
-        placed++;
+        if (!toCheck.includes(battleId)) {
+          toCheck.push(battleId);
+        }
       }
 
-      // Only update health if we actually found battle cards
+      // 2. Batch API request for unknown battles
+      if (toCheck.length > 0 && battlePartMarkerActive) {
+        const batchArgs = toCheck.map(id => ({ battleId: id, userId }));
+        try {
+          const results = await resolveApiBatch('battleLootSummary.getByBattleAndUser', batchArgs);
+          
+          for (let i = 0; i < toCheck.length; i++) {
+            const battleId = toCheck[i];
+            const res = results[i];
+            
+            battleCheckThrottle.set(battleId, Date.now()); // Mark as checked
+
+            if (res && res.payload && res.payload.hits > 0) {
+              // Participated! Cache it persistently.
+              cache[battleId] = { participated: true, ts: Date.now() };
+            }
+          }
+          saveBattlePartCache(cache);
+        } catch (e) {
+          dbg('battlePartMarker', 'error', 'Batch API check failed', e.message);
+        }
+      }
+
+      // 3. Draw markers for all battles that are participated (from updated cache)
+      for (const [battleId, elements] of linkMap.entries()) {
+        if (cache[battleId] && cache[battleId].participated) {
+          for (const { link, card } of elements) {
+            if (card.querySelector('.wia-battle-part-check')) continue;
+            
+            card.dataset.wiaProcessingBattle = '1';
+            const badge = document.createElement('span');
+            badge.className = 'wia-battle-part-check';
+            badge.textContent = '✓';
+            badge.title = 'Participated';
+            link.parentElement.appendChild(badge);
+            placed++;
+          }
+        }
+      }
+
       if (totalFound > 0) {
-        // Find existing badges across the whole page to give an accurate count
         const totalPlaced = document.querySelectorAll('.wia-battle-part-check').length;
-        if (errors > 0 && totalPlaced === 0) {
-          setHealth('battlePartMarker', 'fail', `all API checks failed`);
-        } else if (totalPlaced > 0) {
+        if (totalPlaced > 0) {
           setHealth('battlePartMarker', 'ok', `${totalPlaced} markers placed`);
         } else {
           setHealth('battlePartMarker', 'ok', 'no participations found');
         }
       }
+
     } finally {
       battlePartMarkerProcessing = false;
     }
