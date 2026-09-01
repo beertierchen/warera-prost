@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## 2026-09-01 | Fix: Game Update Hotfix (v0.12.6)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `tests/pill-float.test.js`, `package.json`
+
+**Änderungen (Deutsch):**
+- **Bug Fix**: Crafting-Advisor erkannte die ausgewählte Seltenheit nicht mehr — das Spiel hat CSS-Rahmen durch SVG-Eckenmarkierungen als Auswahl-Indikator ersetzt.
+- **Bug Fix**: Crafting-Advisor zeigte „Resource cost: 0 Gold" — Ressourcen-Icons (Scrap/Steel) sind nun in einer tieferen DOM-Verschachtelung, die der Parser nicht mehr fand.
+- **Revert**: Pillen-Badge wieder inline im Spielmenü statt als schwebendes Icon — das Spiel hat das neue Menülayout zurückgefahren.
+
+**Changes (English):**
+- **Bug Fix**: Crafting Advisor failed to detect selected rarity — game replaced CSS dashed borders with SVG corner markers as selection indicator.
+- **Bug Fix**: Crafting Advisor showed "Resource cost: 0 Gold" — resource icons (scraps/steel) moved to deeper DOM nesting that the parser couldn't reach.
+- **Revert**: Pill badge back to inline in the game menu instead of floating icon — the game reverted the new menu layout.
+
 ## 2026-08-30 | Fix: UI Layout & Crafting Advisor (v0.12.5)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `package.json`
