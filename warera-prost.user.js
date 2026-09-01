@@ -20406,6 +20406,11 @@ function checkInventoryDeltaWear() {
       saveBattlePartCache(cache);
       return participated;
     } catch (e) {
+      if (/HTTP (400|404)/.test(e.message)) {
+        cache[battleId] = { participated: false, ts: Date.now() };
+        saveBattlePartCache(cache);
+        return false;
+      }
       dbg('battlePartMarker', 'error', 'API check failed for battle', battleId, e.message);
       return null;
     }
