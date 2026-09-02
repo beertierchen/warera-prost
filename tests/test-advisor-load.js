@@ -756,7 +756,7 @@ try {
   const layoutUserMenu = new MockElement('div');
   layoutUserMenu.setAttribute('id', 'layoutUserMenu');
   const userProfileLink = new MockElement('a');
-  userProfileLink.setAttribute('href', '/user/test-user-123');
+  userProfileLink.setAttribute('href', '/user/a1b2c3d4e5f6a1b2c3d4e5f6');
   
   const avatarImg = new MockElement('img');
   avatarImg.setAttribute('src', '/images/avatars/avatar1.png');
@@ -839,11 +839,11 @@ try {
   header.appendChild(tickSpan);
 
   const parsedUserId = globalThis.getCurrentUserId();
-  assert.strictEqual(parsedUserId, 'test-user-123', 'Should extract own user id as test-user-123');
+  assert.strictEqual(parsedUserId, 'a1b2c3d4e5f6a1b2c3d4e5f6', 'Should extract own user id as a1b2c3d4e5f6a1b2c3d4e5f6');
 
   globalThis.CONFIG.doubleChevronPath = 'M7.41,18.41';
   globalThis.CONFIG.featPillReminder = true;
-  global.location.pathname = '/user/test-user-123';
+  global.location.pathname = '/user/a1b2c3d4e5f6a1b2c3d4e5f6';
 
   const hh = globalThis.parseHealthAndHunger();
   assert.strictEqual(hh.both100, true, 'Mock H&H indicators should both be parsed as 100%');
@@ -1500,7 +1500,7 @@ try {
   documentBody.appendChild(invCell);
   
   // Mock route
-  global.location.pathname = '/user/test-user-123/inventory';
+  global.location.pathname = '/user/a1b2c3d4e5f6a1b2c3d4e5f6/inventory';
   
   // Back up original fetchPrices and mock it to never resolve (simulate slow network)
   const originalFetchPrices = globalThis.fetchPrices;
@@ -3078,7 +3078,7 @@ try {
         globalThis.teardownPillReminder();
         globalThis.CONFIG.featPillReminder = true;
         globalThis.CONFIG.featPillNotifHnH = true;
-        globalThis.CONFIG.personalTopic = 'wia-user-test-user-123';
+        globalThis.CONFIG.personalTopic = 'wia-user-a1b2c3d4e5f6a1b2c3d4e5f6';
         globalThis.GM_setValue('wia.lastNotifiedHnH', false);
         globalThis.GM_setValue('wia.hnhNotifyCooldownUntil', 0);
         

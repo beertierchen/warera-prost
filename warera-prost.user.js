@@ -15072,7 +15072,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
 
   function extractUserIdFromHref(href) {
     if (!href) return null;
-    const m = href.match(/\/user\/([^/]+)/);
+    const m = href.match(/\/user\/([a-fA-F0-9]{24})(?:\/|$)/);
     return m ? decodeURIComponent(m[1]) : null;
   }
 
