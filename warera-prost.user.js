@@ -2720,6 +2720,13 @@
           lastErr = new Error(String(res.status));
           continue;
         }
+        if (opts.definitiveErrors && opts.definitiveErrors.includes(res.status)) {
+          dbg('api', 'debug', `base ${base} returned definitive ${res.status} for ${procedure}, no cascade`);
+          const err = new Error('HTTP ' + res.status);
+          err.definitive = true;
+          ApiMonitor.trackResult(callEntry, res, Date.now() - startTime, err);
+          throw err;
+        }
         if (res.status >= 200 && res.status < 300) {
           GM_setValue(KEYS.apiBase, base);
           dbg('api', 'debug', `resolveApiBase ${procedure} succeeded on ${base}`);
@@ -2853,6 +2860,7 @@
           });
           const allFailed = results.every(r => r.error);
           if (allFailed && batchArgs.length > 0) {
+            if (results.some(r => r.error && r.error.definitive)) return results;
             lastErr = results[0].error;
             continue;
           }
@@ -5914,14 +5922,22 @@ async function scanInventory(force) {
 
       /* ── Battle Participation Marker ── */
       .wia-battle-part-check {
+        position: absolute;
+        top: 4px;
+        left: 4px;
         display: inline-flex;
         align-items: center;
         justify-content: center;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: rgba(0, 0, 0, 0.55);
         color: #4ade80;
-        font-size: 14px;
+        font-size: 12px;
         font-weight: bold;
-        margin-left: 6px;
-        text-shadow: 0 0 4px rgba(74, 222, 128, 0.4);
+        text-shadow: 0 0 4px rgba(74, 222, 128, 0.5);
+        pointer-events: none;
+        z-index: 2;
       }
 
       /* ── Resource Market Intraday Graph ── */
@@ -8462,6 +8478,13 @@ function updateObserverTarget() {
     if (bootstrapObserver) {
       bootstrapObserver.disconnect();
       bootstrapObserver = null;
+    }
+
+    if (!pagePath.startsWith('/battles')) teardownBattlePartMarker();
+    if (!isMuPage()) {
+      const trps = document.getElementById('wia-troop-radar-summary');
+      if (trps) trps.remove();
+      cleanupStrayTroopRadarChips();
     }
 
     if (isInventoryPage()) {
@@ -11436,14 +11459,25 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
           }
         }
       }
-      if (CONFIG.featOrderRadar && (isCountryPage() || isMuPage())) {
-        ensureOrderRadarInjected();
+      if (CONFIG.featOrderRadar) {
+        if (isCountryPage() || isMuPage()) {
+          ensureOrderRadarInjected();
+        } else {
+          const radar = document.getElementById('wia-order-radar');
+          if (radar) radar.remove();
+        }
       }
       if (CONFIG.featBattleMilestoneHelper && getPagePathname().startsWith('/battles')) {
-        ensureBattlePartMarkerInjected();
+        debouncedBattlePartMarkerInject();
       }
-      if (CONFIG.featTroopRadar && isMuPage()) {
-        ensureTroopRadarInjected();
+      if (CONFIG.featTroopRadar) {
+        if (isMuPage()) {
+          ensureTroopRadarInjected();
+        } else {
+          const trps = document.getElementById('wia-troop-radar-summary');
+          if (trps) trps.remove();
+          if (typeof cleanupStrayTroopRadarChips === 'function') cleanupStrayTroopRadarChips();
+        }
       }
       if (CONFIG.featProfileCharsheet && isUserProfilePage()) {
         ensureProfileCharsheetInjected();
@@ -20412,14 +20446,34 @@ function checkInventoryDeltaWear() {
       return;
     }
 
+    document.querySelectorAll('[data-wia-processing-battle]').forEach(el => delete el.dataset.wiaProcessingBattle);
     battlePartMarkerActive = true;
     ensureBattlePartMarkerInjected();
   }
 
   let battlePartMarkerProcessing = false;
+  let battlePartMarkerDebounceTimer = null;
+  let battlePartMarkerLastRun = 0;
   const battleCheckThrottle = new Map();
   function resetBattleCheckThrottle() {
     battleCheckThrottle.clear();
+  }
+
+  function debouncedBattlePartMarkerInject() {
+    if (!battlePartMarkerActive) return;
+    const now = Date.now();
+    if (now - battlePartMarkerLastRun > 1000 && !battlePartMarkerProcessing) {
+      battlePartMarkerLastRun = now;
+      if (battlePartMarkerDebounceTimer) { clearTimeout(battlePartMarkerDebounceTimer); battlePartMarkerDebounceTimer = null; }
+      ensureBattlePartMarkerInjected();
+    } else {
+      if (battlePartMarkerDebounceTimer) clearTimeout(battlePartMarkerDebounceTimer);
+      battlePartMarkerDebounceTimer = setTimeout(() => {
+        battlePartMarkerDebounceTimer = null;
+        battlePartMarkerLastRun = Date.now();
+        ensureBattlePartMarkerInjected();
+      }, 500);
+    }
   }
 
   async function ensureBattlePartMarkerInjected() {
@@ -20438,12 +20492,31 @@ function checkInventoryDeltaWear() {
       return;
     }
 
+    // Instead of checking wiaProcessingBattle, we check throttle
+    const now = Date.now();
+    let hasUnchecked = false;
+    for (const l of links) {
+      const card = l.closest('[class]')?.parentElement?.closest('[class]') || l.parentElement?.parentElement;
+      if (!card || card.querySelector('.wia-battle-part-check')) continue;
+      
+      const href = l.getAttribute('href') || '';
+      const match = href.match(/\/battle\/([0-9a-zA-Z]+)/);
+      if (!match) continue;
+      
+      const lastChecked = battleCheckThrottle.get(match[1]) || 0;
+      if (now - lastChecked > 5000) {
+        hasUnchecked = true;
+        break;
+      }
+    }
+    
+    if (!hasUnchecked) return;
+
     battlePartMarkerProcessing = true;
     try {
       const cache = loadBattlePartCache();
       let placed = 0;
       let totalFound = 0;
-      const now = Date.now();
 
       const toCheck = [];
       const linkMap = new Map();
@@ -20460,7 +20533,7 @@ function checkInventoryDeltaWear() {
         if (!card) continue;
         totalFound++;
 
-        if (card.querySelector('.wia-battle-part-check') || card.dataset.wiaProcessingBattle) continue;
+        if (card.querySelector('.wia-battle-part-check')) continue;
 
         if (!linkMap.has(battleId)) linkMap.set(battleId, []);
         linkMap.get(battleId).push({ link, card });
@@ -20470,7 +20543,7 @@ function checkInventoryDeltaWear() {
         }
 
         const lastChecked = battleCheckThrottle.get(battleId) || 0;
-        if (now - lastChecked < 3600000) {
+        if (now - lastChecked < 5000) {
           continue;
         }
 
@@ -20481,56 +20554,77 @@ function checkInventoryDeltaWear() {
 
       dbg('battlePartMarker', 'debug', 'ensureBattlePartMarkerInjected state:', { totalFound, toCheckLength: toCheck.length, mapSize: linkMap.size });
 
+      function placeBattleMarkers(battleId, elements) {
+        let count = 0;
+        for (const { link, card } of elements) {
+          if (card.querySelector('.wia-battle-part-check')) continue;
+          const badge = document.createElement('span');
+          badge.className = 'wia-battle-part-check';
+          badge.textContent = '✓';
+          badge.title = 'Participated';
+          link.appendChild(badge);
+          count++;
+        }
+        return count;
+      }
+
       if (toCheck.length > 0 && battlePartMarkerActive) {
         const batchArgs = toCheck.map(id => ({ battleId: id, userId }));
         try {
           dbg('battlePartMarker', 'debug', 'Sending batch API request for battles:', toCheck);
-          const results = await resolveApiBatch('battleLootSummary.getByBattleAndUser', batchArgs);
+          const results = await resolveApiBatch('battleLootSummary.getByBattleAndUser', batchArgs, { definitiveErrors: [400, 404] });
           dbg('battlePartMarker', 'debug', 'Batch results:', results);
-          
+
+          const resultNow = Date.now();
           for (let i = 0; i < toCheck.length; i++) {
             const battleId = toCheck[i];
             const res = results[i];
-            
-            battleCheckThrottle.set(battleId, Date.now()); 
 
+            if (res && res.error) {
+              battleCheckThrottle.set(battleId, resultNow);
+              continue;
+            }
             if (res && res.payload && res.payload.hits > 0) {
-              cache[battleId] = { participated: true, ts: Date.now() };
+              cache[battleId] = { participated: true, ts: resultNow };
+            } else {
+              battleCheckThrottle.set(battleId, resultNow);
             }
           }
+
+          if (sharedActiveBattles.items) {
+            for (const battleId of toCheck) {
+              if (cache[battleId] && cache[battleId].participated) continue;
+              const ab = sharedActiveBattles.items.find(b => (b._id || b.id) === battleId);
+              if (!ab || !ab.currentRound) continue;
+              const cr = ab.currentRound;
+              const inLastHits = [
+                ...(cr.attacker && cr.attacker.lastHits || []),
+                ...(cr.defender && cr.defender.lastHits || []),
+              ].some(h => h.user === userId);
+              if (inLastHits) {
+                dbg('battlePartMarker', 'debug', `fallback: found userId in lastHits for battle ${battleId}`);
+                cache[battleId] = { participated: true, ts: resultNow };
+              }
+            }
+          }
+
           saveBattlePartCache(cache);
         } catch (e) {
-          dbg('battlePartMarker', 'error', 'Batch API check failed', e.message);
+          dbg('battlePartMarker', 'warn', 'Batch API check failed (treating as not-participated):', e.message);
+          const errorNow = Date.now();
+          for (const battleId of toCheck) {
+            battleCheckThrottle.set(battleId, errorNow);
+          }
         }
       }
 
       for (const [battleId, elements] of linkMap.entries()) {
         if (cache[battleId] && cache[battleId].participated) {
-          for (const { link, card } of elements) {
-            if (card.querySelector('.wia-battle-part-check')) continue;
-            
-            card.dataset.wiaProcessingBattle = '1';
-            const badge = document.createElement('span');
-            badge.className = 'wia-battle-part-check';
-            badge.textContent = '✓';
-            badge.title = 'Participated';
-            link.parentElement.appendChild(badge);
-            placed++;
-          }
+          placed += placeBattleMarkers(battleId, elements);
         }
       }
-
-      dbg('battlePartMarker', 'debug', 'placed markers:', placed);
-
-      if (totalFound > 0) {
-        const totalPlaced = document.querySelectorAll('.wia-battle-part-check').length;
-        if (totalPlaced > 0) {
-          setHealth('battlePartMarker', 'ok', `${totalPlaced} markers placed`);
-        } else {
-          setHealth('battlePartMarker', 'ok', 'no participations found');
-        }
-      }
-
+      
+      dbg('battlePartMarker', 'debug', `placed ${placed} new markers`);
     } finally {
       battlePartMarkerProcessing = false;
     }
@@ -20538,6 +20632,7 @@ function checkInventoryDeltaWear() {
 
   function teardownBattlePartMarker() {
     battlePartMarkerActive = false;
+    if (battlePartMarkerDebounceTimer) { clearTimeout(battlePartMarkerDebounceTimer); battlePartMarkerDebounceTimer = null; }
     document.querySelectorAll('.wia-battle-part-check').forEach(el => el.remove());
   }
 
