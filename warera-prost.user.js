@@ -2740,7 +2740,7 @@
         if (e.definitive) break;
       }
     }
-    ApiMonitor.trackResult(callEntry, res, Date.now() - startTime, lastErr);
+    if (!lastErr || !lastErr.definitive) ApiMonitor.trackResult(callEntry, res, Date.now() - startTime, lastErr);
     if (lastErr && lastErr.definitive) throw lastErr;
     if (lastErr && (lastErr.message === '401' || lastErr.message === '403')) {
       gateProcedure(procedure);
@@ -2824,7 +2824,7 @@
         if (e.definitive) break;
       }
     }
-    ApiMonitor.trackResult(callEntry, res, Date.now() - startTime, lastErr);
+    if (!lastErr || !lastErr.definitive) ApiMonitor.trackResult(callEntry, res, Date.now() - startTime, lastErr);
     if (lastErr && lastErr.definitive) throw lastErr;
     if (lastErr && (lastErr.message === '401' || lastErr.message === '403')) {
       gateProcedure(procedure);
@@ -16912,13 +16912,16 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     for (const slashSpan of slashSpans) {
       const text = slashSpan.textContent.replace(/^\//, '').trim();
       const val = parseNum(text) || 0;
-      const parent = slashSpan.parentElement;
-      if (parent) {
-        if (parent.querySelector('img[src*="scrap"], img[src*="scraps"], img[alt="scraps"], img[alt="scrap"]')) {
+      let container = slashSpan.parentElement;
+      for (let d = 0; d < 3 && container; d++) {
+        if (container.querySelector('img[src*="scrap"], img[src*="scraps"], img[alt="scraps"], img[alt="scrap"]')) {
           scrapsRequired = val;
-        } else if (parent.querySelector('img[src*="steel"], img[alt="steel"]')) {
+          break;
+        } else if (container.querySelector('img[src*="steel"], img[alt="steel"]')) {
           steelRequired = val;
+          break;
         }
+        container = container.parentElement;
       }
     }
 
@@ -20709,11 +20712,11 @@ function checkInventoryDeltaWear() {
   }
 
   const NOTIF_BELL_SVG = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M8 2h8a4 4 0 0 1 4 4v8a2 2 0 0 1-.5 1.3L18 17H6l-1.5-1.7A2 2 0 0 1 4 14V6a4 4 0 0 1 4-4z"/>
-    <path d="M12 17v1a3 3 0 0 1-3 3h0a3 3 0 0 1-3-3v-1"/>
-    <path d="M8 8v3c0 1 .5 2 2 2.5"/>
-    <line x1="10" y1="2" x2="10" y2="4"/>
-    <ellipse cx="17" cy="8" rx="1.5" ry="3" transform="rotate(-15 17 8)"/>
+    <path d="M9 8h10v11a2 2 0 0 1-2 2H11a2 2 0 0 1-2-2V8z"/>
+    <path d="M9 11H7a2 2 0 0 0-2 2v0a2 2 0 0 0 2 2h2"/>
+    <path d="M9 8a3 3 0 0 1 3-3c1.5 0 2 1 3 1s1.5-1 3-1a2 2 0 0 1 1 3"/>
+    <line x1="12" y1="11" x2="12" y2="18"/>
+    <line x1="15" y1="11" x2="15" y2="18"/>
   </svg>`;
 
   let notifBellEl = null;
