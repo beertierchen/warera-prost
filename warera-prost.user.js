@@ -2802,6 +2802,13 @@
           lastErr = new Error(String(res.status));
           continue;
         }
+        if (opts.definitiveErrors && opts.definitiveErrors.includes(res.status)) {
+          dbg('api', 'debug', `base ${base} returned definitive ${res.status} for ${procedure}, no cascade`);
+          const err = new Error('HTTP ' + res.status);
+          err.definitive = true;
+          ApiMonitor.trackResult(callEntry, res, Date.now() - startTime, err);
+          throw err;
+        }
         if (res.status >= 200 && res.status < 300) {
           GM_setValue(KEYS.apiBase, base);
           dbg('api', 'debug', `resolveApiPost ${procedure} succeeded on ${base}`);
@@ -6517,9 +6524,7 @@ async function scanInventory(force) {
 
       /* ====== NOTIFICATION HISTORY ====== */
       .wia-notif-bell {
-        position: fixed;
-        top: 58px;
-        left: 16px;
+        position: relative;
         width: 38px;
         height: 38px;
         background: #161b22;
@@ -20525,7 +20530,7 @@ function checkInventoryDeltaWear() {
         if (!battlePartMarkerActive) break;
 
         const href = link.getAttribute('href') || '';
-        const match = href.match(/\/battle\/([0-9a-zA-Z]+)/);
+        const match = href.match(/\/battle\/([0-9a-fA-F]{24})/);
         if (!match) continue;
         const battleId = match[1];
 
@@ -20571,18 +20576,14 @@ function checkInventoryDeltaWear() {
         return count;
       }
 
-      for (const [battleId, elements] of linkMap.entries()) {
-        if (cache[battleId] && cache[battleId].participated) {
-          placed += placeBattleMarkers(battleId, elements);
-        }
-      }
+
 
       if (toCheck.length > 0 && battlePartMarkerActive) {
         try {
           dbg('battlePartMarker', 'debug', 'Sending POST API requests for battles:', toCheck);
           const results = await mapWithConcurrency(toCheck, 2, async (battleId) => {
             try {
-              const { payload } = await resolveApiPost('battleLootSummary.getByBattleAndUser', { battleId, userId });
+              const { payload } = await resolveApiPost('battleLootSummary.getByBattleAndUser', { battleId, userId }, { definitiveErrors: [400, 404] });
               return { battleId, payload };
             } catch (err) {
               return { battleId, error: err };
@@ -20682,14 +20683,26 @@ function checkInventoryDeltaWear() {
   function teardownBattlePartMarker() {
     battlePartMarkerActive = false;
     if (battlePartMarkerDebounceTimer) { clearTimeout(battlePartMarkerDebounceTimer); battlePartMarkerDebounceTimer = null; }
+    if (battleSelfTracked.size > 0) {
+      const cache = loadBattlePartCache();
+      const now = Date.now();
+      for (const battleId of battleSelfTracked) {
+        if (!cache[battleId]?.participated) {
+          cache[battleId] = { participated: true, ts: now };
+        }
+      }
+      saveBattlePartCache(cache);
+      battleSelfTracked.clear();
+    }
     document.querySelectorAll('.wia-battle-part-check').forEach(el => el.remove());
   }
 
   const NOTIF_BELL_SVG = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M8 2v2M16 2v2"/>
-    <path d="M5 8c0-2 1.5-4 4-4h6c2.5 0 4 2 4 4v6c0 1-0.5 2-1 2.5L17 18H7l-1-1.5C5.5 16 5 15 5 14V8z"/>
-    <path d="M17 18c0 2-2 4-5 4s-5-2-5-4"/>
-    <path d="M9 11h3"/>
+    <path d="M8 2h8a4 4 0 0 1 4 4v8a2 2 0 0 1-.5 1.3L18 17H6l-1.5-1.7A2 2 0 0 1 4 14V6a4 4 0 0 1 4-4z"/>
+    <path d="M12 17v1a3 3 0 0 1-3 3h0a3 3 0 0 1-3-3v-1"/>
+    <path d="M8 8v3c0 1 .5 2 2 2.5"/>
+    <line x1="10" y1="2" x2="10" y2="4"/>
+    <ellipse cx="17" cy="8" rx="1.5" ry="3" transform="rotate(-15 17 8)"/>
   </svg>`;
 
   let notifBellEl = null;
@@ -20762,6 +20775,7 @@ function checkInventoryDeltaWear() {
       el.addEventListener('click', (e) => {
         const url = el.dataset.url;
         if (!url) return;
+        if (!url.startsWith('/') && !url.startsWith('https://app.warera.io')) return;
         if (e.ctrlKey || e.metaKey) {
           try { PAGE_WINDOW.open(url, '_blank'); } catch (_) {}
         } else {
@@ -20780,7 +20794,7 @@ function checkInventoryDeltaWear() {
     const bell = document.createElement('div');
     bell.className = 'wia-notif-bell';
     bell.innerHTML = NOTIF_BELL_SVG + '<span class="wia-notif-badge" style="display:none"></span>';
-    document.body.appendChild(bell);
+    dockRegister(0, bell);
     notifBellEl = bell;
 
     const panel = document.createElement('div');
@@ -20816,12 +20830,13 @@ function checkInventoryDeltaWear() {
       renderNotifPanel();
     });
 
-    document.addEventListener('click', (e) => {
+    panel._wiaClickOutside = (e) => {
       if (notifPanelEl && notifPanelEl.style.display !== 'none' &&
           !notifPanelEl.contains(e.target) && !notifBellEl.contains(e.target)) {
         notifPanelEl.style.display = 'none';
       }
-    });
+    };
+    document.addEventListener('click', panel._wiaClickOutside);
 
     let dragState = null;
     const header = panel.querySelector('.wia-notif-panel-header');
@@ -20832,27 +20847,35 @@ function checkInventoryDeltaWear() {
       dragState = { startX: e.clientX, startY: e.clientY, origLeft: rect.left, origTop: rect.top };
       panel.style.transition = 'none';
     });
-    document.addEventListener('mousemove', (e) => {
+    panel._wiaDragMove = (e) => {
       if (!dragState) return;
       const dx = e.clientX - dragState.startX;
       const dy = e.clientY - dragState.startY;
       panel.style.left = (dragState.origLeft + dx) + 'px';
       panel.style.top = (dragState.origTop + dy) + 'px';
-    });
-    document.addEventListener('mouseup', () => {
+    };
+    document.addEventListener('mousemove', panel._wiaDragMove);
+    panel._wiaDragEnd = () => {
       if (dragState) {
         dragState = null;
         panel.style.transition = '';
       }
-    });
+    };
+    document.addEventListener('mouseup', panel._wiaDragEnd);
 
     updateNotifBellBadge();
     setHealth('notifHistory', 'ok');
   }
 
   function teardownNotifHistory() {
-    if (notifBellEl) { notifBellEl.remove(); notifBellEl = null; }
-    if (notifPanelEl) { notifPanelEl.remove(); notifPanelEl = null; }
+    if (notifPanelEl) {
+      if (notifPanelEl._wiaClickOutside) document.removeEventListener('click', notifPanelEl._wiaClickOutside);
+      if (notifPanelEl._wiaDragMove) document.removeEventListener('mousemove', notifPanelEl._wiaDragMove);
+      if (notifPanelEl._wiaDragEnd) document.removeEventListener('mouseup', notifPanelEl._wiaDragEnd);
+      notifPanelEl.remove();
+      notifPanelEl = null;
+    }
+    if (notifBellEl) { dockUnregister(notifBellEl); notifBellEl.remove(); notifBellEl = null; }
     setHealth('notifHistory', 'idle', 'disabled');
   }
 
