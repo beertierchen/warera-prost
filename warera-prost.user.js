@@ -6607,6 +6607,8 @@ async function scanInventory(force) {
         border-bottom: 1px solid rgba(148,163,184,0.08);
       }
       .wia-notif-entry:last-child { border-bottom: none; }
+      .wia-notif-clickable { cursor: pointer; transition: background 0.15s; }
+      .wia-notif-clickable:hover { background: rgba(148,163,184,0.1); }
       .wia-notif-entry-header {
         display: flex;
         justify-content: space-between;
@@ -8463,6 +8465,7 @@ function updateObserverTarget() {
       featOrderRadar: CONFIG.featOrderRadar,
       featBattleAdvisor: CONFIG.featBattleAdvisor,
     });
+    const prevPath = lastPath;
     lastPath = pagePath;
     cachedCards = null;
     
@@ -8481,6 +8484,14 @@ function updateObserverTarget() {
     }
 
     if (!pagePath.startsWith('/battles')) teardownBattlePartMarker();
+    // Track battle page visits: if leaving /battle/{id}, record as "visited" and clear throttle
+    const prevBattleMatch = /^\/battle\/([0-9a-fA-F]{24})/.exec(prevPath);
+    if (prevBattleMatch && !pagePath.startsWith('/battle/')) {
+      const visitedId = prevBattleMatch[1];
+      battleSelfTracked.add(visitedId);
+      battleCheckThrottle.delete(visitedId);
+      dbg('battlePartMarker', 'debug', `self-track: visited battle ${visitedId}, cleared throttle`);
+    }
     if (!isMuPage()) {
       const trps = document.getElementById('wia-troop-radar-summary');
       if (trps) trps.remove();
@@ -14616,10 +14627,12 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     return s ? `${t}-${s}` : t;
   }
 
-  function logNotification(src, msg) {
+  function logNotification(src, msg, url) {
     if (!CONFIG.featNotifHistory) return;
     const history = GM_getValue(KEYS.notifHistory, []);
-    history.unshift({ ts: Date.now(), src, msg });
+    const entry = { ts: Date.now(), src, msg };
+    if (url) entry.url = url;
+    history.unshift(entry);
     if (history.length > CONFIG.notifHistoryMax) history.length = CONFIG.notifHistoryMax;
     GM_setValue(KEYS.notifHistory, history);
     updateNotifBellBadge();
@@ -14689,7 +14702,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
   }
 
   async function sendPersonalNtfy(type, title, body, tags, priority = 'default', clickUrl = null) {
-    logNotification(type, title + ': ' + body);
+    logNotification(type, title + ': ' + body, clickUrl);
     let icon = '🔔';
     if (tags.includes('poultry_leg')) icon = '🍗';
     else if (tags.includes('alarm_clock')) icon = '⏰';
@@ -19569,7 +19582,6 @@ function checkInventoryDeltaWear() {
   }
 
   async function showBountyPopup(bounty) {
-    logNotification('Bounty', (bounty.country || 'Unknown') + ' (' + (bounty.side || '?') + ') ' + (bounty.moneyPool || 0));
     try {
       ensureBountyPopupStyle();
       const doc = document;
@@ -19581,9 +19593,10 @@ function checkInventoryDeltaWear() {
         resolveCountryName(bounty.defenderCountry),
         resolveCountryName(bounty.country)
       ]);
+      const sideLabel = t(bounty.side === 'attacker' ? 'bountyAttackerSide' : 'bountyDefenderSide');
+      logNotification('Bounty', allyCountry + ' (' + sideLabel + ') ' + fmt(bounty.moneyPool || 0), '/battle/' + bounty.battleId);
       const scope = CONFIG.bountyScope || 'cascade';
       const chip = scope === 'all' ? t('bountyLabelAll') : scope === 'allies' ? t('bountyLabelAllies') : t('bountyLabelCascade');
-      const sideLabel = t(bounty.side === 'attacker' ? 'bountyAttackerSide' : 'bountyDefenderSide');
       const opponent = bounty.side === 'attacker' ? defender : attacker;
       const pool = fmt(bounty.moneyPool || 0);
       const rate = fmt(bounty.ratePer1k || 0);
@@ -20419,6 +20432,7 @@ function checkInventoryDeltaWear() {
   // ═══════════════════════════════════════════════════
 
   let battlePartMarkerActive = false;
+  const battleSelfTracked = new Set();
 
   function loadBattlePartCache() {
     const raw = GM_getValue(KEYS.battlePartCache, {});
@@ -20486,32 +20500,18 @@ function checkInventoryDeltaWear() {
       return;
     }
 
-    const links = document.querySelectorAll('a[href*="/battle/"]');
+    const allLinks = document.querySelectorAll('a[href*="/battle/"]');
+    const links = [...allLinks].filter(link => {
+      const parentDisplay = link.parentElement && getComputedStyle(link.parentElement).display;
+      return parentDisplay === 'grid';
+    });
     if (!links.length) {
-      dbg('battlePartMarker', 'warn', 'no battle links in ensureBattlePartMarkerInjected');
+      dbg('battlePartMarker', 'warn', 'no battle links in grid content');
       return;
     }
+    dbg('battlePartMarker', 'debug', `found ${links.length} grid battle links (total on page: ${allLinks.length})`);
 
-    // Instead of checking wiaProcessingBattle, we check throttle
     const now = Date.now();
-    let hasUnchecked = false;
-    for (const l of links) {
-      const card = l.closest('[class]')?.parentElement?.closest('[class]') || l.parentElement?.parentElement;
-      if (!card || card.querySelector('.wia-battle-part-check')) continue;
-      
-      const href = l.getAttribute('href') || '';
-      const match = href.match(/\/battle\/([0-9a-zA-Z]+)/);
-      if (!match) continue;
-      
-      const lastChecked = battleCheckThrottle.get(match[1]) || 0;
-      if (now - lastChecked > 5000) {
-        hasUnchecked = true;
-        break;
-      }
-    }
-    
-    if (!hasUnchecked) return;
-
     battlePartMarkerProcessing = true;
     try {
       const cache = loadBattlePartCache();
@@ -20533,20 +20533,23 @@ function checkInventoryDeltaWear() {
         if (!card) continue;
         totalFound++;
 
-        if (card.querySelector('.wia-battle-part-check')) continue;
+        if (link.querySelector('.wia-battle-part-check')) continue;
 
         if (!linkMap.has(battleId)) linkMap.set(battleId, []);
         linkMap.get(battleId).push({ link, card });
 
         if (cache[battleId] && cache[battleId].participated) {
+          dbg('battlePartMarker', 'debug', `battle ${battleId}: cached as participated`);
           continue;
         }
 
         const lastChecked = battleCheckThrottle.get(battleId) || 0;
-        if (now - lastChecked < 5000) {
+        if (now - lastChecked < 60000) {
+          dbg('battlePartMarker', 'debug', `battle ${battleId}: throttled (checked ${Math.round((now - lastChecked) / 1000)}s ago)`);
           continue;
         }
 
+        dbg('battlePartMarker', 'debug', `battle ${battleId}: queued for API check`);
         if (!toCheck.includes(battleId)) {
           toCheck.push(battleId);
         }
@@ -20554,10 +20557,10 @@ function checkInventoryDeltaWear() {
 
       dbg('battlePartMarker', 'debug', 'ensureBattlePartMarkerInjected state:', { totalFound, toCheckLength: toCheck.length, mapSize: linkMap.size });
 
-      function placeBattleMarkers(battleId, elements) {
+      function placeBattleMarkers(_battleId, elements) {
         let count = 0;
-        for (const { link, card } of elements) {
-          if (card.querySelector('.wia-battle-part-check')) continue;
+        for (const { link } of elements) {
+          if (link.querySelector('.wia-battle-part-check')) continue;
           const badge = document.createElement('span');
           badge.className = 'wia-battle-part-check';
           badge.textContent = '✓';
@@ -20568,43 +20571,40 @@ function checkInventoryDeltaWear() {
         return count;
       }
 
+      for (const [battleId, elements] of linkMap.entries()) {
+        if (cache[battleId] && cache[battleId].participated) {
+          placed += placeBattleMarkers(battleId, elements);
+        }
+      }
+
       if (toCheck.length > 0 && battlePartMarkerActive) {
-        const batchArgs = toCheck.map(id => ({ battleId: id, userId }));
         try {
-          dbg('battlePartMarker', 'debug', 'Sending batch API request for battles:', toCheck);
-          const results = await resolveApiBatch('battleLootSummary.getByBattleAndUser', batchArgs, { definitiveErrors: [400, 404] });
-          dbg('battlePartMarker', 'debug', 'Batch results:', results);
+          dbg('battlePartMarker', 'debug', 'Sending POST API requests for battles:', toCheck);
+          const results = await mapWithConcurrency(toCheck, 2, async (battleId) => {
+            try {
+              const { payload } = await resolveApiPost('battleLootSummary.getByBattleAndUser', { battleId, userId });
+              return { battleId, payload };
+            } catch (err) {
+              return { battleId, error: err };
+            }
+          });
+          dbg('battlePartMarker', 'debug', 'POST results:', results);
 
           const resultNow = Date.now();
-          for (let i = 0; i < toCheck.length; i++) {
-            const battleId = toCheck[i];
-            const res = results[i];
+          for (const res of results) {
+            const battleId = res.battleId;
 
-            if (res && res.error) {
+            if (res.error) {
+              dbg('battlePartMarker', 'debug', `battle ${battleId}: API error (${res.error.message || 'unknown'}), throttling`);
               battleCheckThrottle.set(battleId, resultNow);
               continue;
             }
-            if (res && res.payload && res.payload.hits > 0) {
+            if (res.payload && res.payload.hits > 0) {
+              dbg('battlePartMarker', 'debug', `battle ${battleId}: API confirmed participation (hits=${res.payload.hits})`);
               cache[battleId] = { participated: true, ts: resultNow };
             } else {
+              dbg('battlePartMarker', 'debug', `battle ${battleId}: API says no participation (payload=${JSON.stringify(res.payload)}), throttling`);
               battleCheckThrottle.set(battleId, resultNow);
-            }
-          }
-
-          if (sharedActiveBattles.items) {
-            for (const battleId of toCheck) {
-              if (cache[battleId] && cache[battleId].participated) continue;
-              const ab = sharedActiveBattles.items.find(b => (b._id || b.id) === battleId);
-              if (!ab || !ab.currentRound) continue;
-              const cr = ab.currentRound;
-              const inLastHits = [
-                ...(cr.attacker && cr.attacker.lastHits || []),
-                ...(cr.defender && cr.defender.lastHits || []),
-              ].some(h => h.user === userId);
-              if (inLastHits) {
-                dbg('battlePartMarker', 'debug', `fallback: found userId in lastHits for battle ${battleId}`);
-                cache[battleId] = { participated: true, ts: resultNow };
-              }
             }
           }
 
@@ -20618,13 +20618,62 @@ function checkInventoryDeltaWear() {
         }
       }
 
+      // lastHits fallback runs for ALL uncached battles (not gated by API throttle)
+      const uncachedCount = [...linkMap.keys()].filter(id => !cache[id]?.participated).length;
+      dbg('battlePartMarker', 'debug', `lastHits fallback: ${uncachedCount} uncached battles, sharedActiveBattles=${sharedActiveBattles.items ? sharedActiveBattles.items.length + ' items' : 'empty'}, selfTracked=${battleSelfTracked.size} tracked`);
+      if (sharedActiveBattles.items) {
+        let lastHitsFound = 0;
+        for (const battleId of linkMap.keys()) {
+          if (cache[battleId]?.participated) continue;
+          const ab = sharedActiveBattles.items.find(b => (b._id || b.id) === battleId);
+          if (!ab?.currentRound) continue;
+          const cr = ab.currentRound;
+          const allHitUsers = [...(cr.attacker?.lastHits || []), ...(cr.defender?.lastHits || [])].map(h => h.user);
+          if (allHitUsers.includes(userId)) {
+            dbg('battlePartMarker', 'debug', `lastHits: found userId in battle ${battleId}`);
+            cache[battleId] = { participated: true, ts: now };
+            lastHitsFound++;
+          }
+        }
+        if (lastHitsFound > 0) {
+          dbg('battlePartMarker', 'debug', `lastHits fallback found ${lastHitsFound} participations`);
+          saveBattlePartCache(cache);
+        }
+      }
+
+      // self-tracked battles (from visiting /battle/{id} and fighting)
+      if (battleSelfTracked.size > 0) {
+        let selfFound = 0;
+        for (const battleId of linkMap.keys()) {
+          if (cache[battleId]?.participated) continue;
+          if (battleSelfTracked.has(battleId)) {
+            dbg('battlePartMarker', 'debug', `self-tracked: marking battle ${battleId}`);
+            cache[battleId] = { participated: true, ts: now };
+            selfFound++;
+          }
+        }
+        if (selfFound > 0) {
+          dbg('battlePartMarker', 'debug', `self-tracked fallback found ${selfFound} participations`);
+          saveBattlePartCache(cache);
+        }
+      }
+
       for (const [battleId, elements] of linkMap.entries()) {
-        if (cache[battleId] && cache[battleId].participated) {
+        if (cache[battleId]?.participated) {
           placed += placeBattleMarkers(battleId, elements);
         }
       }
-      
+
       dbg('battlePartMarker', 'debug', `placed ${placed} new markers`);
+
+      if (totalFound > 0) {
+        const totalPlaced = document.querySelectorAll('.wia-battle-part-check').length;
+        if (totalPlaced > 0) {
+          setHealth('battlePartMarker', 'ok', `${totalPlaced} markers placed`);
+        } else {
+          setHealth('battlePartMarker', 'ok', 'no participations found');
+        }
+      }
     } finally {
       battlePartMarkerProcessing = false;
     }
@@ -20698,7 +20747,9 @@ function checkInventoryDeltaWear() {
       const time = formatRelativeTime(entry.ts);
       const safeMsg = (entry.msg || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       const safeSrc = (entry.src || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      html += `<div class="wia-notif-entry">` +
+      const clickable = entry.url ? ' wia-notif-clickable' : '';
+      const dataUrl = entry.url ? ` data-url="${(entry.url || '').replace(/"/g, '&quot;')}"` : '';
+      html += `<div class="wia-notif-entry${clickable}"${dataUrl}>` +
         `<div class="wia-notif-entry-header">` +
           `<span class="wia-notif-src" style="${srcStyle}">${safeSrc}</span>` +
           `<span class="wia-notif-time">${time}</span>` +
@@ -20707,6 +20758,17 @@ function checkInventoryDeltaWear() {
       `</div>`;
     }
     body.innerHTML = html;
+    body.querySelectorAll('.wia-notif-clickable').forEach(el => {
+      el.addEventListener('click', (e) => {
+        const url = el.dataset.url;
+        if (!url) return;
+        if (e.ctrlKey || e.metaKey) {
+          try { PAGE_WINDOW.open(url, '_blank'); } catch (_) {}
+        } else {
+          try { PAGE_WINDOW.location.href = url; } catch (_) {}
+        }
+      });
+    });
   }
 
   function initNotifHistory() {
