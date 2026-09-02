@@ -2737,9 +2737,11 @@
       } catch (e) {
         lastErr = e;
         reportApiAttemptFailure('resolveApiBase', procedure, base, e);
+        if (e.definitive) break;
       }
     }
     ApiMonitor.trackResult(callEntry, res, Date.now() - startTime, lastErr);
+    if (lastErr && lastErr.definitive) throw lastErr;
     if (lastErr && (lastErr.message === '401' || lastErr.message === '403')) {
       gateProcedure(procedure);
     }
@@ -2819,9 +2821,11 @@
       } catch (e) {
         lastErr = e;
         reportApiAttemptFailure('resolveApiPost', procedure, base, e);
+        if (e.definitive) break;
       }
     }
     ApiMonitor.trackResult(callEntry, res, Date.now() - startTime, lastErr);
+    if (lastErr && lastErr.definitive) throw lastErr;
     if (lastErr && (lastErr.message === '401' || lastErr.message === '403')) {
       gateProcedure(procedure);
     }
@@ -20543,8 +20547,10 @@ function checkInventoryDeltaWear() {
         if (!linkMap.has(battleId)) linkMap.set(battleId, []);
         linkMap.get(battleId).push({ link, card });
 
-        if (cache[battleId] && cache[battleId].participated) {
-          dbg('battlePartMarker', 'debug', `battle ${battleId}: cached as participated`);
+        if (cache[battleId]) {
+          if (cache[battleId].participated) {
+            dbg('battlePartMarker', 'debug', `battle ${battleId}: cached as participated`);
+          }
           continue;
         }
 
@@ -20596,16 +20602,21 @@ function checkInventoryDeltaWear() {
             const battleId = res.battleId;
 
             if (res.error) {
-              dbg('battlePartMarker', 'debug', `battle ${battleId}: API error (${res.error.message || 'unknown'}), throttling`);
-              battleCheckThrottle.set(battleId, resultNow);
+              if (res.error.definitive) {
+                dbg('battlePartMarker', 'debug', `battle ${battleId}: definitive ${res.error.message}, negative-caching`);
+                cache[battleId] = { participated: false, ts: resultNow };
+              } else {
+                dbg('battlePartMarker', 'debug', `battle ${battleId}: API error (${res.error.message || 'unknown'}), throttling`);
+                battleCheckThrottle.set(battleId, resultNow);
+              }
               continue;
             }
             if (res.payload && res.payload.hits > 0) {
               dbg('battlePartMarker', 'debug', `battle ${battleId}: API confirmed participation (hits=${res.payload.hits})`);
               cache[battleId] = { participated: true, ts: resultNow };
             } else {
-              dbg('battlePartMarker', 'debug', `battle ${battleId}: API says no participation (payload=${JSON.stringify(res.payload)}), throttling`);
-              battleCheckThrottle.set(battleId, resultNow);
+              dbg('battlePartMarker', 'debug', `battle ${battleId}: no participation, negative-caching`);
+              cache[battleId] = { participated: false, ts: resultNow };
             }
           }
 
