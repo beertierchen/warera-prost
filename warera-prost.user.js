@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         TEST PROST
+// @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
 // @version      0.13.0
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
