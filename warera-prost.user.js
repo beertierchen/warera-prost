@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TEST PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.13.0-unstable
+// @version      0.13.0
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -9959,7 +9959,17 @@ function initScratchpad() {
           const itemCode = compDetails.itemCode;
           const normCode = normalizeItemCode(itemCode);
           const sellPrice = priceMap[normCode] || 0;
-          const grossDay = totalProd * sellPrice;
+          const recipes = ecoRecipesCache.recipes || {};
+          const ppPerItem = recipes[itemCode]?.productionPoints || 1;
+          if (!ecoRecipesCache.recipes) fetchGameConfig();
+          const itemsPerDay = ppPerItem > 0 ? totalProd / ppPerItem : 0;
+          const grossDay = itemsPerDay * sellPrice;
+
+          const ppPerItemRow = ppPerItem > 1 ? `
+            <div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #a78bfa;">
+              <span>PP per Item:</span>
+              <span>${ppPerItem}</span>
+            </div>` : '';
 
           breakdownHtml = `
             <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
@@ -9969,10 +9979,10 @@ function initScratchpad() {
             <div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #a78bfa;">
               <span>Bonus (+${bonus}%) &times; Fidelity (+${w.fidelity}%):</span>
               <span>&times;${numF((1 + bonus / 100) * (1 + w.fidelity / 100), 2)}</span>
-            </div>
+            </div>${ppPerItemRow}
             <div style="display: flex; justify-content: space-between; margin-bottom: 4px; font-weight: bold;">
               <span>Total Prod (Items/day):</span>
-              <span>${numF(totalProd, 1)}</span>
+              <span>${numF(itemsPerDay, 1)}</span>
             </div>
             <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
               <span>Gross Revenue (sell @ ${numF(sellPrice, 2)}):</span>
@@ -14540,11 +14550,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
   const PILL_OBS_OPTS = { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['style'] };
   let noneReadCount = 0;
   let pillColdStartDone = false;
-  // Panel width (px) below which the pill badge floats out of the inline
-  // flow. Measured against #layoutUserMenu's own box (ResizeObserver), NOT
-  // the viewport — the game panel is user-resizable independent of the window.
   const PILL_FLOAT_BREAKPOINT = 570;
-  // Panel width (px) below which the "... frei" labels are hidden to avoid overlap
   const PILL_LABEL_HIDE_BREAKPOINT = 400;
   let pillFloatObserver = null;
   let pillFloatObservedNode = null;
@@ -15628,9 +15634,6 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
                    document.querySelector('header');
     if (!anchor) return;
 
-    // Establish a containing block so the float variant (position:absolute)
-    // anchors to the panel, not some far ancestor. Additive + idempotent:
-    // 'relative' doesn't move a statically-positioned element.
     if (anchor.id === 'layoutUserMenu' && getComputedStyle(anchor).position === 'static') {
       anchor.style.position = 'relative';
     }
@@ -15644,7 +15647,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
 
     renderPillBadge(badge);
     applyPillFloatState(badge);
-    attachPillFloatObserver(); // ensure observer matches the active menu node (idempotent)
+    attachPillFloatObserver();
   }
 
   function renderPillBadge(badge) {
@@ -15745,25 +15748,19 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     if (badge) badge.remove();
   }
 
-  // Pure: should the badge float, given a measured panel width? Fail-open to
-  // in-flow (false) for unmeasured/degenerate widths.
   function shouldPillFloat(width) {
     return Number.isFinite(width) && width > 0 && width < PILL_FLOAT_BREAKPOINT;
   }
 
-  // Toggle float mode from the panel's measured width. Idempotent: no DOM
-  // write unless the float decision actually changed.
   function applyPillFloatState(badge) {
     if (!badge) return;
     const menu = document.getElementById('layoutUserMenu');
-    // getBoundingClientRect().width is the rendered content box after layout.
-    // Fall back to offsetWidth if getBoundingClientRect is not defined (e.g. in test environments).
     const width = menu
       ? (typeof menu.getBoundingClientRect === 'function' ? menu.getBoundingClientRect().width : (menu.offsetWidth || 0))
       : 0;
     const wantFloat = shouldPillFloat(width);
     if (wantFloat === pillIsFloating && badge.classList.contains('wia-pill-badge--float') === wantFloat) {
-      return; // already in the desired state
+      return;
     }
     pillIsFloating = wantFloat;
     if (wantFloat) {
@@ -15774,9 +15771,6 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     dbg('pillReminder', 'debug', 'float', wantFloat, 'panelWidth', Math.round(width));
   }
 
-  // Watch the PANEL's own width (not the viewport) — the game user-menu is a
-  // user-resizable in-app panel, so window resize / matchMedia never fire on a
-  // drag. ResizeObserver on #layoutUserMenu is the only correct trigger.
   function attachPillFloatObserver() {
     if (typeof ResizeObserver === 'undefined') {
       dbg('pillReminder', 'debug', 'ResizeObserver unavailable — float disabled');
@@ -15788,24 +15782,20 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       return;
     }
     if (menu === pillFloatObservedNode) {
-      return; // Already observing this active node
+      return;
     }
     if (!pillFloatObserver) {
       pillFloatObserver = new ResizeObserver(() => {
-        // Coalesce burst of resize notifications during a drag into one frame.
         if (pillResizeRaf) return;
         pillResizeRaf = requestAnimationFrame(() => {
           pillResizeRaf = 0;
           const badge = document.getElementById('wia-pill-badge');
           if (badge) applyPillFloatState(badge);
-          // Budget label ("· ⬇ N frei") is width-dependent too — refresh on
-          // resize so it hides under PILL_LABEL_HIDE_BREAKPOINT immediately,
-          // not on the next 10s tick / H&H change.
           renderHnHBudget();
         });
       });
     }
-    pillFloatObserver.disconnect();   // re-attach cleanly
+    pillFloatObserver.disconnect();
     pillFloatObserver.observe(menu);
     pillFloatObservedNode = menu;
   }
@@ -16839,6 +16829,22 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     return code;
   }
 
+  function findSelectedCard(startEl) {
+    let el = startEl;
+    for (let i = 0; i < 8 && el; i++) {
+      el = el.parentElement;
+      if (!el) break;
+      if (el.querySelector(':scope > div > svg[viewBox="0 0 6 6"]')) return el;
+      try {
+        const bs = getComputedStyle(el).borderStyle;
+        if (bs === 'dashed' || (bs && bs.includes('dashed'))) return el;
+      } catch (err) {
+        dbg('craftAdvisor', 'warn', 'getComputedStyle failed in findSelectedCard:', err);
+      }
+    }
+    return null;
+  }
+
   function parseCraftingState(modal) {
     // 1. Rarity
     let selectedRarity = null;
@@ -16856,8 +16862,8 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       const spans = Array.from(modal.querySelectorAll('span'));
       const raritySpan = spans.find(span => span.textContent.trim() === rarity);
       if (raritySpan) {
-        const cardContainer = raritySpan.closest('.ahvacn2');
-        if (cardContainer && cardContainer.querySelector('._1dnmndy85w')) {
+        const card = findSelectedCard(raritySpan);
+        if (card) {
           selectedRarity = rarity;
           break;
         }
@@ -16866,21 +16872,22 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     const tier = rarityToTier[selectedRarity] || 1;
 
     // 2. Selected Item
-    const activeElements = Array.from(modal.querySelectorAll('._1dnmndy85w'));
-    const activeItemHighlight = activeElements.find(el => {
-      const parentCard = el.closest('.ahvacn2');
-      if (parentCard) {
-        const text = parentCard.textContent.trim();
-        if (rarities.some(r => text.includes(r))) {
-          return false;
-        }
-      }
-      return true;
-    });
+    const targetNodes = [
+      ...Array.from(modal.querySelectorAll('img[alt]')),
+      ...Array.from(modal.querySelectorAll('span')).filter(s => s.textContent.trim() === '?')
+    ];
+    const activeItemHighlight = targetNodes.reduce((found, node) => {
+      if (found) return found;
+      const card = findSelectedCard(node);
+      if (!card) return null;
+      const text = card.textContent.trim();
+      if (rarities.some(r => text.includes(r))) return null;
+      return card;
+    }, null);
 
     let selectedItem = 'random';
     if (activeItemHighlight) {
-      const itemCell = activeItemHighlight.parentElement;
+      const itemCell = activeItemHighlight;
       if (itemCell) {
         const questionMarkSpan = Array.from(itemCell.querySelectorAll('span')).find(span => span.textContent.trim() === '?');
         if (questionMarkSpan) {
@@ -18395,7 +18402,7 @@ function checkInventoryDeltaWear() {
           pillBarObserver.observe(m, PILL_OBS_OPTS);
         }
       }
-      attachPillFloatObserver(); // #layoutUserMenu may be a fresh node
+      attachPillFloatObserver();
     }
   }
 
