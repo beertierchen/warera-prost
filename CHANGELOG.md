@@ -1,30 +1,22 @@
 # CHANGELOG
 
-## 2026-09-01 | Fix: Game Update Hotfix (v0.12.6)
-
-**Geänderte Dateien:** `warera-prost.user.js`, `tests/pill-float.test.js`, `package.json`
-
-**Änderungen (Deutsch):**
-- **Bug Fix**: Crafting-Advisor erkannte die ausgewählte Seltenheit nicht mehr — das Spiel hat CSS-Rahmen durch SVG-Eckenmarkierungen als Auswahl-Indikator ersetzt.
-- **Bug Fix**: Crafting-Advisor zeigte „Resource cost: 0 Gold" — Ressourcen-Icons (Scrap/Steel) sind nun in einer tieferen DOM-Verschachtelung, die der Parser nicht mehr fand.
-- **Revert**: Pillen-Badge wieder inline im Spielmenü statt als schwebendes Icon — das Spiel hat das neue Menülayout zurückgefahren.
-
-**Changes (English):**
-- **Bug Fix**: Crafting Advisor failed to detect selected rarity — game replaced CSS dashed borders with SVG corner markers as selection indicator.
-- **Bug Fix**: Crafting Advisor showed "Resource cost: 0 Gold" — resource icons (scraps/steel) moved to deeper DOM nesting that the parser couldn't reach.
-- **Revert**: Pill badge back to inline in the game menu instead of floating icon — the game reverted the new menu layout.
-
-## 2026-08-30 | Fix: UI Layout & Crafting Advisor (v0.12.5)
+## 2026-09-03 | Notification History & Inventory Fix (v0.13.1)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `package.json`
 
 **Änderungen (Deutsch):**
-- **Bug Fix**: Der PROST Pillen-Badge ist nun ein eigenständiges schwebendes Icon, um Überschneidungen im neuen Spiel-Menü zu vermeiden.
-- **Bug Fix**: Der Crafting-Advisor wählt nun wieder zuverlässig die Seltenheit und Gegenstände anhand visueller Spielindikatoren anstelle von veralteten CSS-Klassen.
+- **Verbesserung**: Kopfgeld-Benachrichtigungen in der Historie zeigen jetzt auch den Betrag pro 1k Schaden an (z.B. „62.15 · 0.05/1k").
+- **Verbesserung**: Firmenmeldungen (Lager voll, Bonus gesunken, Steuer gestiegen, Ablagerung läuft ab) sind jetzt klickbar und navigieren direkt zur betroffenen Firma.
+- **Bug Fix**: Inventar-Ressourcenanzeige und Netto-Produktions-Tags wurden nach Game-DOM-Update nicht mehr erkannt — adaptive Erkennung statt fester DOM-Tiefe.
+- **Bug Fix**: K-Format-Zahlen (z.B. „1.245K") in verschachtelten Spans wurden falsch geparst — führende Ziffer wird nun geprüft.
+- **Bug Fix**: Netto-Produktions-Tags fehlten bei Ressourcen mit K/M-Anzeige — Regex akzeptiert jetzt K/M-Suffixe.
 
 **Changes (English):**
-- **Bug Fix**: The PROST Pill badge is now an independent floating icon to prevent overlapping in the game's new top menu.
-- **Bug Fix**: The Crafting Advisor now reliably detects rarity and item selection using visual game indicators instead of deprecated CSS classes.
+- **Enhancement**: Bounty notifications in the history now show the per-1k-damage rate (e.g., "62.15 · 0.05/1k").
+- **Enhancement**: Company notifications (storage full, bonus drop, tax increase, deposit expiring) are now clickable and navigate directly to the affected company.
+- **Bug Fix**: Inventory resource display and net production tags stopped working after a game DOM update — replaced fixed DOM depth with adaptive detection.
+- **Bug Fix**: K-format numbers (e.g., "1.245K") in nested spans were parsed incorrectly — now requires a leading digit to select the correct span.
+- **Bug Fix**: Net production tags were missing for resources displayed in K/M format — regex now accepts K/M suffixes.
 
 ## 2026-08-29 | Fix: Game Update API Compatibility (v0.12.4)
 
