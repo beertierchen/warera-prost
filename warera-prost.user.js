@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.13.1
+// @version      0.13.2
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -312,6 +312,8 @@
     featBountyNotify: false,
     featBountyNotif: false,
     bountyMuteDebuff: false,
+    featBattleAlertMilestone: false,
+    featBattleAlertMilestoneIntroducedIn: '0.13.2',
     ntfyTopic: '',
     ntfyTopicSecret: '',
     personalTopic: '',
@@ -513,6 +515,7 @@
         bountyScopeAllies: 'Only allies (own country + alliance + own allies/pacts)',
         bountyScopeCascade: 'Allies + Cascading (alliance members\' allies/pacts)',
         settingsBountyMuteDebuff: 'Mute bounty notifications while debuff is active',
+        settingsFeatBattleAlertMilestone: 'New battle alerts (milestone)',
         settingsPillSettingsLabel: 'Pill timing options',
         settingsPillBuffLabel: 'Buff Duration (hours)',
         settingsPillKnifeLabel: 'Knife Duration (hours)',
@@ -935,6 +938,7 @@
         bountyScopeAllies: 'Nur Verbündete (eigenes Land + Allianz + eigene Allies/Pakte)',
         bountyScopeCascade: 'Verbündete + Kaskade (Allianz-Mitglieder Allies/Pakte)',
         settingsBountyMuteDebuff: 'Stummschalten während Debuff aktiv ist',
+        settingsFeatBattleAlertMilestone: 'Neue Kampf-Benachrichtigungen (Meilenstein)',
         settingsPillSettingsLabel: 'Optionen für Pillen-Timing',
         settingsPillBuffLabel: 'Buff-Dauer (Stunden)',
         settingsPillKnifeLabel: 'Messer-Dauer (Stunden)',
@@ -1258,6 +1262,8 @@
     bountyLastPollAt: NS + 'bountyLastPollAt',
     bountyPollLock: NS + 'bountyPollLock',
     bountySeen: NS + 'bountySeen',
+    battleAlertSeen: NS + 'battleAlertSeen',
+    featBattleAlertMilestone: NS + 'featBattleAlertMilestone',
     ownCountryCache: NS + 'ownCountryCache',
     featEquipSellCalc: NS + 'featEquipSellCalc',
     equipSellCalcUndercut: NS + 'equipSellCalcUndercut',
@@ -6804,6 +6810,7 @@ async function scanInventory(force) {
     const prevBountyOwn = !hasKey ? '' : (bg.querySelector('.wia-bounty-own')?.value ?? CONFIG.bountyOwnCountryOverride);
     const prevBountyScope = !hasKey ? 'all' : (bg.querySelector('.wia-bounty-scope')?.value ?? CONFIG.bountyScope);
     const prevBountyMuteDebuff = bg.querySelector('.wia-bounty-mute-debuff')?.checked ?? CONFIG.bountyMuteDebuff;
+    const prevFeatBattleAlertMilestone = bg.querySelector('.wia-feat-battle-alert-milestone')?.checked ?? CONFIG.featBattleAlertMilestone;
     const prevFeatSystemAlerts = bg.querySelector('.wia-feat-system-alerts')?.checked ?? CONFIG.featSystemAlerts;
 
     const prevPersonalTopic = bg.querySelector('.wia-personal-topic')?.value ?? CONFIG.personalTopic;
@@ -6971,6 +6978,10 @@ async function scanInventory(force) {
               <div style="margin-top: 6px; display: flex; align-items: center; gap: 8px;">
                 <input type="checkbox" class="wia-bounty-mute-debuff" style="width: auto;" ${prevBountyMuteDebuff ? 'checked' : ''} />
                 <label style="font-size: 11px; color: #8b949e; margin: 0; font-weight: normal; cursor: pointer;">${t('settingsBountyMuteDebuff')}</label>
+              </div>
+              <div class="wia-feat-row" data-feat-id="featBattleAlertMilestone" style="margin-top: 6px; display: flex; align-items: center; gap: 8px;">
+                <input type="checkbox" class="wia-feat-battle-alert-milestone" style="width: auto;" ${prevFeatBattleAlertMilestone ? 'checked' : ''} />
+                <label style="font-size: 11px; color: #8b949e; margin: 0; font-weight: normal; cursor: pointer;">${renderFeatLabel('featBattleAlertMilestone', t('settingsFeatBattleAlertMilestone'))}</label>
               </div>
             </details>
           </div>
@@ -7654,6 +7665,7 @@ async function scanInventory(force) {
       const bountyOwn = !hasKey ? '' : bg.querySelector('.wia-bounty-own').value.trim();
       const bountyScope = !hasKey ? 'all' : bg.querySelector('.wia-bounty-scope').value;
       const bountyMuteDebuff = bg.querySelector('.wia-bounty-mute-debuff').checked;
+      const featBattleAlertMilestone = bg.querySelector('.wia-feat-battle-alert-milestone').checked;
       const personalTopic = bg.querySelector('.wia-personal-topic').value.trim();
       const personalSecret = bg.querySelector('.wia-personal-secret').value.trim();
       const featSystemAlerts = bg.querySelector('.wia-feat-system-alerts').checked;
@@ -7663,6 +7675,7 @@ async function scanInventory(force) {
       GM_setValue(KEYS.bountyOwnCountryOverride, bountyOwn);
       GM_setValue(KEYS.bountyScope, bountyScope);
       GM_setValue(KEYS.bountyMuteDebuff, bountyMuteDebuff);
+      GM_setValue(KEYS.featBattleAlertMilestone, featBattleAlertMilestone);
       GM_setValue(KEYS.personalTopic, personalTopic);
       GM_setValue(KEYS.personalTopicSecret, personalSecret);
       GM_setValue(KEYS.featSystemAlerts, featSystemAlerts);
@@ -7672,12 +7685,13 @@ async function scanInventory(force) {
       CONFIG.bountyOwnCountryOverride = bountyOwn;
       CONFIG.bountyScope = bountyScope;
       CONFIG.bountyMuteDebuff = bountyMuteDebuff;
+      CONFIG.featBattleAlertMilestone = featBattleAlertMilestone;
       CONFIG.personalTopic = personalTopic;
       CONFIG.personalTopicSecret = personalSecret;
       CONFIG.featSystemAlerts = featSystemAlerts;
 
       bountyResetAllyCache();
-      if (featBounty) { guard('bountyNotify', initBountyNotify); } else { teardownBountyNotify(); }
+      if (featBounty || featBattleAlertMilestone) { guard('bountyNotify', initBountyNotify); } else { teardownBountyNotify(); }
       if (featSystemAlerts) { initSystemAlerts(); } else { teardownSystemAlerts(); }
 
       if (tokenChanged) {
@@ -19705,6 +19719,27 @@ function checkInventoryDeltaWear() {
     } catch (e) { dbg('bountyNotify', 'error', 'browser notif failed', e.message); }
   }
 
+  // ── Battle Alert Milestone ──
+  let battleAlertColdStartDone = false;
+  function loadBattleAlertSeen() { return GM_getValue(KEYS.battleAlertSeen, {}) || {}; }
+  function saveBattleAlertSeen(store) { GM_setValue(KEYS.battleAlertSeen, store); }
+
+  async function emitBattleAlert(battle) {
+    const [attacker, defender] = await Promise.all([
+      resolveCountryName(battle.attacker && battle.attacker.country),
+      resolveCountryName(battle.defender && battle.defender.country)
+    ]);
+    const regionVal = battle.defender && battle.defender.region;
+    let region = '';
+    if (regionVal && typeof regionVal === 'object' && regionVal.name) {
+      region = regionVal.name;
+    } else if (regionVal) {
+      try { region = await resolveRegionName(typeof regionVal === 'string' ? regionVal : ''); } catch (_) {}
+    }
+    const body = attacker + ' vs ' + defender + (region && region !== '?' ? ' · ' + region : '');
+    sendPersonalNtfy('New Battle', 'New Battle', body, ['crossed_swords'], '2', '/battle/' + battle._id);
+  }
+
   // ── SeenStore (local dedup) ──
   const BOUNTY_SEEN_TTL_MS = 86400000;   // 24h; pure time-based prune (pagination-safe)
   const BOUNTY_POPUP_MS = 8000;   // in-game toast auto-dismiss
@@ -19783,16 +19818,23 @@ function checkInventoryDeltaWear() {
   }
 
   async function pollBounties() {
-    if (!CONFIG.featBountyNotify || !getEffectiveTopic()) return;
+    let bountyActive = CONFIG.featBountyNotify && getEffectiveTopic();
+    if (!bountyActive && !CONFIG.featBattleAlertMilestone) return;
     if (!(await acquirePollSlot())) return;
     try {
-      const alliesSet = await resolveAllyCountryIds(false);
-      const cascadeSet = await resolveAllyCountryIds(true);
-      const ownCountry = await resolveOwnCountry();
-      const base = GM_getValue(KEYS.bountyTopicBase, '');
-
-      const allySet = CONFIG.bountyScope === 'all' ? null : (CONFIG.bountyScope === 'cascade' ? cascadeSet : alliesSet);
-      if (allySet && !allySet.size) { setHealth('bountyNotify', 'warn', 'ally set unresolved'); return; }
+      let alliesSet, cascadeSet, ownCountry, base, allySet;
+      if (bountyActive) {
+        alliesSet = await resolveAllyCountryIds(false);
+        cascadeSet = await resolveAllyCountryIds(true);
+        ownCountry = await resolveOwnCountry();
+        base = GM_getValue(KEYS.bountyTopicBase, '');
+        allySet = CONFIG.bountyScope === 'all' ? null : (CONFIG.bountyScope === 'cascade' ? cascadeSet : alliesSet);
+        if (allySet && !allySet.size) {
+          setHealth('bountyNotify', 'warn', 'ally set unresolved');
+          if (!CONFIG.featBattleAlertMilestone) return;
+          bountyActive = false;
+        }
+      }
 
       let cursor, pages = 0; const all = [];
       do {
@@ -19812,6 +19854,29 @@ function checkInventoryDeltaWear() {
       // Share this list so the Order-Radar can reuse it instead of making its own identical call.
       setSharedActiveBattles(all);
 
+      // ── Battle Alert Milestone ──
+      if (CONFIG.featBattleAlertMilestone) {
+        let baSeen = pruneSeen(loadBattleAlertSeen(), now());
+        if (!battleAlertColdStartDone) {
+          for (const b of all) baSeen[b._id] = now();
+          battleAlertColdStartDone = true;
+          saveBattleAlertSeen(baSeen);
+          dbg('bountyNotify', 'debug', 'battle-alert cold-start seeded', all.length);
+        } else {
+          const newBattles = all.filter(b => !baSeen[b._id]);
+          for (const b of newBattles) {
+            baSeen[b._id] = now();
+            emitBattleAlert(b);
+          }
+          if (newBattles.length) {
+            saveBattleAlertSeen(baSeen);
+            dbg('bountyNotify', 'debug', 'battle-alerts sent', newBattles.length);
+          }
+        }
+      }
+
+      if (!bountyActive) { setHealth('bountyNotify', 'ok', ''); return; }
+
       const bounties = extractAllyBounties(all, allySet, ownCountry);
       const allBounties = extractAllyBounties(all, null, ownCountry);
       dbg('bountyNotify', 'debug', 'poll ok', 'battles', all.length, 'allyBounties', bounties.length);
@@ -19820,7 +19885,6 @@ function checkInventoryDeltaWear() {
       let mirrorSeen = pruneSeen(loadMirrorSeen(), now());
 
       if (!bountyColdStartDone) {
-        // Seed existing bounties WITHOUT notifying (avoid flood on tab open).
         let localSeen = pruneSeen(loadLocalSeen(), now());
         for (const b of bounties) {
           const k = bountyKey(b.battleId, b.side, b.effectiveAt);
@@ -20750,6 +20814,7 @@ function checkInventoryDeltaWear() {
     if (s === 'debuff') return 'background:rgba(139,92,246,0.15);color:#8b5cf6';
     if (s === 'storage' || s === 'company') return 'background:rgba(59,130,246,0.15);color:#3b82f6';
     if (s === 'bounty') return 'background:rgba(239,68,68,0.15);color:#ef4444';
+    if (s === 'new battle') return 'background:rgba(249,115,22,0.15);color:#f97316';
     if (s === 'system') return 'background:rgba(239,68,68,0.2);color:#f87171';
     return 'background:rgba(148,163,184,0.15);color:#94a3b8';
   }
@@ -20899,7 +20964,7 @@ function checkInventoryDeltaWear() {
       notifPanelEl.remove();
       notifPanelEl = null;
     }
-    if (notifBellEl) { dockUnregister(notifBellEl); notifBellEl.remove(); notifBellEl = null; }
+if (notifBellEl) { dockUnregister(notifBellEl); notifBellEl.remove(); notifBellEl = null; }
     setHealth('notifHistory', 'idle', 'disabled');
   }
 
@@ -21008,6 +21073,7 @@ function checkInventoryDeltaWear() {
     CONFIG.featBountyNotify = GM_getValue(KEYS.featBountyNotify, CONFIG.featBountyNotify);
     CONFIG.featBountyNotif = GM_getValue(KEYS.featBountyNotif, false);
     CONFIG.bountyMuteDebuff = GM_getValue(KEYS.bountyMuteDebuff, false);
+    CONFIG.featBattleAlertMilestone = GM_getValue(KEYS.featBattleAlertMilestone, false);
     CONFIG.ntfyTopic = GM_getValue(KEYS.ntfyTopic, CONFIG.ntfyTopic);
     CONFIG.ntfyTopicSecret = GM_getValue(KEYS.ntfyTopicSecret, CONFIG.ntfyTopicSecret);
     CONFIG.personalTopic = GM_getValue(KEYS.personalTopic, '');
@@ -21069,7 +21135,7 @@ function checkInventoryDeltaWear() {
     if (CONFIG.featMarketGraph) guard('marketGraph', initMarketGraph); else setHealth('marketGraph', 'idle', 'disabled in settings');
     if (CONFIG.featPnlTracker) guard('pnl', initPnlTracker); else setHealth('pnl', 'idle', 'disabled in settings');
     if (CONFIG.featEquipSellCalc) guard('equipSellCalc', initEquipSellCalc); else setHealth('equipSellCalc', 'idle', 'disabled in settings');
-    if (CONFIG.featBountyNotify) guard('bountyNotify', initBountyNotify); else setHealth('bountyNotify', 'idle', 'disabled in settings');
+    if (CONFIG.featBountyNotify || CONFIG.featBattleAlertMilestone) guard('bountyNotify', initBountyNotify); else setHealth('bountyNotify', 'idle', 'disabled in settings');
     if (CONFIG.featAlertCompanyStorage || CONFIG.featAlertCompanyBonus || CONFIG.featAlertCompanyTax || CONFIG.featAlertCompanyDeposit || CONFIG.featBetterRegion) guard('companyTracking', initCompanyTracking); else setHealth('companyTracking', 'idle', 'disabled in settings');
     if (CONFIG.featSystemAlerts) initSystemAlerts();
     if (CONFIG.featBattleMilestoneHelper) {
