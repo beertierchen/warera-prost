@@ -1,5 +1,21 @@
 # CHANGELOG
 
+## 2026-09-04 | Neue Kampf-Benachrichtigungen / New Battle Alerts (v0.13.2)
+
+**Geänderte Dateien:** `warera-prost.user.js`, `package.json`
+
+**Änderungen (Deutsch):**
+- **Neues Feature**: Kampf-Alarm (Meilenstein) — Benachrichtigung über alle neuen Schlachten auf allen vier Kanälen (ntfy, Browser, Toast, Historie) mit direktem Link zur Schlacht. Ideal für das Meilenstein-Ziel, an möglichst vielen Kämpfen teilzunehmen.
+- Nutzt den bestehenden Bounty-Poll (30s Zyklus, kein zusätzlicher API-Aufwand).
+- Eigener Ein/Aus-Schalter unter „Bounty Options" in den Einstellungen.
+- Cold-Start: Bestehende Schlachten werden beim ersten Scan als gesehen markiert (keine Benachrichtigungsflut).
+
+**Changes (English):**
+- **New Feature**: Battle Alert (Milestone) — notifies about all new battles across all four channels (ntfy, browser, toast, history) with a direct battle link. Designed for the milestone goal of participating in as many battles as possible.
+- Piggybacks on the existing bounty poll (30s cycle, zero extra API cost).
+- Independent toggle under "Bounty Options" in settings.
+- Cold-start: existing battles are seeded as seen on first scan (no notification flood).
+
 ## 2026-09-03 | Notification History & Inventory Fix (v0.13.1)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `package.json`
