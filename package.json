@@ -26,5 +26,8 @@
   "private": false,
   "devDependencies": {
     "@wareraprojects/api": "^0.3.3"
+  },
+  "dependencies": {
+    "puppeteer": "^25.11.0"
   }
 }

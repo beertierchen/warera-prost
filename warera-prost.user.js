@@ -122,7 +122,7 @@
 
     // --- DOM ---
     // Item images all live under this path; we climb from the <img> to its card.
-    itemImageSelector: "img[src*='/images/items/'], img[src*='/images/skins/']",
+    itemImageSelector: "img[src*='/images/items/'], img[src*='/images/itemsv2/'], img[src*='/images/skins/'], img[src*='/images/skinsv2/']",
     cardAncestorMaxClimb: 6,            // how many parents to walk up looking for the "card"
 
     // SVG path "d" fingerprints-substring-match to identify the stat by its icon.
@@ -2214,8 +2214,10 @@
     return Math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2);
   }
   function parseRgb(str) {
-    if (!str) return null;
+    if (!str || str === 'rgba(0, 0, 0, 0)' || str === 'transparent') return null;
     const m = str.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+    // If there is an alpha channel and it's 0, treat as transparent
+    if (m && str.match(/rgba\([^)]+,\s*0\s*\)/i)) return null;
     return m ? [+m[1], +m[2], +m[3]] : null;
   }
 
@@ -3345,7 +3347,7 @@
         const card = climbToCard(img);
 
         const src = img.getAttribute('src') || '';
-        const isSkin = src.includes('/skins/') || (typeof skinNameFromSrc === 'function' && skinNameFromSrc(src) !== null);
+        const isSkin = src.includes('/skins/') || src.includes('/skinsv2/') || (typeof skinNameFromSrc === 'function' && skinNameFromSrc(src) !== null);
         if (isSkin) {
           SCOPING_STATS.skinsDetected++;
         } else {
@@ -3703,7 +3705,7 @@
       if (!el) break;
       const cs = getComputedStyle(el);
       const hasColor =
-        parseRgb(cs.borderColor) || parseRgb(cs.backgroundColor) || parseRgb(cs.outlineColor);
+        parseRgb(cs.borderColor) || parseRgb(cs.backgroundColor) || parseRgb(cs.outlineColor) || (cs.backgroundImage && cs.backgroundImage.includes('gradient'));
       // a card is usually a sized, bordered box of ~48px width. Limit max width
       // to 90px to avoid climbing up to the entire list/grid container on the market page.
       if (hasColor && el.offsetWidth >= 40 && el.offsetHeight >= 40 && el.offsetWidth <= 90) {
@@ -3715,7 +3717,7 @@
 
   function skinNameFromSrc(src) {
     if (!src) return null;
-    const match = src.match(/\/images\/skins\/([^/.?#]+)/);
+    const match = src.match(/\/images\/skins(?:v2)?\/([^/.?#]+)/);
     return match ? match[1] : null;
   }
 
@@ -3813,7 +3815,7 @@
     }
 
     // sprite basename (chest.png -> "chest") is the clean TYPE key.
-    const srcBase = (src.match(/\/images\/items\/([^/.?#]+)/) || [])[1] || '';
+    const srcBase = (src.match(/\/images\/items(?:v2)?\/([^/.?#]+)/) || [])[1] || '';
     // itemCode = the full alt ("gloves6", "chest3", "sniper")-what the market API keys on.
     const code = alt || srcBase || null;
     // tier 1-6 from the trailing digit of the code (armor); weapons have none.
@@ -3898,7 +3900,7 @@
         parseRgb(cs.outlineColor),
         el.style.boxShadow ? null : parseRgb((cs.boxShadow || '').toString()),
       ].filter(Boolean);
-      const fallback = [parseRgb(cs.backgroundColor)].filter(Boolean);
+      const fallback = [parseRgb(cs.backgroundColor), parseRgb(cs.backgroundImage)].filter(Boolean);
 
       const match = (colors) => {
         let best = null, bestDist = Infinity;
@@ -8632,8 +8634,9 @@ function updateObserverTarget() {
   }
 
   function detectAllySide() {
-    const defBtn = document.querySelector('#defender-hit-button');
-    const atkBtn = document.querySelector('#attacker-hit-button');
+    const flagButtons = Array.from(document.querySelectorAll('button')).filter(b => b.querySelector('img[src*="/flags/"]'));
+    const defBtn = flagButtons[0]?.parentElement;
+    const atkBtn = flagButtons[1]?.parentElement;
     if (!defBtn || !atkBtn) return null;
 
     const defCode = battleFlagCode(defBtn);
@@ -8725,8 +8728,10 @@ function updateObserverTarget() {
     const currentPath = getPagePathname();
     if (expectedPath && expectedPath !== currentPath) return; // bailed due to URL change
 
-    const defBtn = document.querySelector('#defender-hit-button');
-    const atkBtn = document.querySelector('#attacker-hit-button');
+    const flagButtons = Array.from(document.querySelectorAll('button')).filter(b => b.querySelector('img[src*="/flags/"]'));
+    const defBtn = flagButtons[0]?.parentElement;
+    const atkBtn = flagButtons[1]?.parentElement;
+
     if (!defBtn || !atkBtn) {
       if (battleRetryTimer) clearTimeout(battleRetryTimer);
       const myGen = ++battleGen;
@@ -8755,8 +8760,9 @@ function updateObserverTarget() {
   }
 
   function teardownBattleAdvisory() {
-    document.querySelector('#defender-hit-button')?.classList.remove('wia-battle-primary', 'wia-battle-muted');
-    document.querySelector('#attacker-hit-button')?.classList.remove('wia-battle-primary', 'wia-battle-muted');
+    document.querySelectorAll('.wia-battle-primary, .wia-battle-muted').forEach(el => {
+      el.classList.remove('wia-battle-primary', 'wia-battle-muted');
+    });
     document.querySelectorAll('[data-wia-injected]').forEach(el => el.remove());
     setHealth('battleAdvisor', 'idle', 'disabled in settings');
     setHealth('orderRadar', 'idle', 'disabled in settings');
@@ -12500,8 +12506,8 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     wrap.classList.toggle('wia-order-radar-compact', compact);
     // Scales with the banner: caps at 460px but shrinks with the header on narrow layouts.
     wrap.style.cssText = compact
-      ? 'position:absolute; right:8px; bottom:8px; display:flex; flex-direction:column; gap:3px; align-items:center; z-index:40; width:28px; pointer-events:auto;'
-      : 'position:absolute; right:10px; bottom:10px; display:flex; flex-direction:column; gap:3px; align-items:stretch; z-index:40; width:max-content; max-width:min(460px, calc(100% - 20px)); pointer-events:auto;';
+      ? 'position:absolute; right:8px; top:calc(100% + 8px); display:flex; flex-direction:column; gap:3px; align-items:center; z-index:40; width:28px; pointer-events:auto;'
+      : 'position:absolute; right:10px; top:calc(100% + 10px); display:flex; flex-direction:column; gap:3px; align-items:stretch; z-index:40; width:max-content; max-width:min(460px, calc(100% - 20px)); pointer-events:auto;';
 
     const titleDiv = document.createElement('div');
     titleDiv.className = 'wia-order-radar-header';
@@ -16611,12 +16617,12 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
   }
 
   function getModalResourceCode(modal) {
-    const img = modal.querySelector("img[src*='/images/items/']");
+    const img = modal.querySelector("img[src*='/images/items/'], img[src*='/images/itemsv2/']");
     if (!img) return null;
 
     const src = img.getAttribute('src');
     if (src) {
-      const match = src.match(/\/items\/([a-zA-Z0-9_-]+)\.(png|webp|gif|jpg)/i);
+      const match = src.match(/\/items(?:v2)?\/([a-zA-Z0-9_-]+)\.(png|webp|gif|jpg|svg)/i);
       if (match && match[1]) {
         // Keep the canonical casing from the image filename — the price/transaction API
         // keys on the exact itemCode (e.g. "lightAmmo"/"heavyAmmo"). Lowercasing turned
@@ -16881,7 +16887,7 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
       const raritySpan = spans.find(span => span.textContent.trim() === rarity);
       if (raritySpan) {
         const cardContainer = raritySpan.closest('.ahvacn2');
-        if (cardContainer && cardContainer.querySelector('._1dnmndy85w')) {
+        if (cardContainer && cardContainer.querySelector('path[d="M0,0H6V2H2V6H0Z"]')) {
           selectedRarity = rarity;
           break;
         }
@@ -16890,21 +16896,28 @@ if (CONFIG.featMarketGraph && getPagePathname().startsWith('/market')) {
     const tier = rarityToTier[selectedRarity] || 1;
 
     // 2. Selected Item
-    const activeElements = Array.from(modal.querySelectorAll('._1dnmndy85w'));
-    const activeItemHighlight = activeElements.find(el => {
-      const parentCard = el.closest('.ahvacn2');
-      if (parentCard) {
-        const text = parentCard.textContent.trim();
-        if (rarities.some(r => text.includes(r))) {
-          return false;
-        }
-      }
-      return true;
-    });
-
+    const cornerSvgs = Array.from(modal.querySelectorAll('path[d="M0,0H6V2H2V6H0Z"]'));
+    let itemCell = null;
+    for (const svg of cornerSvgs) {
+       let parentCard = svg.closest('.ahvacn2');
+       if (!parentCard) {
+         let el = svg;
+         for (let i = 0; i < 5 && el; i++) {
+           el = el.parentElement;
+           if (el && (el.style.background || '').includes('gradient')) { parentCard = el; break; }
+         }
+       }
+       if (parentCard) {
+         const text = parentCard.textContent.trim();
+         if (!rarities.some(r => text.includes(r))) {
+            itemCell = parentCard;
+            break;
+         }
+       }
+    }
+    
     let selectedItem = 'random';
-    if (activeItemHighlight) {
-      const itemCell = activeItemHighlight.parentElement;
+    if (itemCell) {
       if (itemCell) {
         const questionMarkSpan = Array.from(itemCell.querySelectorAll('span')).find(span => span.textContent.trim() === '?');
         if (questionMarkSpan) {
@@ -18943,7 +18956,7 @@ function checkInventoryDeltaWear() {
   globalThis.printPnlReceipt = printPnlReceipt;
 
   function dumpSkinsToConsole() {
-    const imgs = document.querySelectorAll('img[src*="/images/skins/"]');
+    const imgs = document.querySelectorAll('img[src*="/images/skins/"], img[src*="/images/skinsv2/"]');
     if (!imgs.length) {
       console.log('WIA SKINS DUMP: Keine Skins auf der aktuellen Seite gefunden.');
       alert('WIA SKINS DUMP: Keine Skins auf der aktuellen Seite gefunden.');

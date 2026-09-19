@@ -260,7 +260,25 @@ class MockElement {
 
   matchesSelector(selector) {
     if (selector.includes(',')) {
-      return selector.split(',').some(sel => this.matchesSelector(sel.trim()));
+      let depth = 0, inQuote = false;
+      for (const ch of selector) {
+        if (ch === '[') depth++;
+        else if (ch === ']') depth--;
+        else if (ch === '"' || ch === "'") inQuote = !inQuote;
+      }
+      if (depth === 0 && !inQuote) {
+        const parts = [];
+        let cur = '', d = 0, q = false;
+        for (const ch of selector) {
+          if (ch === '[') d++;
+          else if (ch === ']') d--;
+          else if (ch === '"' || ch === "'") q = !q;
+          if (ch === ',' && d === 0 && !q) { parts.push(cur.trim()); cur = ''; }
+          else cur += ch;
+        }
+        if (cur.trim()) parts.push(cur.trim());
+        if (parts.length > 1) return parts.some(sel => this.matchesSelector(sel));
+      }
     }
     let tag = null;
     let rest = selector;
@@ -580,7 +598,6 @@ try {
     // Button wrappers inside columns
     const defBtnWrapper = new MockElement('div');
     const defBtn = new MockElement('div');
-    defBtn.setAttribute('id', 'defender-hit-button');
     const defBtnInner = new MockElement('button');
     const defFlag = new MockElement('img');
     defFlag.setAttribute('src', '/images/flags/fr.svg');
@@ -591,7 +608,6 @@ try {
 
     const atkBtnWrapper = new MockElement('div');
     const atkBtn = new MockElement('div');
-    atkBtn.setAttribute('id', 'attacker-hit-button');
     const atkBtnInner = new MockElement('button');
     const atkFlag = new MockElement('img');
     atkFlag.setAttribute('src', '/images/flags/pl.svg');
@@ -663,8 +679,9 @@ try {
     atkOrders: ['/mu/5678']
   });
 
-  const defBtn = document.querySelector('#defender-hit-button');
-  const atkBtn = document.querySelector('#attacker-hit-button');
+  const flagButtons = Array.from(document.querySelectorAll('button')).filter(b => b.querySelector('img[src*="/flags/"]'));
+  const defBtn = flagButtons[0].parentElement;
+  const atkBtn = flagButtons[1].parentElement;
 
   globalThis.injectCompactOrders(defBtn);
   globalThis.injectCompactOrders(atkBtn);
@@ -1319,23 +1336,33 @@ try {
   const modalDiv = new MockElement('div');
   modalDiv.id = 'headlessui-dialog-panel-_r_45g9_';
 
-  // Mock Common Tier card selected
+  // Mock Common Tier card selected — corner SVG decoration marks selection
   const commonCard = new MockElement('div', 'ahvacn2');
   const commonSpan = new MockElement('span');
   commonSpan.textContent = 'Common';
   commonCard.appendChild(commonSpan);
-  const highlightOverlay = new MockElement('div', '_1dnmndy85w');
-  commonCard.appendChild(highlightOverlay);
+  const cornerDecor = new MockElement('div');
+  const cornerSvg = new MockElement('svg');
+  const cornerPath = new MockElement('path');
+  cornerPath.setAttribute('d', 'M0,0H6V2H2V6H0Z');
+  cornerSvg.appendChild(cornerPath);
+  cornerDecor.appendChild(cornerSvg);
+  commonCard.appendChild(cornerDecor);
   modalDiv.appendChild(commonCard);
 
-  // Mock specific item selected (Helmet)
+  // Mock specific item selected (Helmet) — corner SVG marks selection
   const itemGrid = new MockElement('div', '_1dnmndyjlu');
   const helmetCell = new MockElement('div', 'ahvacn2');
   const helmetImg = new MockElement('img');
   helmetImg.setAttribute('alt', 'helmet1');
   helmetCell.appendChild(helmetImg);
-  const itemHighlightOverlay = new MockElement('div', '_1dnmndy85w');
-  helmetCell.appendChild(itemHighlightOverlay);
+  const itemCornerDecor = new MockElement('div');
+  const itemCornerSvg = new MockElement('svg');
+  const itemCornerPath = new MockElement('path');
+  itemCornerPath.setAttribute('d', 'M0,0H6V2H2V6H0Z');
+  itemCornerSvg.appendChild(itemCornerPath);
+  itemCornerDecor.appendChild(itemCornerSvg);
+  helmetCell.appendChild(itemCornerDecor);
   itemGrid.appendChild(helmetCell);
   modalDiv.appendChild(itemGrid);
 
@@ -1375,14 +1402,19 @@ try {
   assert.strictEqual(parsedCraft.scrapsRequired, 6, 'Parsed scraps required should be 6');
   assert.strictEqual(parsedCraft.steelRequired, 1, 'Parsed steel required should be 1');
 
-  // Test Random mode parsing
-  itemHighlightOverlay.remove();
+  // Test Random mode parsing — move corner decoration from helmet to random cell
+  itemCornerDecor.remove();
   const randomCell = new MockElement('div', 'ahvacn2');
   const qMarkSpan = new MockElement('span');
   qMarkSpan.textContent = '?';
   randomCell.appendChild(qMarkSpan);
-  const randomHighlight = new MockElement('div', '_1dnmndy85w');
-  randomCell.appendChild(randomHighlight);
+  const randomCornerDecor = new MockElement('div');
+  const randomCornerSvg = new MockElement('svg');
+  const randomCornerPath = new MockElement('path');
+  randomCornerPath.setAttribute('d', 'M0,0H6V2H2V6H0Z');
+  randomCornerSvg.appendChild(randomCornerPath);
+  randomCornerDecor.appendChild(randomCornerSvg);
+  randomCell.appendChild(randomCornerDecor);
   itemGrid.appendChild(randomCell);
 
   const parsedRandom = globalThis.parseCraftingState(modalDiv);
