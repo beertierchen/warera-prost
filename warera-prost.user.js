@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PROST
 // @namespace    https://github.com/beertierchen/warera-prost
-// @version      0.13.2
+// @version      0.13.3
 // @description  PROST-Personal Recommendation Overlay & Support Tool for WareEra. KEEP/SELL/SCRAP advice from local stats + official API market data. Optional official game API via your own key. No automation.
 // @author       beertierchen
 // @homepageURL  https://github.com/beertierchen/warera-prost
@@ -173,6 +173,7 @@
       gsg9Sniper: 'sniper', ctKnife: 'knife', gsg9Rifle: 'rifle',
       gsg9Knife: 'knife', ctRifle: 'rifle', gsg9Jet: 'jet', ctJet: 'jet',
       gsg9Tank: 'tank', gsg9Gun: 'gun',
+      dog: 'sniper', gsg9Dog: 'sniper', ctDog: 'sniper',
       // armor
       gsg9Chest: 'chest', gsg9Helmet: 'helmet', gsg9Gloves: 'gloves',
       gsg9Pants: 'pants', gsg9Boots: 'boots',
@@ -3775,9 +3776,7 @@
     const rawSrc = img.getAttribute('src') || '';
     const skinName = skinNameFromSrc(rawSrc);
     if (skinName) {
-      if (card && card.querySelector('.a6izou0') && !findDurabilityBar(getItemCell(card))) {
-        return { type: 'unknown', alt, code: null, srcBase: skinName, tier: null, isSkin: true };
-      }
+
 
       const slot = slotForSkin(skinName);
       if (!slot) return { type: 'unknown', alt, code: null, srcBase: skinName, tier: null, isSkin: true };

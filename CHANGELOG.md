@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## 2026-09-19 | Weapon Advisor Hotfix (v0.13.3)
+
+**Geänderte Dateien:** `warera-prost.user.js`
+
+**Änderungen (Deutsch):**
+- **Bugfix**: Waffen haben im Inventar wieder Kaufempfehlungen. Die Anzeige fehlte, da das Spiel die Haltbarkeitsanzeige im Code verschoben hatte, wodurch Waffen nicht mehr korrekt erkannt wurden.
+- **Bugfix**: Der neue "K9 Unit" Waffen-Skin (Hund) wird nun korrekt als Sniper-Waffe erkannt und berechnet.
+
+**Changes (English):**
+- **Bugfix**: Restored market advisor badges for weapons in the inventory. A game update altered the durability bar layout, causing weapons to be misidentified and skipped.
+- **Bugfix**: The new "K9 Unit" dog skin is now properly mapped to the sniper class and receives market calculations.
 ## 2026-09-04 | Neue Kampf-Benachrichtigungen / New Battle Alerts (v0.13.2)
 
 **Geänderte Dateien:** `warera-prost.user.js`, `package.json`

@@ -2306,16 +2306,7 @@ try {
       assert.strictEqual(consumableInfo.tier, null, 'Consumable skin tier should be null');
       assert.strictEqual(consumableInfo.isSkin, true, 'Consumable skin isSkin should be true');
 
-      // Test 6b: detectItem for consumable skin card with stat icon but no durability (should be unknown)
-      const mockSkinCardImg = new MockElement('img');
-      mockSkinCardImg.setAttribute('src', '/images/skins/wc2026.png');
-      mockSkinCardImg.setAttribute('alt', 'wc2026');
-      const mockSkinCard = new MockElement('div');
-      const statIcon = new MockElement('div', 'a6izou0');
-      mockSkinCard.appendChild(statIcon);
-      const skinCardInfo = globalThis.detectItem(mockSkinCardImg, mockSkinCard);
-      assert.strictEqual(skinCardInfo.type, 'unknown', 'Skin card type should be unknown');
-      assert.strictEqual(skinCardInfo.code, null, 'Skin card code should be null');
+
 
       const makeArmorStatCard = (statVal) => {
         const c = new MockElement('div');
